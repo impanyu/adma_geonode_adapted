@@ -40,7 +40,15 @@ PROJECT_NAME = "adma_geonode_project"
 if not SITEURL.endswith("/"):
     SITEURL = "{}/".format(SITEURL)
 
-SITENAME = os.getenv("SITENAME", "adma_geonode_project")
+SITENAME = os.getenv("SITENAME", "Agricultural Data Management and Analytics")
+
+# Custom branding and theme settings
+THEME_ACCOUNT_CONTACT_EMAIL = "admin@example.com"
+GEONODE_CLIENT_THEME_NAME = "ADMA_THEME"
+
+# Custom logo and favicon settings
+LOGO_IMAGE = "img/Nebraska_N_4c.jpg"
+FAVICON_PATH = "img/Nebraska_N_4c.jpg"
 
 # Defines the directory that contains the settings file as the LOCAL_ROOT
 # It is used for relative settings elsewhere.

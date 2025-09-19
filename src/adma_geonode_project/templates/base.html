@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" type="text/css" href="{% static 'css/site_base.css' %}" />
+<style>
+/* Additional inline styles for logo override */
+.navbar-brand img {
+    content: url('{% static "img/Nebraska_N_4c.jpg" %}');
+    max-height: 50px;
+    width: auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Override any existing logo references */
+.navbar-brand,
+.navbar-brand:hover,
+.navbar-brand:focus {
+    background-image: url('{% static "img/Nebraska_N_4c.jpg" %}') !important;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    padding: 5px 10px;
+    min-height: 50px;
+    min-width: 120px;
+}
+
+/* Ensure logo text is hidden if any */
+.navbar-brand span,
+.navbar-brand .logo-text {
+    display: none;
+}
+</style>
+{% endblock %}
+
+{% block brand_image %}
+<img src="{% static 'img/Nebraska_N_4c.jpg' %}" alt="ADMA GeoNode" class="img-responsive" />
+{% endblock %}
+
+{% block site_name %}Agricultural Data Management and Analytics{% endblock %}

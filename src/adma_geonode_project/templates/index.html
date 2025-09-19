@@ -1,0 +1,113 @@
+{% extends "index.html" %}
+{% load static %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" type="text/css" href="{% static 'css/site_base.css' %}" />
+{% endblock %}
+
+{% block hero %}
+<div class="hero-banner">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-8 mx-auto text-center fade-in-up">
+                <h1>Welcome to Agricultural Data Management and Analytics</h1>
+                <p class="lead">Discover, explore, and share geospatial data with our advanced Geographic Information System platform.</p>
+                <div class="mt-4">
+                    <a href="{% url 'layer_browse' %}" class="btn btn-primary btn-lg mx-2 mb-2">
+                        <i class="fa fa-map"></i> Explore Layers
+                    </a>
+                    <a href="{% url 'maps_browse' %}" class="btn btn-secondary btn-lg mx-2 mb-2">
+                        <i class="fa fa-globe"></i> Browse Maps
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block mainbody %}
+<div class="container">
+    <div class="row mb-5">
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 fade-in-up">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-layer-group mr-2"></i>Data Layers</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">Access and manage geospatial data layers with advanced filtering and visualization capabilities.</p>
+                    <a href="{% url 'layer_browse' %}" class="btn btn-primary">View Layers</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 fade-in-up">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-map mr-2"></i>Interactive Maps</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">Create and share interactive web maps combining multiple data sources and custom styling.</p>
+                    <a href="{% url 'maps_browse' %}" class="btn btn-primary">Browse Maps</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 fade-in-up">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-file-alt mr-2"></i>Documents</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">Upload and manage supporting documents, metadata, and research materials.</p>
+                    <a href="{% url 'documents_browse' %}" class="btn btn-primary">View Documents</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-5">
+        <div class="col-md-6">
+            <div class="jumbotron">
+                <h2 class="display-6">Advanced GIS Capabilities</h2>
+                <p class="lead">Our platform provides comprehensive tools for geospatial analysis, data visualization, and collaborative research.</p>
+                <hr class="my-4">
+                <p>Features include real-time data processing, advanced cartographic styling, and seamless data sharing capabilities.</p>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-chart-bar mr-2"></i>Platform Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <h3 class="text-primary">{{ resource_count.layers|default:"0" }}</h3>
+                            <p class="text-muted">Layers</p>
+                        </div>
+                        <div class="col-4">
+                            <h3 class="text-primary">{{ resource_count.maps|default:"0" }}</h3>
+                            <p class="text-muted">Maps</p>
+                        </div>
+                        <div class="col-4">
+                            <h3 class="text-primary">{{ resource_count.documents|default:"0" }}</h3>
+                            <p class="text-muted">Documents</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-info fade-in-up">
+                <h5 class="alert-heading"><i class="fa fa-info-circle mr-2"></i>Getting Started</h5>
+                <p>Welcome to the ADMA GeoNode Project! This platform allows you to discover, access, and share geospatial data. Use the navigation above to explore available datasets, create custom maps, or upload your own data.</p>
+                <hr>
+                <p class="mb-0">Need help? Visit our <a href="#" class="alert-link">documentation</a> or <a href="#" class="alert-link">contact support</a>.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
