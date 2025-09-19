@@ -68,7 +68,7 @@
                     logo.style.display = 'inline-block';
                 });
             });
-        }, 1000);
+                }, 100);
         
         // Continue checking and replacing logos as MapStore loads
         setInterval(function() {
@@ -205,7 +205,7 @@
             if (document.title.includes('GeoNode') || document.title === 'localhost') {
                 document.title = 'Agricultural Data Management and Analytics';
             }
-        }, 2000);
+        }, 500);
     });
 </script>
 
@@ -277,6 +277,9 @@ section[class*="intro"] {
     color: white !important;
     text-align: center !important;
     position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
 /* Force banner content to be centered */
@@ -439,6 +442,74 @@ section[class*="hero"] .btn,
 section[class*="banner"] .btn,
 section[class*="intro"] .btn {
     display: none !important;
+}
+
+/* Prevent banner content flash - hide all initially until JS loads */
+.ms-hero > *:not(h1),
+.hero-banner > *:not(h1),
+.homepage-hero > *:not(h1),
+.jumbotron > *:not(h1),
+.hero-section > *:not(h1),
+.ms-home-header > *:not(h1),
+.ms-home-description > *:not(h1),
+.home-description > *:not(h1),
+.ms-home > *:not(h1),
+.ms-home-intro > *:not(h1),
+.ms-intro > *:not(h1),
+.intro-section > *:not(h1),
+.banner > *:not(h1),
+.header-banner > *:not(h1),
+.top-banner > *:not(h1),
+.ms-header-banner > *:not(h1),
+.ms-home-content > *:not(h1),
+.ms-homepage-hero > *:not(h1),
+.ms-app-header > *:not(h1),
+.home-header > *:not(h1),
+.main-banner > *:not(h1),
+div[class*="hero"] > *:not(h1),
+div[class*="banner"] > *:not(h1),
+div[class*="intro"] > *:not(h1),
+section[class*="hero"] > *:not(h1),
+section[class*="banner"] > *:not(h1),
+section[class*="intro"] > *:not(h1) {
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* Force any existing banner h1 to be immediately centered */
+.ms-hero h1,
+.hero-banner h1,
+.homepage-hero h1,
+.jumbotron h1,
+.hero-section h1,
+.ms-home-header h1,
+.ms-home-description h1,
+.home-description h1,
+.ms-home h1,
+.ms-home-intro h1,
+.ms-intro h1,
+.intro-section h1,
+.banner h1,
+.header-banner h1,
+.top-banner h1,
+.ms-header-banner h1,
+.ms-home-content h1,
+.ms-homepage-hero h1,
+.ms-app-header h1,
+.home-header h1,
+.main-banner h1,
+div[class*="hero"] h1,
+div[class*="banner"] h1,
+div[class*="intro"] h1,
+section[class*="hero"] h1,
+section[class*="banner"] h1,
+section[class*="intro"] h1 {
+    position: absolute !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 100% !important;
+    z-index: 10 !important;
 }
 
 /* Navigation bar with white background */
