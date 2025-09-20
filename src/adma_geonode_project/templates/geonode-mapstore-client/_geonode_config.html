@@ -162,10 +162,10 @@
                 });
             });
 
-            // Update footer with ADMA copyright
+            // Completely hide all footers
             const footerSelectors = [
                 'footer',
-                '.footer',
+                '.footer', 
                 '.ms-footer',
                 '.page-footer',
                 '.site-footer',
@@ -175,29 +175,11 @@
             footerSelectors.forEach(selector => {
                 const footers = document.querySelectorAll(selector);
                 footers.forEach(footer => {
-                    // Look for existing copyright text and replace it
-                    const copyrightElements = footer.querySelectorAll('*');
-                    copyrightElements.forEach(el => {
-                        if (el.textContent && (el.textContent.includes('©') || el.textContent.includes('Copyright') || el.textContent.toLowerCase().includes('geonode'))) {
-                            el.textContent = '@ADMA 2021-2025';
-                        }
-                    });
-                    
-                    // If no copyright found, add it
-                    if (!footer.textContent.includes('@ADMA')) {
-                        const copyrightDiv = document.createElement('div');
-                        copyrightDiv.textContent = '@ADMA 2021-2025';
-                        copyrightDiv.style.textAlign = 'center';
-                        copyrightDiv.style.padding = '10px';
-                        copyrightDiv.style.color = '#666';
-                        footer.appendChild(copyrightDiv);
-                    }
-                    
-                    // Set footer background to grey
-                    footer.style.backgroundColor = '#f8f9fa';
-                    footer.style.background = '#f8f9fa';
-                    footer.style.color = '#666';
-                    footer.style.borderTop = '1px solid #e9ecef';
+                    footer.style.display = 'none';
+                    footer.style.visibility = 'hidden';
+                    footer.style.height = '0';
+                    footer.style.margin = '0';
+                    footer.style.padding = '0';
                 });
             });
             
@@ -536,21 +518,18 @@ nav {
     color: #d00000 !important;
 }
 
-/* Footer styling - Grey background */
+/* Hide all footers completely */
 footer,
 .footer,
 .ms-footer,
 .page-footer,
 .site-footer,
 .ms-page-footer {
-    background-color: #f8f9fa !important;
-    background: #f8f9fa !important;
-    border-top: 1px solid #e9ecef !important;
-    margin-top: 2rem !important;
-    padding: 1rem 0 !important;
-    text-align: center !important;
-    color: #666 !important;
-    font-size: 0.9rem !important;
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 /* Override MapStore default styling - Force Nebraska logo */
 .ms-navbar .navbar-brand img,
