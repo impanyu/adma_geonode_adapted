@@ -40,6 +40,26 @@
             }
         };
         
+        // Override menu labels
+        if (localConfig.menu) {
+            localConfig.menu = localConfig.menu.map(item => {
+                if (item.label === 'GeoStories' || item.label === 'geostories') {
+                    return { ...item, label: 'AgStories' };
+                }
+                return item;
+            });
+        }
+        
+        // Override navigation items
+        if (localConfig.navigationItems) {
+            localConfig.navigationItems = localConfig.navigationItems.map(item => {
+                if (item.text === 'GeoStories' || item.text === 'geostories') {
+                    return { ...item, text: 'AgStories' };
+                }
+                return item;
+            });
+        }
+        
         return localConfig;
     };
     
@@ -84,6 +104,7 @@
             });
             
             // Replace any "GeoNode" text with "Agricultural Data Management and Analytics"
+            // Also replace "GeoStories" with "AgStories"
             const textSelectors = [
                 '.navbar-brand-text',
                 '.site-title',
@@ -96,18 +117,40 @@
                 '.jumbotron h1',
                 '.hero-section h1',
                 '.ms-home-header h1',
-                '.home-description h1'
+                '.home-description h1',
+                '.nav-link',
+                '.navbar-nav a',
+                '.ms-navbar a',
+                '.dropdown-item',
+                '.menu-item'
             ];
             
             textSelectors.forEach(selector => {
                 const elements = document.querySelectorAll(selector);
                 elements.forEach(element => {
+                    // Replace GeoNode text
                     if (element.textContent && element.textContent.includes('GeoNode')) {
                         element.textContent = element.textContent.replace(/GeoNode/g, 'Agricultural Data Management and Analytics');
                     }
                     if (element.innerHTML && element.innerHTML.includes('GeoNode')) {
                         element.innerHTML = element.innerHTML.replace(/GeoNode/g, 'Agricultural Data Management and Analytics');
                     }
+                    
+                    // Replace GeoStories with AgStories
+                    if (element.textContent && element.textContent.includes('GeoStories')) {
+                        element.textContent = element.textContent.replace(/GeoStories/g, 'AgStories');
+                    }
+                    if (element.innerHTML && element.innerHTML.includes('GeoStories')) {
+                        element.innerHTML = element.innerHTML.replace(/GeoStories/g, 'AgStories');
+                    }
+                    // Case insensitive replacement
+                    if (element.textContent && element.textContent.toLowerCase().includes('geostories')) {
+                        element.textContent = element.textContent.replace(/geostories/gi, 'AgStories');
+                    }
+                    if (element.innerHTML && element.innerHTML.toLowerCase().includes('geostories')) {
+                        element.innerHTML = element.innerHTML.replace(/geostories/gi, 'AgStories');
+                    }
+                    
                     // Specifically set banner text
                     if (selector.includes('h1') && element.tagName === 'H1') {
                         element.textContent = 'Agricultural Data Management and Analytics';
