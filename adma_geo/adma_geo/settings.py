@@ -25,7 +25,6 @@ INSTALLED_APPS = [
     # Third party apps
     'crispy_forms',
     'crispy_bootstrap5',
-    'leaflet',
 
     # Local apps
     'filemanager',
@@ -129,6 +128,7 @@ CELERY_TIMEZONE = TIME_ZONE
 # File Upload Settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
+DATA_UPLOAD_MAX_NUMBER_FILES = 1000  # Allow up to 1000 files per upload for folder uploads
 
 # GeoServer Configuration
 GEOSERVER_URL = os.environ.get('GEOSERVER_URL', 'http://geoserver:8080/geoserver')
@@ -142,27 +142,3 @@ GIS_FILE_EXTENSIONS = [
     '.csv', '.tiff', '.tif', '.geotiff', '.geotif', '.zip'
 ]
 
-# Django-Leaflet configuration
-LEAFLET_CONFIG = {
-    'DEFAULT_CENTER': (41.0, -99.5),  # Nebraska center
-    'DEFAULT_ZOOM': 8,
-    'MIN_ZOOM': 3,
-    'MAX_ZOOM': 18,
-    'DEFAULT_PRECISION': 6,
-    'TILES': [
-        ('OpenStreetMap', 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            'attribution': '© OpenStreetMap contributors',
-            'maxZoom': 19,
-        }),
-        ('CartoDB Positron', 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
-            'attribution': '© OpenStreetMap contributors, © CartoDB',
-            'maxZoom': 19,
-        }),
-    ],
-    'SRID': 3857,  # Web Mercator
-    'SPATIAL_EXTENT': (-180, -90, 180, 90),  # World extent
-    'SCALE': 'both',
-    'MINIMAP': False,
-    'RESET_VIEW': False,
-    'ATTRIBUTION_PREFIX': 'ADMA GeoFiles',
-}

@@ -23,5 +23,7 @@ urlpatterns = [
     # AJAX endpoints
     path('api/folder/create/', views.create_folder, name='create_folder'),
     path('api/files/upload/', views.upload_files, name='upload_files'),
+    path('api/folders/upload/', views.upload_folders, name='upload_folders'),
     path('api/item/delete/', views.delete_item, name='delete_item'),
+    path('api/item/toggle-visibility/', views.toggle_visibility, name='toggle_visibility'),
 ]

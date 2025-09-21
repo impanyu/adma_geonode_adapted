@@ -28,25 +28,10 @@
     <!-- File Details -->
     <div class="col-lg-8">
         <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header">
                 <h4 class="mb-0">
                     <i class="{{ file.get_icon_class }} me-2"></i>{{ file.name }}
                 </h4>
-                {% if can_edit %}
-                <div class="dropdown">
-                    <button class="btn btn-outline-secondary" data-bs-toggle="dropdown">
-                        <i class="fas fa-ellipsis-v"></i>
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="{% url 'filemanager:download_file' file.id %}">
-                            <i class="fas fa-download me-2"></i>Download
-                        </a></li>
-                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteFile()">
-                            <i class="fas fa-trash me-2"></i>Delete
-                        </a></li>
-                    </ul>
-                </div>
-                {% endif %}
             </div>
             <div class="card-body">
                 <!-- File Preview -->
@@ -91,10 +76,13 @@
                             <tr>
                                 <th>Visibility:</th>
                                 <td>
-                                    {% if file.is_public %}
-                                        <span class="badge bg-success">Public</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">Private</span>
+                                    <span id="visibility-badge" class="badge {% if file.is_public %}bg-success{% else %}bg-secondary{% endif %}">
+                                        {% if file.is_public %}Public{% else %}Private{% endif %}
+                                    </span>
+                                    {% if can_edit %}
+                                    <button id="toggle-visibility-btn" class="btn btn-sm btn-outline-primary ms-2" onclick="toggleVisibility()">
+                                        <i class="fas fa-exchange-alt me-1"></i>Toggle
+                                    </button>
                                     {% endif %}
                                 </td>
                             </tr>
@@ -258,6 +246,7 @@
 
 {% endblock %}
 
+
 {% block extra_js %}
 <script>
 // CSRF token setup
@@ -316,6 +305,65 @@ async function deleteFile() {
         }
     } catch (error) {
         alert('Error deleting file: ' + error.message);
+    }
+}
+
+async function toggleVisibility() {
+    const button = document.getElementById('toggle-visibility-btn');
+    const badge = document.getElementById('visibility-badge');
+    
+    // Disable button during request
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
+    
+    try {
+        const response = await fetch('{% url "filemanager:toggle_visibility" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                type: 'file',
+                id: '{{ file.id }}'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update badge
+            badge.className = `badge ${data.is_public ? 'bg-success' : 'bg-secondary'}`;
+            badge.textContent = data.status;
+            
+            // Show success message
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+            alertDiv.innerHTML = `
+                <i class="fas fa-check-circle me-2"></i>
+                File visibility changed to <strong>${data.status.toLowerCase()}</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // Insert alert after breadcrumb
+            const breadcrumb = document.querySelector('nav[aria-label="breadcrumb"]');
+            breadcrumb.insertAdjacentElement('afterend', alertDiv);
+            
+            // Auto-hide alert after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        } else {
+            alert(data.error || 'Error toggling visibility');
+        }
+    } catch (error) {
+        alert('Error toggling visibility: ' + error.message);
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.innerHTML = '<i class="fas fa-exchange-alt me-1"></i>Toggle';
     }
 }
 {% endif %}

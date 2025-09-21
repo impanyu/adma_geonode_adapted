@@ -9,6 +9,7 @@ from django.http import JsonResponse, HttpResponse, Http404, FileResponse
 from django.db.models import Q, Count
 from django.urls import reverse_lazy
 from django.conf import settings
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from .models import Folder, File
 from .forms import RegistrationForm, FolderForm, FileUploadForm
 from .tasks import process_gis_file_task
@@ -20,16 +21,40 @@ class HomeView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         
-        # Show public files and folders
-        context['public_folders'] = Folder.objects.filter(
+        # Get pagination parameters
+        folders_page = self.request.GET.get('folders_page', 1)
+        files_page = self.request.GET.get('files_page', 1)
+        
+        # Get all public folders with pagination
+        all_public_folders = Folder.objects.filter(
             is_public=True, 
             parent=None
         ).annotate(
             file_count=Count('files'),
             subfolder_count=Count('subfolders')
-        )[:6]
+        ).order_by('-created_at')
         
-        context['public_files'] = File.objects.filter(is_public=True)[:6]
+        folders_paginator = Paginator(all_public_folders, 12)  # 12 folders per page
+        try:
+            public_folders = folders_paginator.page(folders_page)
+        except PageNotAnInteger:
+            public_folders = folders_paginator.page(1)
+        except EmptyPage:
+            public_folders = folders_paginator.page(folders_paginator.num_pages)
+        
+        # Get all public files with pagination
+        all_public_files = File.objects.filter(is_public=True).order_by('-created_at')
+        
+        files_paginator = Paginator(all_public_files, 12)  # 12 files per page
+        try:
+            public_files = files_paginator.page(files_page)
+        except PageNotAnInteger:
+            public_files = files_paginator.page(1)
+        except EmptyPage:
+            public_files = files_paginator.page(files_paginator.num_pages)
+        
+        context['public_folders'] = public_folders
+        context['public_files'] = public_files
         
         # Statistics for public data
         context['stats'] = {
@@ -50,8 +75,8 @@ def dashboard(request):
         subfolder_count=Count('subfolders')
     )
     
-    # Get recent files
-    recent_files = File.objects.filter(owner=user).order_by('-created_at')[:6]
+    # Get recent files (only root-level files, not files inside folders)
+    recent_files = File.objects.filter(owner=user, folder=None).order_by('-created_at')[:6]
     
     # Statistics
     stats = {
@@ -365,6 +390,138 @@ def public_map_viewer(request, file_id):
         'file': file_obj,
         'geoserver_info': geoserver_info,
     })
+
+@login_required
+def upload_folders(request):
+    """Upload folders with their structure via AJAX"""
+    if request.method == 'POST':
+        try:
+            files = request.FILES.getlist('files')
+            file_paths = request.POST.getlist('file_paths')
+            is_public = request.POST.get('is_public') == 'true'
+            
+            if not files or len(files) != len(file_paths):
+                return JsonResponse({'error': 'No files selected or paths mismatch'}, status=400)
+            
+            # Create a mapping of created folders to avoid duplicates
+            created_folders = {}
+            uploaded_files = []
+            
+            for uploaded_file, file_path in zip(files, file_paths):
+                # Parse the path to create folder structure
+                path_parts = file_path.split('/')
+                filename = path_parts[-1]
+                folder_path = path_parts[:-1]
+                
+                # Create folder hierarchy
+                current_folder = None
+                current_path = ""
+                
+                for folder_name in folder_path:
+                    current_path = f"{current_path}/{folder_name}" if current_path else folder_name
+                    
+                    if current_path not in created_folders:
+                        # Check if folder already exists
+                        existing_folder = Folder.objects.filter(
+                            name=folder_name, 
+                            parent=current_folder, 
+                            owner=request.user
+                        ).first()
+                        
+                        if existing_folder:
+                            created_folders[current_path] = existing_folder
+                        else:
+                            # Create new folder
+                            folder = Folder.objects.create(
+                                name=folder_name,
+                                parent=current_folder,
+                                owner=request.user,
+                                is_public=is_public
+                            )
+                            created_folders[current_path] = folder
+                    
+                    current_folder = created_folders[current_path]
+                
+                # Check if file already exists
+                if File.objects.filter(
+                    name=filename, 
+                    folder=current_folder, 
+                    owner=request.user
+                ).exists():
+                    continue  # Skip duplicate files
+                
+                # Create file object
+                file_obj = File.objects.create(
+                    name=filename,
+                    file=uploaded_file,
+                    folder=current_folder,
+                    owner=request.user,
+                    is_public=is_public
+                )
+                
+                # Trigger GIS processing if it's a spatial file
+                if file_obj.is_spatial:
+                    process_gis_file_task.delay(str(file_obj.id))
+                
+                uploaded_files.append({
+                    'id': str(file_obj.id),
+                    'name': file_obj.name,
+                    'size': file_obj.get_size_display(),
+                    'folder': current_folder.name if current_folder else None,
+                    'is_spatial': file_obj.is_spatial,
+                    'file_type': file_obj.file_type,
+                })
+            
+            folders_created = len(created_folders)
+            files_created = len(uploaded_files)
+            
+            return JsonResponse({
+                'success': True,
+                'folders_created': folders_created,
+                'files_created': files_created,
+                'message': f'Successfully uploaded {files_created} files in {folders_created} folders'
+            })
+            
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+@login_required
+def toggle_visibility(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            item_type = data.get('type')
+            item_id = data.get('id')
+            
+            if item_type == 'folder':
+                folder = get_object_or_404(Folder, id=item_id, owner=request.user)
+                folder.is_public = not folder.is_public
+                folder.save()
+                return JsonResponse({
+                    'success': True, 
+                    'is_public': folder.is_public,
+                    'status': 'Public' if folder.is_public else 'Private'
+                })
+            elif item_type == 'file':
+                file_obj = get_object_or_404(File, id=item_id, owner=request.user)
+                file_obj.is_public = not file_obj.is_public
+                file_obj.save()
+                return JsonResponse({
+                    'success': True, 
+                    'is_public': file_obj.is_public,
+                    'status': 'Public' if file_obj.is_public else 'Private'
+                })
+            else:
+                return JsonResponse({'success': False, 'error': 'Invalid item type'})
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Method not allowed'})
 
 class RegisterView(CreateView):
     form_class = RegistrationForm

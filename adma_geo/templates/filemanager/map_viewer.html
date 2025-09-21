@@ -15,11 +15,104 @@
         min-height: 600px;
         position: relative;
     }
+    
+    /* Layer selector is now using Bootstrap form-select above the map */
     .map-info {
         background: #f8f9fa;
         padding: 15px;
         margin-bottom: 20px;
         border-radius: 5px;
+    }
+    
+    /* Hide any attribution that might appear */
+    .ol-attribution {
+        display: none !important;
+    }
+    
+    /* Make tables fit perfectly in information panels */
+    .col-lg-3 {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+    
+    .col-lg-3 .card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    
+    .col-lg-3 .card-body {
+        padding: 1rem !important;
+        overflow-x: hidden !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    
+    .col-lg-3 .table-responsive {
+        overflow-x: auto !important;
+        max-width: 100% !important;
+    }
+    
+    .col-lg-3 .table {
+        width: 100% !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
+        margin-bottom: 0 !important;
+        font-size: 0.85rem !important;
+        border-collapse: collapse !important;
+    }
+    
+    .col-lg-3 .table td {
+        padding: 0.4rem 0.3rem !important;
+        vertical-align: top !important;
+        border: none !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        hyphens: auto !important;
+        line-height: 1.3 !important;
+    }
+    
+    .col-lg-3 .table td:first-child {
+        width: 35% !important;
+        font-weight: 600 !important;
+        color: #495057 !important;
+        white-space: nowrap !important;
+        min-width: 0 !important;
+    }
+    
+    .col-lg-3 .table td:last-child {
+        width: 65% !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+        min-width: 0 !important;
+    }
+    
+    .col-lg-3 .table small {
+        font-size: 0.75rem !important;
+        line-height: 1.2 !important;
+        word-break: break-all !important;
+        display: block !important;
+    }
+    
+    /* Status badges styling */
+    .col-lg-3 .badge {
+        font-size: 0.7rem !important;
+        padding: 0.25em 0.5em !important;
+        white-space: nowrap !important;
+        display: inline-block !important;
+    }
+    
+    /* Ensure card headers are also responsive */
+    .col-lg-3 .card-header {
+        padding: 0.75rem 1rem !important;
+        background-color: #f8f9fa !important;
+        border-bottom: 1px solid #dee2e6 !important;
+    }
+    
+    .col-lg-3 .card-header h6 {
+        font-size: 0.9rem !important;
+        margin-bottom: 0 !important;
+        font-weight: 600 !important;
     }
 </style>
 {% endblock %}
@@ -46,13 +139,13 @@
             <h5 class="mb-0">
                 <i class="fas fa-map me-2"></i>{{ file.name }}
             </h5>
-            <div>
-                <button id="zoomToExtent" class="btn btn-sm btn-outline-primary">
-                    <i class="fas fa-expand-arrows-alt me-1"></i>Zoom to Data
-                </button>
-                <button id="toggleLayer" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-eye me-1"></i>Toggle Layer
-                </button>
+            <div class="d-flex align-items-center gap-2">
+                <select id="mapLayerSelect" class="form-select form-select-sm" style="width: auto;">
+                    <option value="osm">Default (OpenStreetMap)</option>
+                    <option value="satellite">Satellite</option>
+                    <option value="terrain">Terrain</option>
+                    <option value="topo">Topographic</option>
+                </select>
                 <button id="testWMS" class="btn btn-sm btn-outline-info">
                     <i class="fas fa-bug me-1"></i>Test WMS
                 </button>
@@ -62,6 +155,7 @@
         {% if file.gis_status == 'published' and geoserver_info or file.gis_status == 'processed' and geoserver_info %}
             <!-- Direct map container with explicit inline height -->
             <div id="map" style="height: 600px; width: 100%; border: 1px solid #ddd; background-color: #f0f0f0;"></div>
+            
             <div class="mt-2">
                 <small class="text-muted">
                     <strong>Status:</strong> {{ file.get_gis_status_display }} | 
@@ -87,40 +181,42 @@
                 <h6 class="mb-0">File Information</h6>
             </div>
             <div class="card-body">
-                <table class="table table-sm">
-                    <tr>
-                        <td><strong>Name:</strong></td>
-                        <td>{{ file.name }}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Type:</strong></td>
-                        <td>{{ file.file_type|capfirst }}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Size:</strong></td>
-                        <td>{{ file.get_size_display }}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Status:</strong></td>
-                        <td>
-                            {% if file.gis_status == 'published' %}
-                                <span class="badge bg-success">{{ file.get_gis_status_display }}</span>
-                            {% elif file.gis_status == 'processed' %}
-                                <span class="badge bg-info">{{ file.get_gis_status_display }}</span>
-                            {% elif file.gis_status == 'error' %}
-                                <span class="badge bg-danger">{{ file.get_gis_status_display }}</span>
-                            {% else %}
-                                <span class="badge bg-warning">{{ file.get_gis_status_display }}</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% if file.crs %}
-                    <tr>
-                        <td><strong>CRS:</strong></td>
-                        <td>{{ file.crs }}</td>
-                    </tr>
-                    {% endif %}
-                </table>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Name:</strong></td>
+                            <td>{{ file.name }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Type:</strong></td>
+                            <td>{{ file.file_type|capfirst }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Size:</strong></td>
+                            <td>{{ file.get_size_display }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Status:</strong></td>
+                            <td>
+                                {% if file.gis_status == 'published' %}
+                                    <span class="badge bg-success">{{ file.get_gis_status_display }}</span>
+                                {% elif file.gis_status == 'processed' %}
+                                    <span class="badge bg-info">{{ file.get_gis_status_display }}</span>
+                                {% elif file.gis_status == 'error' %}
+                                    <span class="badge bg-danger">{{ file.get_gis_status_display }}</span>
+                                {% else %}
+                                    <span class="badge bg-warning">{{ file.get_gis_status_display }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% if file.crs %}
+                        <tr>
+                            <td><strong>CRS:</strong></td>
+                            <td>{{ file.crs }}</td>
+                        </tr>
+                        {% endif %}
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -130,20 +226,22 @@
                 <h6 class="mb-0">Layer Information</h6>
             </div>
             <div class="card-body">
-                <table class="table table-sm">
-                    <tr>
-                        <td><strong>Workspace:</strong></td>
-                        <td>{{ geoserver_info.workspace }}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Layer:</strong></td>
-                        <td><small>{{ geoserver_info.layer_name }}</small></td>
-                    </tr>
-                    <tr>
-                        <td><strong>WMS URL:</strong></td>
-                        <td><small>{{ geoserver_info.wms_url }}</small></td>
-                    </tr>
-                </table>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Workspace:</strong></td>
+                            <td>{{ geoserver_info.workspace }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Layer:</strong></td>
+                            <td><small>{{ geoserver_info.layer_name }}</small></td>
+                        </tr>
+                        <tr>
+                            <td><strong>WMS URL:</strong></td>
+                            <td><small>{{ geoserver_info.wms_url }}</small></td>
+                        </tr>
+                    </table>
+                </div>
             </div>
         </div>
         {% endif %}
@@ -226,13 +324,40 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         ol.proj.addProjection(utmProjection);
         
-        // Create OpenStreetMap base layer
-        const osmLayer = new ol.layer.Tile({
-            source: new ol.source.OSM(),
-            title: 'OpenStreetMap'
-        });
+        // Create individual base layers WITH native attribution
+        const baseLayers = {
+            'osm': new ol.layer.Tile({
+                source: new ol.source.OSM(), // Use native OpenStreetMap attribution
+                title: 'OpenStreetMap',
+                visible: true
+            }),
+            'satellite': new ol.layer.Tile({
+                source: new ol.source.XYZ({
+                    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                    attributions: '© Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+                }),
+                title: 'Satellite',
+                visible: false
+            }),
+            'terrain': new ol.layer.Tile({
+                source: new ol.source.XYZ({
+                    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
+                    attributions: '© Esri, USGS, NOAA'
+                }),
+                title: 'Terrain',
+                visible: false
+            }),
+            'topo': new ol.layer.Tile({
+                source: new ol.source.XYZ({
+                    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+                    attributions: '© Esri, HERE, Garmin, Intermap, increment P Corp., GEBCO, USGS, FAO, NPS, NRCAN, GeoBase, IGN, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
+                }),
+                title: 'Topographic',
+                visible: false
+            })
+        };
         
-        // Create WMS layer from GeoServer
+        // Create WMS layer WITHOUT attribution
         const wmsLayer = new ol.layer.Tile({
             source: new ol.source.TileWMS({
                 url: '{{ geoserver_info.wms_url }}',
@@ -243,22 +368,42 @@ document.addEventListener('DOMContentLoaded', function() {
                     'TRANSPARENT': true
                 },
                 serverType: 'geoserver',
-                crossOrigin: 'anonymous'
+                crossOrigin: 'anonymous',
+                attributions: [] // Remove WMS attribution
             }),
             title: '{{ file.name }}',
             opacity: 0.8
         });
         
-        // Create map with default Nebraska center first
+        // Create map with individual layers
         const map = new ol.Map({
             target: 'map',
-            layers: [osmLayer, wmsLayer],
+            layers: [
+                baseLayers.osm, 
+                baseLayers.satellite, 
+                baseLayers.terrain, 
+                baseLayers.topo, 
+                wmsLayer
+            ],
             view: new ol.View({
                 center: ol.proj.fromLonLat([-99.5, 41.0]),
                 zoom: 7,
                 projection: 'EPSG:3857'
             })
         });
+        
+        // Remove all attribution controls completely
+        const controlsToRemove = [];
+        map.getControls().forEach(function(control) {
+            if (control instanceof ol.control.Attribution) {
+                controlsToRemove.push(control);
+            }
+        });
+        controlsToRemove.forEach(function(control) {
+            map.removeControl(control);
+        });
+        
+        console.log('All attribution removed');
         
         // Try to get the layer extent from GeoServer
         function getLayerExtent() {
@@ -369,16 +514,34 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('WMS layer: {{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}');
         console.log('WMS URL: {{ geoserver_info.wms_url }}');
         
-        // Add layer switcher functionality
-        let layerVisible = true;
-        document.getElementById('toggleLayer').addEventListener('click', function() {
-            layerVisible = !layerVisible;
-            wmsLayer.setVisible(layerVisible);
-            this.innerHTML = layerVisible ? 
-                '<i class="fas fa-eye me-1"></i>Hide Layer' : 
-                '<i class="fas fa-eye-slash me-1"></i>Show Layer';
-            console.log('Layer visibility toggled:', layerVisible);
-        });
+        // Initialize dropdown layer selector
+        setTimeout(function() {
+            const layerSelect = document.getElementById('mapLayerSelect');
+            if (layerSelect) {
+                layerSelect.addEventListener('change', function() {
+                    const selectedLayer = this.value;
+                    console.log('Switching to layer:', selectedLayer);
+                    
+                    // Hide all base layers
+                    Object.values(baseLayers).forEach(layer => {
+                        layer.setVisible(false);
+                    });
+                    
+                    // Show selected layer
+                    if (baseLayers[selectedLayer]) {
+                        baseLayers[selectedLayer].setVisible(true);
+                        console.log('Layer switched to:', selectedLayer);
+                    } else {
+                        console.log('Layer not found:', selectedLayer);
+                    }
+                });
+                
+                console.log('Dropdown layer selector initialized');
+                console.log('Available base layers:', Object.keys(baseLayers));
+            } else {
+                console.log('Layer dropdown not found');
+            }
+        }, 100);
         
         // Add WMS test functionality
         document.getElementById('testWMS').addEventListener('click', function() {
@@ -397,11 +560,11 @@ document.addEventListener('DOMContentLoaded', function() {
             window.open(testWMSUrl, '_blank');
         });
         
-        // Zoom to layer extent functionality
-        document.getElementById('zoomToExtent').addEventListener('click', function() {
-            console.log('Zoom to Data button clicked - getting layer extent...');
+        // Auto-zoom to layer extent when map loads
+        console.log('Auto-zooming to layer extent...');
+        setTimeout(function() {
             getLayerExtent();
-        });
+        }, 1000);
         
         // Add click handler to show coordinates
         map.on('click', function(evt) {

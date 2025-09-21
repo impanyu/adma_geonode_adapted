@@ -2,6 +2,51 @@
 
 {% block title %}{{ folder.name }} - ADMA{% endblock %}
 
+{% block extra_css %}
+<style>
+.folder-item, .file-item {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 8px;
+}
+
+.folder-item:hover, .file-item:hover {
+    background: #e9ecef;
+    border-color: #d00000;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.folder-icon, .file-icon {
+    font-size: 2rem;
+    margin-right: 12px;
+    opacity: 0.8;
+}
+
+.folder-icon {
+    color: #ffc107;
+}
+
+.file-icon {
+    color: #6c757d;
+}
+
+.view-container {
+    min-height: 200px;
+}
+
+.btn-group .btn.active {
+    background-color: #d00000;
+    border-color: #d00000;
+    color: white;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Breadcrumb Navigation -->
 <nav aria-label="breadcrumb" class="mb-4">
@@ -58,15 +103,25 @@
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
                     <i class="fas fa-list me-2"></i>Contents
                     <span class="text-muted">({{ subfolders.count }} folders, {{ files.count }} files)</span>
                 </h5>
+                <div class="btn-group" role="group" aria-label="View toggle">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="listViewBtn" onclick="toggleView('list')">
+                        <i class="fas fa-list"></i> List
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary active" id="panelViewBtn" onclick="toggleView('panel')">
+                        <i class="fas fa-th"></i> Panels
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 {% if subfolders or files %}
-                <!-- Subfolders -->
+                <!-- Panel View -->
+                <div id="panelView" class="view-container">
+                    <!-- Subfolders -->
                 {% if subfolders %}
                 <div class="mb-4">
                     <h6 class="text-muted mb-3"><i class="fas fa-folder me-2"></i>Folders</h6>
@@ -154,6 +209,110 @@
                     </div>
                 </div>
                 {% endif %}
+                </div>
+                
+                <!-- List View -->
+                <div id="listView" class="view-container" style="display: none;">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Size</th>
+                                    <th>Modified</th>
+                                    <th>Status</th>
+                                    {% if can_edit %}<th>Actions</th>{% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Folders in List View -->
+                                {% for subfolder in subfolders %}
+                                <tr style="cursor: pointer;" onclick="window.location.href='{% url 'filemanager:folder_detail' subfolder.id %}'">
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-folder me-3"></i>
+                                            <div>
+                                                <strong>{{ subfolder.name }}</strong>
+                                                {% if subfolder.is_public %}
+                                                    <span class="badge bg-info ms-2">Public</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span class="text-muted">Folder</span></td>
+                                    <td><span class="text-muted">{{ subfolder.file_count }} files</span></td>
+                                    <td>{{ subfolder.updated_at|date:"M d, Y H:i" }}</td>
+                                    <td><span class="badge bg-secondary">Folder</span></td>
+                                    {% if can_edit %}
+                                    <td>
+                                        <div class="dropdown" onclick="event.stopPropagation()">
+                                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                                <i class="fas fa-ellipsis-v"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li><a class="dropdown-item" href="#" onclick="deleteItem('folder', '{{ subfolder.id }}', '{{ subfolder.name }}')">
+                                                    <i class="fas fa-trash me-2"></i>Delete
+                                                </a></li>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                                {% endfor %}
+
+                                <!-- Files in List View -->
+                                {% for file in files %}
+                                <tr style="cursor: pointer;" onclick="window.location.href='{% url 'filemanager:file_detail' file.id %}'">
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="{{ file.get_icon_class }} me-3"></i>
+                                            <div>
+                                                <strong>{{ file.name }}</strong>
+                                                {% if file.is_public %}
+                                                    <span class="badge bg-info ms-2">Public</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge bg-secondary">{{ file.file_type|title }}</span></td>
+                                    <td>{{ file.get_size_display }}</td>
+                                    <td>{{ file.updated_at|date:"M d, Y H:i" }}</td>
+                                    <td>
+                                        {% if file.can_preview %}
+                                            <span class="badge bg-success">Previewable</span>
+                                        {% else %}
+                                            <span class="badge bg-light text-dark">File</span>
+                                        {% endif %}
+                                    </td>
+                                    {% if can_edit %}
+                                    <td>
+                                        <div class="dropdown" onclick="event.stopPropagation()">
+                                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                                <i class="fas fa-ellipsis-v"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                               <li><a class="dropdown-item" href="{% url 'filemanager:download_file' file.id %}">
+                                                   <i class="fas fa-download me-2"></i>Download
+                                               </a></li>
+                                               {% if file.is_spatial %}
+                                               <li><a class="dropdown-item" href="{% url 'filemanager:map_viewer' file.id %}">
+                                                   <i class="fas fa-map-marked-alt me-2"></i>View on Map
+                                               </a></li>
+                                               {% endif %}
+                                               <li><a class="dropdown-item" href="#" onclick="deleteItem('file', '{{ file.id }}', '{{ file.name }}')">
+                                                   <i class="fas fa-trash me-2"></i>Delete
+                                               </a></li>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
                 {% else %}
                 <!-- Empty Folder -->
                 <div class="text-center py-5">
@@ -431,6 +590,34 @@ async function deleteItem(type, id, name) {
         alert('Error deleting item: ' + error.message);
     }
 }
+
+// View Toggle Functions
+function toggleView(viewType) {
+    const listView = document.getElementById('listView');
+    const panelView = document.getElementById('panelView');
+    const listBtn = document.getElementById('listViewBtn');
+    const panelBtn = document.getElementById('panelViewBtn');
+    
+    if (viewType === 'list') {
+        listView.style.display = 'block';
+        panelView.style.display = 'none';
+        listBtn.classList.add('active');
+        panelBtn.classList.remove('active');
+        localStorage.setItem('fileViewType', 'list');
+    } else {
+        listView.style.display = 'none';
+        panelView.style.display = 'block';
+        listBtn.classList.remove('active');
+        panelBtn.classList.add('active');
+        localStorage.setItem('fileViewType', 'panel');
+    }
+}
+
+// Load saved view preference on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const savedView = localStorage.getItem('fileViewType') || 'panel';
+    toggleView(savedView);
+});
 </script>
 {% endif %}
 {% endblock %}

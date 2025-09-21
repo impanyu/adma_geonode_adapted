@@ -181,6 +181,71 @@ class GeoServerAPI:
         except Exception as e:
             logger.warning(f"Could not verify coverage configuration for {layer_name}: {str(e)}")
             return False
+    
+    def upload_shapefile(self, store_name, shp_file_path):
+        """Upload a shapefile to GeoServer as a new datastore"""
+        try:
+            # For shapefiles, we need to find all the component files
+            shp_dir = os.path.dirname(shp_file_path)
+            base_name = os.path.splitext(os.path.basename(shp_file_path))[0]
+            
+            # Find all shapefile component files
+            required_files = [
+                f"{base_name}.shp",
+                f"{base_name}.shx", 
+                f"{base_name}.dbf"
+            ]
+            optional_files = [
+                f"{base_name}.prj",
+                f"{base_name}.cpg",
+                f"{base_name}.qpj"
+            ]
+            
+            # Check if all required files exist
+            for req_file in required_files:
+                if not os.path.exists(os.path.join(shp_dir, req_file)):
+                    logger.error(f"Required shapefile component missing: {req_file}")
+                    return False
+            
+            # Create a zip file with all shapefile components
+            import tempfile
+            import zipfile
+            
+            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
+                with zipfile.ZipFile(temp_zip.name, 'w') as zip_file:
+                    # Add required files
+                    for req_file in required_files:
+                        file_path = os.path.join(shp_dir, req_file)
+                        if os.path.exists(file_path):
+                            zip_file.write(file_path, req_file)
+                    
+                    # Add optional files if they exist
+                    for opt_file in optional_files:
+                        file_path = os.path.join(shp_dir, opt_file)
+                        if os.path.exists(file_path):
+                            zip_file.write(file_path, opt_file)
+                
+                # Upload the zip file to GeoServer
+                upload_url = f"{self.base_url}/rest/workspaces/{self.workspace}/datastores/{store_name}/file.shp"
+                
+                with open(temp_zip.name, 'rb') as zip_data:
+                    headers = {'Content-Type': 'application/zip'}
+                    response = requests.put(upload_url, data=zip_data, headers=headers, auth=self.auth)
+                    
+                    if response.status_code in [200, 201]:
+                        logger.info(f"Successfully uploaded shapefile to GeoServer: {store_name}")
+                        # Clean up temp file
+                        os.unlink(temp_zip.name)
+                        return True
+                    else:
+                        logger.error(f"Failed to upload shapefile to GeoServer. Status: {response.status_code}, Response: {response.text}")
+                        # Clean up temp file
+                        os.unlink(temp_zip.name)
+                        return False
+                        
+        except Exception as e:
+            logger.error(f"Error uploading shapefile to GeoServer: {str(e)}")
+            return False
 
 def extract_zip_file(file_path, extract_to):
     """Extract zip file and return list of extracted files"""
@@ -370,12 +435,28 @@ def publish_to_geoserver(file_obj):
                 return False, "Failed to create coverage store in GeoServer"
                 
         elif file_ext in ['.shp', '.geojson', '.gpkg', '.kml', '.kmz']:
-            # For vector files, we'd need PostGIS integration (skip for now)
-            file_obj.geoserver_layer_name = layer_name
-            file_obj.gis_status = 'processed'
-            file_obj.processing_log += f"\nVector file processed (PostGIS publishing not configured)"
-            file_obj.save()
-            return True, f"Vector file processed as {layer_name} (PostGIS publishing pending)"
+            # For vector files, try direct upload to GeoServer
+            if file_ext == '.shp':
+                # For shapefiles, we need to handle the components
+                success = geoserver_api.upload_shapefile(layer_name, file_path)
+                if success:
+                    file_obj.geoserver_layer_name = layer_name
+                    file_obj.gis_status = 'published'
+                    file_obj.processing_log += f"\nShapefile published to GeoServer as vector layer"
+                    file_obj.save()
+                    return True, f"Shapefile published successfully as {layer_name}"
+                else:
+                    file_obj.gis_status = 'processed'
+                    file_obj.processing_log += f"\nShapefile processed but publishing to GeoServer failed"
+                    file_obj.save()
+                    return True, f"Shapefile processed as {layer_name} (GeoServer publishing failed)"
+            else:
+                # For other vector formats, mark as processed for now
+                file_obj.geoserver_layer_name = layer_name
+                file_obj.gis_status = 'processed'
+                file_obj.processing_log += f"\nVector file processed (direct GeoServer publishing not implemented for {file_ext})"
+                file_obj.save()
+                return True, f"Vector file processed as {layer_name} (GeoServer publishing pending)"
             
         else:
             # Unknown file type
