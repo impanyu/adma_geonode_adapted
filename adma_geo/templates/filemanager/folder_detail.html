@@ -84,9 +84,15 @@
 <nav aria-label="breadcrumb" class="mb-4">
     <ol class="breadcrumb">
         <li class="breadcrumb-item">
-            <a href="{% url 'filemanager:dashboard' %}">
-                <i class="fas fa-home me-1"></i>Dashboard
-            </a>
+            {% if is_public_view %}
+                <a href="{% url 'filemanager:home' %}">
+                    <i class="fas fa-home me-1"></i>Home
+                </a>
+            {% else %}
+                <a href="{% url 'filemanager:dashboard' %}">
+                    <i class="fas fa-home me-1"></i>Dashboard
+                </a>
+            {% endif %}
         </li>
         {% for breadcrumb in breadcrumbs %}
             {% if forloop.last %}
@@ -95,7 +101,11 @@
             </li>
             {% else %}
             <li class="breadcrumb-item">
-                <a href="{% url 'filemanager:folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+                {% if is_public_view %}
+                    <a href="{% url 'filemanager:public_folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+                {% else %}
+                    <a href="{% url 'filemanager:folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+                {% endif %}
             </li>
             {% endif %}
         {% endfor %}
@@ -163,7 +173,7 @@
                     <div class="row">
                         {% for subfolder in subfolders %}
                         <div class="col-md-4 col-sm-6 mb-3">
-                            <div class="folder-item" onclick="window.location.href='{% url 'filemanager:folder_detail' subfolder.id %}'">
+                            <div class="folder-item" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_folder_detail' subfolder.id %}{% else %}{% url 'filemanager:folder_detail' subfolder.id %}{% endif %}'">
                                 <div class="d-flex align-items-center">
                                     <i class="fas fa-folder folder-icon"></i>
                                     <div class="flex-grow-1">
@@ -206,7 +216,7 @@
                     <div class="row">
                         {% for file in files %}
                         <div class="col-md-4 col-sm-6 mb-3">
-                            <div class="file-item" onclick="window.location.href='{% url 'filemanager:file_detail' file.id %}'">
+                            <div class="file-item" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_file_detail' file.id %}{% else %}{% url 'filemanager:file_detail' file.id %}{% endif %}'">
                                 <div class="d-flex align-items-center">
                                     <i class="{{ file.get_icon_class }} file-icon"></i>
                                     <div class="flex-grow-1">
@@ -263,7 +273,7 @@
                             <tbody>
                                 <!-- Folders in List View -->
                                 {% for subfolder in subfolders %}
-                                <tr style="cursor: pointer;" onclick="window.location.href='{% url 'filemanager:folder_detail' subfolder.id %}'">
+                                <tr style="cursor: pointer;" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_folder_detail' subfolder.id %}{% else %}{% url 'filemanager:folder_detail' subfolder.id %}{% endif %}'">
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <i class="fas fa-folder me-3"></i>
@@ -298,7 +308,7 @@
 
                                 <!-- Files in List View -->
                                 {% for file in files %}
-                                <tr style="cursor: pointer;" onclick="window.location.href='{% url 'filemanager:file_detail' file.id %}'">
+                                <tr style="cursor: pointer;" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_file_detail' file.id %}{% else %}{% url 'filemanager:file_detail' file.id %}{% endif %}'">
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <i class="{{ file.get_icon_class }} me-3"></i>

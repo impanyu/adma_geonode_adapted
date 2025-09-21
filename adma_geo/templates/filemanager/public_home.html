@@ -210,7 +210,6 @@
                                             <i class="fas fa-folder folder-icon"></i>
                                             <div>
                                                 <div class="fw-bold">{{ folder.name }}</div>
-                                                <small class="text-muted">{{ folder.file_count }} files • {{ folder.subfolder_count }} folders</small>
                                             </div>
                                         </a>
                                     </td>
@@ -229,21 +228,13 @@
                                             <i class="{{ file.get_icon_class }} file-icon"></i>
                                             <div>
                                                 <div class="fw-bold">{{ file.name }}</div>
-                                                {% if file.is_spatial %}
-                                                    <small class="text-muted">
-                                                        <span class="badge bg-info me-1">GIS</span>
-                                                        {{ file.file_type|title }}
-                                                    </small>
-                                                {% else %}
-                                                    <small class="text-muted">{{ file.file_type|title }}</small>
-                                                {% endif %}
                                             </div>
                                         </a>
                                     </td>
                                     <td>
                                         <span class="badge bg-secondary">{{ file.file_type|title }}</span>
                                         {% if file.is_spatial %}
-                                            <br><span class="badge bg-info">GIS</span>
+                                            <span class="badge bg-info ms-1">GIS</span>
                                         {% endif %}
                                     </td>
                                     <td><small>{{ file.get_size_display }}</small></td>
@@ -289,10 +280,7 @@
                                     <div class="flex-grow-1">
                                         <h6 class="mb-1 fw-bold">{{ file.name|truncatechars:25 }}</h6>
                                         <small class="text-muted">
-                                            {{ file.get_size_display }} • {{ file.file_type|title }}
-                                            {% if file.is_spatial %}
-                                                <span class="badge bg-info ms-1">GIS</span>
-                                            {% endif %}
+                                            {{ file.get_size_display }}
                                         </small>
                                         <br>
                                         <small class="text-muted">

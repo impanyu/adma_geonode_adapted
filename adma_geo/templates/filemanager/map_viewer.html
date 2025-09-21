@@ -131,6 +131,25 @@
                 </a>
             {% endif %}
         </li>
+        {% if file.folder %}
+            {% if is_public_view and public_breadcrumbs %}
+                {% for breadcrumb in public_breadcrumbs %}
+                <li class="breadcrumb-item">
+                    <a href="{% url 'filemanager:public_folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+                </li>
+                {% endfor %}
+            {% else %}
+                {% for breadcrumb in file.folder.get_breadcrumbs %}
+                <li class="breadcrumb-item">
+                    {% if is_public_view %}
+                        <a href="{% url 'filemanager:public_folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+                    {% else %}
+                        <a href="{% url 'filemanager:folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            {% endif %}
+        {% endif %}
         <li class="breadcrumb-item">
             {% if is_public_view %}
                 <a href="{% url 'filemanager:public_file_detail' file.id %}">{{ file.name }}</a>
@@ -382,7 +401,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 attributions: [] // Remove WMS attribution
             }),
             title: '{{ file.name }}',
-            opacity: 0.8
+            opacity: 1.0, // Make fully opaque to ensure visibility
+            visible: true // Explicitly set to visible
+        });
+        
+        // Add error handling for WMS source
+        wmsLayer.getSource().on('tileloaderror', function(event) {
+            console.error('WMS Tile Load Error:', event);
         });
         
         // Create map with individual layers
@@ -401,6 +426,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 projection: 'EPSG:3857'
             })
         });
+        
         
         // Remove all attribution controls completely
         const controlsToRemove = [];

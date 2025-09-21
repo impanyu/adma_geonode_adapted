@@ -1,6 +1,7 @@
 import json
 import magic
 import os
+from pathlib import Path
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -75,16 +76,32 @@ class HomeView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         
-        # Get all public folders and files
+        # Get top-level public folders - folders that are public and either:
+        # 1. Have no parent (truly top-level), OR
+        # 2. Have a private parent (making them the highest public level)
         public_folders_queryset = Folder.objects.filter(
-            is_public=True, 
-            parent=None
+            is_public=True
+        ).filter(
+            Q(parent=None) |  # No parent (truly top-level)
+            Q(parent__is_public=False)  # Parent is private (so this is top public level)
         ).annotate(
+            public_file_count=Count('files', filter=Q(files__is_public=True)),
+            public_subfolder_count=Count('subfolders', filter=Q(subfolders__is_public=True)),
             file_count=Count('files'),
             subfolder_count=Count('subfolders')
+        ).filter(
+            Q(public_file_count__gt=0) | Q(public_subfolder_count__gt=0)  # Only folders with public content
         ).order_by('name')
         
-        public_files_queryset = File.objects.filter(is_public=True).order_by('-created_at')
+        # Get top-level public files - files that are public and either:
+        # 1. Have no folder (orphaned files), OR  
+        # 2. Have a private folder (making them the highest public level)
+        public_files_queryset = File.objects.filter(
+            is_public=True
+        ).filter(
+            Q(folder=None) |  # No folder (orphaned)
+            Q(folder__is_public=False)  # Folder is private (so this file is top public level)
+        ).order_by('-created_at')
         
         # Combine folders and files for unified pagination (100 items per page)
         page = self.request.GET.get('page', 1)
@@ -292,6 +309,10 @@ def public_folder_detail(request, folder_id):
     """Public view of folder contents"""
     folder = get_object_or_404(Folder, id=folder_id, is_public=True)
     
+    # If user is authenticated and owns this folder, redirect to dashboard
+    if request.user.is_authenticated and folder.owner == request.user:
+        return redirect('filemanager:folder_detail', folder_id=folder_id)
+    
     # Get public subfolders and files
     subfolders = folder.subfolders.filter(is_public=True).annotate(
         file_count=Count('files'),
@@ -299,11 +320,14 @@ def public_folder_detail(request, folder_id):
     )
     files = folder.files.filter(is_public=True)
     
-    return render(request, 'filemanager/public_folder_detail.html', {
+    # Reuse the same template as private folder detail, but with public view context
+    return render(request, 'filemanager/folder_detail.html', {
         'folder': folder,
         'subfolders': subfolders,
         'files': files,
-        'breadcrumbs': folder.get_breadcrumbs(),
+        'breadcrumbs': folder.get_public_breadcrumbs(),  # Use public breadcrumbs
+        'can_edit': False,  # Public users can't edit
+        'is_public_view': True,  # Flag to adjust breadcrumbs and navigation
     })
 
 @login_required
@@ -318,6 +342,9 @@ def file_detail(request, file_id):
     
     # For text files, read content for preview
     file_content = None
+    csv_data = None
+    csv_headers = None
+    
     if file_obj.file_type == 'text' and file_obj.file_size < 1024 * 1024:  # Max 1MB for preview
         try:
             with file_obj.file.open('r') as f:
@@ -325,9 +352,54 @@ def file_detail(request, file_id):
         except (UnicodeDecodeError, FileNotFoundError):
             file_content = None
     
+    # For CSV files, parse data for table view and visualization
+    elif file_obj.file_type == 'csv' and file_obj.file_size < 5 * 1024 * 1024:  # Max 5MB for CSV
+        import csv
+        try:
+            with file_obj.file.open('r') as f:
+                csv_reader = csv.reader(f)
+                csv_headers = next(csv_reader, None)  # Get headers
+                if csv_headers:
+                    # Add row_number as first column
+                    csv_headers = ['row_number'] + csv_headers
+                    csv_data = []
+                    for row_num, row in enumerate(csv_reader, 1):
+                        if len(csv_data) < 1000:  # Limit to 1000 rows for display
+                            csv_data.append([row_num] + row)
+                        else:
+                            break
+        except (UnicodeDecodeError, FileNotFoundError, csv.Error):
+            csv_data = None
+            csv_headers = None
+    
+    # For spreadsheet files (Excel), parse data for table view and visualization
+    elif file_obj.file_type == 'spreadsheet' and file_obj.file_size < 10 * 1024 * 1024:  # Max 10MB for Excel
+        try:
+            import pandas as pd
+            # Read Excel file using pandas
+            with file_obj.file.open('rb') as f:
+                df = pd.read_excel(f, engine='openpyxl' if file_obj.file.name.endswith('.xlsx') else 'xlrd')
+                
+                # Convert to list format similar to CSV
+                csv_headers = ['row_number'] + df.columns.tolist()
+                csv_data = []
+                
+                for row_num, (_, row) in enumerate(df.iterrows(), 1):
+                    if len(csv_data) < 1000:  # Limit to 1000 rows for display
+                        row_data = [row_num] + [str(val) if pd.notna(val) else '' for val in row.values]
+                        csv_data.append(row_data)
+                    else:
+                        break
+        except Exception as e:
+            print(f"Error processing Excel file: {e}")
+            csv_data = None
+            csv_headers = None
+    
     return render(request, 'filemanager/file_detail.html', {
         'file': file_obj,
         'file_content': file_content,
+        'csv_data': json.dumps(csv_data) if csv_data else None,
+        'csv_headers': json.dumps(csv_headers) if csv_headers else None,
         'can_edit': file_obj.owner == request.user,
     })
 
@@ -335,8 +407,15 @@ def public_file_detail(request, file_id):
     """Public view of file details"""
     file_obj = get_object_or_404(File, id=file_id, is_public=True)
     
+    # If user is authenticated and owns this file, redirect to dashboard
+    if request.user.is_authenticated and file_obj.owner == request.user:
+        return redirect('filemanager:file_detail', file_id=file_id)
+    
     # For text files, read content for preview
     file_content = None
+    csv_data = None
+    csv_headers = None
+    
     if file_obj.file_type == 'text' and file_obj.file_size < 1024 * 1024:  # Max 1MB for preview
         try:
             with file_obj.file.open('r') as f:
@@ -344,12 +423,58 @@ def public_file_detail(request, file_id):
         except (UnicodeDecodeError, FileNotFoundError):
             file_content = None
     
+    # For CSV files, parse data for table view and visualization
+    elif file_obj.file_type == 'csv' and file_obj.file_size < 5 * 1024 * 1024:  # Max 5MB for CSV
+        import csv
+        try:
+            with file_obj.file.open('r') as f:
+                csv_reader = csv.reader(f)
+                csv_headers = next(csv_reader, None)  # Get headers
+                if csv_headers:
+                    # Add row_number as first column
+                    csv_headers = ['row_number'] + csv_headers
+                    csv_data = []
+                    for row_num, row in enumerate(csv_reader, 1):
+                        if len(csv_data) < 1000:  # Limit to 1000 rows for display
+                            csv_data.append([row_num] + row)
+                        else:
+                            break
+        except (UnicodeDecodeError, FileNotFoundError, csv.Error):
+            csv_data = None
+            csv_headers = None
+    
+    # For spreadsheet files (Excel), parse data for table view and visualization
+    elif file_obj.file_type == 'spreadsheet' and file_obj.file_size < 10 * 1024 * 1024:  # Max 10MB for Excel
+        try:
+            import pandas as pd
+            # Read Excel file using pandas
+            with file_obj.file.open('rb') as f:
+                df = pd.read_excel(f, engine='openpyxl' if file_obj.file.name.endswith('.xlsx') else 'xlrd')
+                
+                # Convert to list format similar to CSV
+                csv_headers = ['row_number'] + df.columns.tolist()
+                csv_data = []
+                
+                for row_num, (_, row) in enumerate(df.iterrows(), 1):
+                    if len(csv_data) < 1000:  # Limit to 1000 rows for display
+                        row_data = [row_num] + [str(val) if pd.notna(val) else '' for val in row.values]
+                        csv_data.append(row_data)
+                    else:
+                        break
+        except Exception as e:
+            print(f"Error processing Excel file: {e}")
+            csv_data = None
+            csv_headers = None
+    
     # Reuse the same template as private file detail, but with can_edit=False
     return render(request, 'filemanager/file_detail.html', {
         'file': file_obj,
         'file_content': file_content,
+        'csv_data': json.dumps(csv_data) if csv_data else None,
+        'csv_headers': json.dumps(csv_headers) if csv_headers else None,
         'can_edit': False,  # Public users can't edit
         'is_public_view': True,  # Flag to adjust breadcrumbs and navigation
+        'public_breadcrumbs': file_obj.get_public_breadcrumbs(),  # Add public breadcrumbs
     })
 
 @login_required
@@ -385,6 +510,14 @@ def create_folder(request):
                 owner=request.user,
                 is_public=is_public
             )
+            
+            # Generate embedding for the created folder (if ChromaDB is available)
+            try:
+                from .tasks import generate_folder_embedding_task
+                generate_folder_embedding_task.delay(str(folder.id))
+            except Exception:
+                # ChromaDB not available, skip embedding generation
+                pass
             
             return JsonResponse({
                 'success': True,
@@ -438,9 +571,17 @@ def upload_files(request):
                     is_public=is_public
                 )
                 
-                # Trigger GIS processing if it's a spatial file
+                # Trigger GIS processing for spatial files  
                 if file_obj.is_spatial:
                     process_gis_file_task.delay(str(file_obj.id))
+                
+                # Generate embedding for the uploaded file (if ChromaDB is available)
+                try:
+                    from .tasks import generate_file_embedding_task
+                    generate_file_embedding_task.delay(str(file_obj.id))
+                except Exception:
+                    # ChromaDB not available, skip embedding generation
+                    pass
                 
                 uploaded_files.append({
                     'id': str(file_obj.id),
@@ -548,6 +689,10 @@ def public_map_viewer(request, file_id):
     """Public view of GIS file on a map"""
     file_obj = get_object_or_404(File, id=file_id, is_public=True, is_spatial=True)
     
+    # If user is authenticated and owns this file, redirect to dashboard map view
+    if request.user.is_authenticated and file_obj.owner == request.user:
+        return redirect('filemanager:map_viewer', file_id=file_id)
+    
     # Get GeoServer layer info
     geoserver_info = None
     if file_obj.geoserver_layer_name and file_obj.gis_status in ['published', 'processed']:
@@ -564,6 +709,7 @@ def public_map_viewer(request, file_id):
         'file': file_obj,
         'geoserver_info': geoserver_info,
         'is_public_view': True,  # Flag to adjust breadcrumbs and navigation
+        'public_breadcrumbs': file_obj.get_public_breadcrumbs(),  # Add public breadcrumbs
     })
 
 @login_required
@@ -642,6 +788,10 @@ def upload_folders(request):
                             is_public=is_public
                         )
                         created_folders[current_path] = folder
+                        
+                        # Generate embedding for the created folder
+                        from .tasks import generate_folder_embedding_task
+                        generate_folder_embedding_task.delay(str(folder.id))
                     
                     current_folder = created_folders[current_path]
                 
@@ -662,9 +812,17 @@ def upload_folders(request):
                     is_public=is_public
                 )
                 
-                # Trigger GIS processing if it's a spatial file
+                # Trigger GIS processing for spatial files  
                 if file_obj.is_spatial:
                     process_gis_file_task.delay(str(file_obj.id))
+                
+                # Generate embedding for the uploaded file (if ChromaDB is available)
+                try:
+                    from .tasks import generate_file_embedding_task
+                    generate_file_embedding_task.delay(str(file_obj.id))
+                except Exception:
+                    # ChromaDB not available, skip embedding generation
+                    pass
                 
                 uploaded_files.append({
                     'id': str(file_obj.id),
@@ -752,3 +910,184 @@ class DocumentationView(TemplateView):
         context = super().get_context_data(**kwargs)
         context['page_title'] = 'Documentation'
         return context
+
+class SearchView(TemplateView):
+    """Hybrid search page with semantic and metadata filtering"""
+    template_name = 'filemanager/search.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_title'] = 'Search'
+        
+        # Get search parameters
+        query = self.request.GET.get('q', '').strip()
+        content_type = self.request.GET.get('type', '')  # 'file', 'folder', or ''
+        file_type = self.request.GET.get('file_type', '')
+        is_spatial = self.request.GET.get('is_spatial', '')
+        is_public = self.request.GET.get('is_public', '')
+        owner_filter = self.request.GET.get('owner', '').strip()
+        page = self.request.GET.get('page', 1)
+        
+        context.update({
+            'query': query,
+            'content_type': content_type,
+            'file_type': file_type,
+            'is_spatial': is_spatial,
+            'is_public': is_public,
+            'owner_filter': owner_filter,
+        })
+        
+        # Initialize results
+        search_results = []
+        total_results = 0
+        
+        if query:
+            try:
+                from .embedding_service import embedding_service
+                chromadb_available = True
+            except RuntimeError as e:
+                if "sqlite3" in str(e).lower():
+                    # ChromaDB requires SQLite 3.35+, gracefully handle this
+                    chromadb_available = False
+                    context['chromadb_error'] = "ChromaDB requires SQLite 3.35+ to function. Vector search is temporarily unavailable."
+                else:
+                    raise e
+            
+            if chromadb_available:
+                # Build filters for hybrid search
+                filters = {}
+                
+                if content_type:
+                    filters['type'] = content_type
+                
+                if file_type:
+                    filters['file_type'] = file_type
+                    
+                if is_spatial:
+                    filters['is_spatial'] = is_spatial.lower() == 'true'
+                    
+                if is_public:
+                    filters['is_public'] = is_public.lower() == 'true'
+                    
+                if owner_filter:
+                    filters['owner_username'] = owner_filter
+                
+                # Perform semantic search
+                raw_results = embedding_service.search_similar(
+                    query_text=query,
+                    user_id=str(self.request.user.id) if self.request.user.is_authenticated else '',
+                    filters=filters,
+                    limit=1000  # Get more results for pagination
+                )
+                
+                # Convert ChromaDB results to Django objects
+                for result in raw_results:
+                    try:
+                        if result['type'] == 'file':
+                            obj = File.objects.get(id=result['id'])
+                            search_results.append({
+                                'object': obj,
+                                'type': 'file',
+                                'similarity': result['similarity'],
+                                'metadata_text': result['document']
+                            })
+                        elif result['type'] == 'folder':
+                            obj = Folder.objects.get(id=result['id'])
+                            search_results.append({
+                                'object': obj,
+                                'type': 'folder',
+                                'similarity': result['similarity'],
+                                'metadata_text': result['document']
+                            })
+                    except (File.DoesNotExist, Folder.DoesNotExist):
+                        # Object might have been deleted, skip
+                        continue
+                
+                total_results = len(search_results)
+            else:
+                # ChromaDB not available, show message about requirements
+                total_results = 0
+        
+        # Pagination (100 items per page)
+        items_per_page = 100
+        paginator = Paginator(search_results, items_per_page)
+        
+        try:
+            page_obj = paginator.page(page)
+        except PageNotAnInteger:
+            page_obj = paginator.page(1)
+        except EmptyPage:
+            page_obj = paginator.page(paginator.num_pages)
+        
+        context.update({
+            'search_results': page_obj,
+            'page_obj': page_obj,
+            'total_results': total_results,
+            'has_search': bool(query),
+        })
+        
+        return context
+
+@login_required
+def search_api(request):
+    """API endpoint for search suggestions and quick search"""
+    if request.method == 'GET':
+        query = request.GET.get('q', '').strip()
+        limit = min(int(request.GET.get('limit', 10)), 50)  # Max 50 suggestions
+        
+        if not query or len(query) < 2:
+            return JsonResponse({'suggestions': []})
+        
+        try:
+            from .embedding_service import embedding_service
+            chromadb_available = True
+        except RuntimeError as e:
+            if "sqlite3" in str(e).lower():
+                return JsonResponse({'suggestions': [], 'error': 'ChromaDB requires SQLite 3.35+ to function'})
+            else:
+                raise e
+        
+        try:
+            # Get quick search results
+            results = embedding_service.search_similar(
+                query_text=query,
+                user_id=str(request.user.id),
+                filters=None,
+                limit=limit
+            )
+            
+            # Format suggestions
+            suggestions = []
+            for result in results:
+                try:
+                    if result['type'] == 'file':
+                        obj = File.objects.get(id=result['id'])
+                        suggestions.append({
+                            'id': str(obj.id),
+                            'type': 'file',
+                            'name': obj.name,
+                            'icon': obj.get_icon_class(),
+                            'url': obj.get_absolute_url(),
+                            'is_public': obj.is_public,
+                            'similarity': round(result['similarity'], 3)
+                        })
+                    elif result['type'] == 'folder':
+                        obj = Folder.objects.get(id=result['id'])
+                        suggestions.append({
+                            'id': str(obj.id),
+                            'type': 'folder', 
+                            'name': obj.name,
+                            'icon': 'fas fa-folder',
+                            'url': obj.get_absolute_url(),
+                            'is_public': obj.is_public,
+                            'similarity': round(result['similarity'], 3)
+                        })
+                except (File.DoesNotExist, Folder.DoesNotExist):
+                    continue
+            
+            return JsonResponse({'suggestions': suggestions})
+            
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'Method not allowed'}, status=405)

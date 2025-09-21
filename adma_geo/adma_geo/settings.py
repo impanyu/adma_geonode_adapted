@@ -126,8 +126,8 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
 # File Upload Settings
-FILE_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 500 * 1024 * 1024  # 500MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 500 * 1024 * 1024  # 500MB
 DATA_UPLOAD_MAX_NUMBER_FILES = 1000  # Allow up to 1000 files per upload for folder uploads
 
 # GeoServer Configuration
@@ -137,8 +137,20 @@ GEOSERVER_ADMIN_PASSWORD = os.environ.get('GEOSERVER_ADMIN_PASSWORD', 'geoserver
 GEOSERVER_WORKSPACE = 'adma_geo'
 
 # Supported GIS file formats
+# GIS file extensions that should be automatically processed and published to GeoServer
 GIS_FILE_EXTENSIONS = [
-    '.gpkg', '.geojson', '.shp', '.kml', '.kmz',
-    '.csv', '.tiff', '.tif', '.geotiff', '.geotif', '.zip'
+    '.geojson', '.shp', '.tiff', '.tif', '.geotiff', '.geotif'
 ]
+
+# All spatial file extensions (including ones that don't auto-process)
+ALL_SPATIAL_EXTENSIONS = [
+    '.gpkg', '.geojson', '.shp', '.kml', '.kmz',
+    '.tiff', '.tif', '.geotiff', '.geotif', '.zip'
+]
+
+# ChromaDB and Embedding Settings
+CHROMADB_PATH = os.path.join(BASE_DIR, 'chromadb')
+CHROMADB_COLLECTION = 'adma_metadata'
+EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # Sentence transformer model
+EMBEDDING_SIMILARITY_THRESHOLD = -0.5  # Minimum similarity for search results
 

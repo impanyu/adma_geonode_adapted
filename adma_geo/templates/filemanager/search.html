@@ -1,0 +1,662 @@
+{% extends 'base.html' %}
+
+{% block title %}Search - ADMA{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Search form styling */
+.search-form {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border: 1px solid #dee2e6;
+}
+
+.search-input {
+    border-radius: 25px;
+    border: 1px solid #ddd;
+    padding: 12px 20px;
+    font-size: 1.1rem;
+}
+
+.search-input:focus {
+    border-color: #d00000;
+    box-shadow: 0 0 0 0.2rem rgba(208, 0, 0, 0.25);
+}
+
+.search-btn {
+    border-radius: 25px;
+    padding: 12px 30px;
+    background-color: #d00000;
+    border-color: #d00000;
+}
+
+.search-btn:hover {
+    background-color: #b00000;
+    border-color: #b00000;
+}
+
+/* Filters */
+.filter-section {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid #dee2e6;
+}
+
+.filter-title {
+    color: #d00000;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+/* View toggle styling */
+.view-container {
+    transition: all 0.3s ease;
+}
+
+.btn-group .btn.active {
+    background-color: #d00000 !important;
+    border-color: #d00000 !important;
+    color: white !important;
+}
+
+/* Search results styling */
+.search-result-item {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+
+.search-result-item:hover {
+    background: #e9ecef;
+    border-color: #d00000;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(208, 0, 0, 0.1);
+    text-decoration: none;
+    color: inherit;
+}
+
+.result-icon {
+    font-size: 1.5rem;
+    margin-right: 1rem;
+    color: #d00000;
+    flex-shrink: 0;
+}
+
+.result-similarity {
+    background-color: #d00000;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.result-metadata {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-top: 0.5rem;
+}
+
+/* Panel view items */
+.folder-item, .file-item {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: inherit;
+}
+
+.folder-item:hover, .file-item:hover {
+    background: #e9ecef;
+    border-color: #d00000;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(208, 0, 0, 0.1);
+    text-decoration: none;
+    color: inherit;
+}
+
+.folder-icon, .file-icon {
+    font-size: 1.5rem;
+    margin-right: 1rem;
+    color: #d00000;
+    flex-shrink: 0;
+}
+
+/* Table styling for list view */
+.table .folder-icon, .table .file-icon {
+    font-size: 1.2rem;
+    margin-right: 0.5rem;
+}
+
+.table-responsive table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.table td {
+    word-wrap: break-word;
+    word-break: break-all;
+    overflow-wrap: break-word;
+    padding: 0.75rem 0.5rem;
+}
+
+.table td:first-child {
+    width: 40%;
+}
+
+.table td:nth-child(2) {
+    width: 15%;
+}
+
+.table td:nth-child(3) {
+    width: 15%;
+}
+
+.table td:nth-child(4) {
+    width: 15%;
+}
+
+.table td:nth-child(5) {
+    width: 15%;
+}
+
+.table small {
+    font-size: 0.8rem;
+    line-height: 1.2;
+}
+
+.no-results {
+    text-align: center;
+    padding: 3rem;
+    color: #6c757d;
+}
+
+.no-results i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+}
+
+/* Search suggestions */
+.search-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+}
+
+.suggestion-item {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.suggestion-item:hover {
+    background-color: #f8f9fa;
+}
+
+.suggestion-icon {
+    margin-right: 0.75rem;
+    color: #d00000;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Search Form -->
+    <div class="search-form">
+        <form method="GET" action="{% url 'filemanager:search' %}" id="searchForm">
+            <div class="row mb-3">
+                <div class="col-12">
+                    <div class="position-relative">
+                        <input type="text" class="form-control search-input" name="q" value="{{ query }}" 
+                               placeholder="Search files and folders using AI-powered semantic search..." 
+                               autocomplete="off" id="searchInput">
+                        <div class="search-suggestions" id="searchSuggestions"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Advanced Filters -->
+            <div class="row">
+                <div class="col-md-2">
+                    <select class="form-select" name="type">
+                        <option value="">All Types</option>
+                        <option value="file" {% if content_type == 'file' %}selected{% endif %}>Files Only</option>
+                        <option value="folder" {% if content_type == 'folder' %}selected{% endif %}>Folders Only</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" name="file_type">
+                        <option value="">All File Types</option>
+                        <option value="gis" {% if file_type == 'gis' %}selected{% endif %}>GIS Files</option>
+                        <option value="image" {% if file_type == 'image' %}selected{% endif %}>Images</option>
+                        <option value="document" {% if file_type == 'document' %}selected{% endif %}>Documents</option>
+                        <option value="text" {% if file_type == 'text' %}selected{% endif %}>Text Files</option>
+                        <option value="other" {% if file_type == 'other' %}selected{% endif %}>Other</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" name="is_spatial">
+                        <option value="">Any Spatial</option>
+                        <option value="true" {% if is_spatial == 'true' %}selected{% endif %}>Spatial Only</option>
+                        <option value="false" {% if is_spatial == 'false' %}selected{% endif %}>Non-Spatial Only</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" name="is_public">
+                        <option value="">Any Visibility</option>
+                        <option value="true" {% if is_public == 'true' %}selected{% endif %}>Public Only</option>
+                        <option value="false" {% if is_public == 'false' %}selected{% endif %}>Private Only</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="text" class="form-control" name="owner" value="{{ owner_filter }}" 
+                           placeholder="Owner username...">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary search-btn w-100">
+                        <i class="fas fa-search me-2"></i>Search
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- ChromaDB Error Message -->
+    {% if chromadb_error %}
+    <div class="alert alert-warning d-flex align-items-center" role="alert">
+        <i class="fas fa-exclamation-triangle me-3"></i>
+        <div>
+            <strong>Vector Search Temporarily Unavailable:</strong> {{ chromadb_error }}
+            <br><small class="text-muted">Traditional search functionality will be restored once the system requirements are met.</small>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Search Results -->
+    {% if has_search %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+            <div class="d-flex align-items-center mb-2 mb-md-0">
+                <h4 class="mb-0 me-3">
+                    <i class="fas fa-search-plus me-2"></i>Search Results
+                </h4>
+                {% if total_results > 0 %}
+                    <span class="badge bg-secondary">{{ total_results }} results found</span>
+                {% endif %}
+            </div>
+            
+            {% if total_results > 0 %}
+            <!-- View Toggle -->
+            <div class="btn-group" role="group" aria-label="View toggle">
+                <button type="button" class="btn btn-outline-secondary active" onclick="toggleView('list')" id="listViewBtn">
+                    <i class="fas fa-list me-1"></i>List
+                </button>
+                <button type="button" class="btn btn-outline-secondary" onclick="toggleView('panel')" id="panelViewBtn">
+                    <i class="fas fa-th me-1"></i>Panels
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="card-body">
+            {% if total_results > 0 %}
+                <!-- List View -->
+                <div id="listView" class="view-container">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Owner</th>
+                                    <th>Similarity</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for result in search_results %}
+                                <tr onclick="window.location.href='{% if result.object.owner == user %}{{ result.object.get_absolute_url }}{% else %}{% if result.type == 'file' %}{% url 'filemanager:public_file_detail' result.object.id %}{% else %}{% url 'filemanager:public_folder_detail' result.object.id %}{% endif %}{% endif %}';" style="cursor: pointer;">
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            {% if result.type == 'file' %}
+                                                <i class="{{ result.object.get_icon_class }} file-icon"></i>
+                                            {% else %}
+                                                <i class="fas fa-folder folder-icon"></i>
+                                            {% endif %}
+                                            <div>
+                                                <div class="fw-bold">{{ result.object.name }}</div>
+                                                {% if result.type == 'file' and result.object.is_spatial %}
+                                                    <small class="text-muted">
+                                                        <span class="badge bg-info me-1">GIS</span>
+                                                        {{ result.object.file_type|title }}
+                                                    </small>
+                                                {% elif result.type == 'file' %}
+                                                    <small class="text-muted">{{ result.object.file_type|title }}</small>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if result.type == 'file' %}bg-secondary{% else %}bg-primary{% endif %}">
+                                            {{ result.type|title }}
+                                        </span>
+                                        {% if result.type == 'file' and result.object.is_spatial %}
+                                            <br><span class="badge bg-info">GIS</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ result.object.owner.username }}</small>
+                                        <br>
+                                        <small class="text-muted">
+                                            {% if result.object.is_public %}
+                                                <i class="fas fa-globe me-1"></i>Public
+                                            {% else %}
+                                                <i class="fas fa-lock me-1"></i>Private
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        {% if result.similarity is not None %}
+                                            <span class="result-similarity">{{ result.similarity|floatformat:1 }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">
+                                            {% if result.type == 'file' %}
+                                                {{ result.object.get_size_display }}
+                                            {% else %}
+                                                {{ result.object.files.count }} files
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Panel View -->
+                <div id="panelView" class="view-container" style="display: none;">
+                    <div class="row">
+                        {% for result in search_results %}
+                        <div class="col-md-4 col-sm-6 mb-3">
+                            <a href="{% if result.object.owner == user %}{{ result.object.get_absolute_url }}{% else %}{% if result.type == 'file' %}{% url 'filemanager:public_file_detail' result.object.id %}{% else %}{% url 'filemanager:public_folder_detail' result.object.id %}{% endif %}{% endif %}" class="text-decoration-none">
+                                <div class="{% if result.type == 'file' %}file-item{% else %}folder-item{% endif %}">
+                                    {% if result.type == 'file' %}
+                                        <i class="{{ result.object.get_icon_class }} file-icon"></i>
+                                    {% else %}
+                                        <i class="fas fa-folder folder-icon"></i>
+                                    {% endif %}
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <h6 class="mb-1 fw-bold">{{ result.object.name|truncatechars:25 }}</h6>
+                                            {% if result.similarity is not None %}
+                                            <span class="result-similarity">{{ result.similarity|floatformat:1 }}</span>
+                                        {% endif %}
+                                        </div>
+                                        <small class="text-muted">
+                                            {% if result.type == 'file' %}
+                                                {{ result.object.get_size_display }} • {{ result.object.file_type|title }}
+                                                {% if result.object.is_spatial %}
+                                                    <span class="badge bg-info ms-1">GIS</span>
+                                                {% endif %}
+                                            {% else %}
+                                                {{ result.object.files.count }} files • {{ result.object.subfolders.count }} folders
+                                            {% endif %}
+                                        </small>
+                                        <br>
+                                        <small class="text-muted">
+                                            by {{ result.object.owner.username }} • 
+                                            {% if result.object.is_public %}
+                                                <i class="fas fa-globe me-1"></i>Public
+                                            {% else %}
+                                                <i class="fas fa-lock me-1"></i>Private
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- Pagination -->
+                {% if page_obj.has_other_pages %}
+                <nav aria-label="Search results pagination" class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?{{ request.GET.urlencode }}&page=1">
+                                    <i class="fas fa-angle-double-left"></i> First
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?{{ request.GET.urlencode }}&page={{ page_obj.previous_page_number }}">
+                                    <i class="fas fa-chevron-left"></i> Previous
+                                </a>
+                            </li>
+                        {% endif %}
+                        
+                        {% for num in page_obj.paginator.page_range %}
+                            {% if num == page_obj.number %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ num }}</span>
+                                </li>
+                            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?{{ request.GET.urlencode }}&page={{ num }}">{{ num }}</a>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?{{ request.GET.urlencode }}&page={{ page_obj.next_page_number }}">
+                                    Next <i class="fas fa-chevron-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?{{ request.GET.urlencode }}&page={{ page_obj.paginator.num_pages }}">
+                                    Last <i class="fas fa-angle-double-right"></i>
+                                </a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                    <div class="text-center mt-2">
+                        <small class="text-muted">
+                            Showing {{ page_obj.start_index }} - {{ page_obj.end_index }} of {{ total_results }} results
+                        </small>
+                    </div>
+                </nav>
+                {% endif %}
+                
+            {% else %}
+                <!-- No Results -->
+                <div class="no-results">
+                    <i class="fas fa-search"></i>
+                    <h3 class="mt-3 text-muted">No Results Found</h3>
+                    <p class="text-muted">
+                        {% if query %}
+                            No files or folders match your search for "<strong>{{ query }}</strong>".
+                        {% else %}
+                            Please enter a search query to find files and folders.
+                        {% endif %}
+                    </p>
+                    <div class="mt-3">
+                        <p class="small text-muted">Try:</p>
+                        <ul class="list-unstyled small text-muted">
+                            <li>• Using different keywords</li>
+                            <li>• Removing some filters</li>
+                            <li>• Checking for typos</li>
+                            <li>• Using more general terms</li>
+                        </ul>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <!-- Welcome Message -->
+    <div class="text-center py-5">
+        <i class="fas fa-search" style="font-size: 4rem; color: #d00000; opacity: 0.3;"></i>
+        <h3 class="mt-3 text-muted">AI-Powered Search</h3>
+        <p class="text-muted mb-4">
+            Use semantic search to find files and folders by content, description, or any related terms.<br>
+            Our AI understands context and meaning, not just keywords.
+        </p>
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card border-0 bg-light">
+                    <div class="card-body">
+                        <h6 class="card-title">Search Examples:</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <ul class="list-unstyled small">
+                                    <li><i class="fas fa-lightbulb text-warning me-2"></i>"soil moisture data"</li>
+                                    <li><i class="fas fa-lightbulb text-warning me-2"></i>"satellite imagery from 2024"</li>
+                                    <li><i class="fas fa-lightbulb text-warning me-2"></i>"Nebraska crop yield"</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <ul class="list-unstyled small">
+                                    <li><i class="fas fa-lightbulb text-warning me-2"></i>"elevation data"</li>
+                                    <li><i class="fas fa-lightbulb text-warning me-2"></i>"field boundaries"</li>
+                                    <li><i class="fas fa-lightbulb text-warning me-2"></i>"weather station readings"</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// View toggle functionality
+function toggleView(viewType) {
+    const listView = document.getElementById('listView');
+    const panelView = document.getElementById('panelView');
+    const listBtn = document.getElementById('listViewBtn');
+    const panelBtn = document.getElementById('panelViewBtn');
+    
+    if (viewType === 'list') {
+        listView.style.display = 'block';
+        panelView.style.display = 'none';
+        listBtn.classList.add('active');
+        panelBtn.classList.remove('active');
+        localStorage.setItem('searchViewMode', 'list');
+    } else {
+        listView.style.display = 'none';
+        panelView.style.display = 'block';
+        listBtn.classList.remove('active');
+        panelBtn.classList.add('active');
+        localStorage.setItem('searchViewMode', 'panel');
+    }
+}
+
+// Load saved view preference on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const savedView = localStorage.getItem('searchViewMode') || 'list';
+    if (document.getElementById('listViewBtn')) {
+        toggleView(savedView);
+    }
+    
+    // Search suggestions
+    const searchInput = document.getElementById('searchInput');
+    const suggestionsDiv = document.getElementById('searchSuggestions');
+    let searchTimeout;
+    
+    if (searchInput && suggestionsDiv) {
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            
+            if (query.length < 2) {
+                suggestionsDiv.style.display = 'none';
+                return;
+            }
+            
+            searchTimeout = setTimeout(() => {
+                fetch(`{% url 'filemanager:search_api' %}?q=${encodeURIComponent(query)}&limit=8`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.suggestions && data.suggestions.length > 0) {
+                            suggestionsDiv.innerHTML = '';
+                            data.suggestions.forEach(suggestion => {
+                                const item = document.createElement('div');
+                                item.className = 'suggestion-item';
+                                item.innerHTML = `
+                                    <i class="${suggestion.icon} suggestion-icon"></i>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-bold">${suggestion.name}</div>
+                                        <small class="text-muted">${suggestion.type}${suggestion.similarity !== undefined ? ' • Similarity: ' + suggestion.similarity : ''}</small>
+                                    </div>
+                                `;
+                                item.onclick = () => {
+                                    window.location.href = suggestion.url;
+                                };
+                                suggestionsDiv.appendChild(item);
+                            });
+                            suggestionsDiv.style.display = 'block';
+                        } else {
+                            suggestionsDiv.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Search suggestions error:', error);
+                        suggestionsDiv.style.display = 'none';
+                    });
+            }, 300);
+        });
+        
+        // Hide suggestions when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+                suggestionsDiv.style.display = 'none';
+            }
+        });
+        
+        // Hide suggestions on escape
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                suggestionsDiv.style.display = 'none';
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

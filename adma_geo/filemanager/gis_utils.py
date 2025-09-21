@@ -471,7 +471,22 @@ def process_csv_file(file_obj, file_path):
         return False, f"Error processing CSV file: {str(e)}"
 
 def publish_to_geoserver(file_obj):
-    """Publish processed GIS file to GeoServer"""
+    """Publish processed GIS file to GeoServer with systematic naming"""
+    try:
+        # Use the new systematic GeoServer manager
+        from .geoserver_manager import SystematicGeoServerManager
+        geoserver_manager = SystematicGeoServerManager()
+        
+        # Publish with systematic naming
+        success, message, layer_name = geoserver_manager.publish_file_to_geoserver(file_obj)
+        
+        return success, message
+    except Exception as e:
+        return False, f"Error publishing to GeoServer: {str(e)}"
+
+
+def publish_to_geoserver_legacy(file_obj):
+    """Legacy publishing function - kept for reference"""
     try:
         geoserver_api = GeoServerAPI()
         
@@ -507,6 +522,54 @@ def publish_to_geoserver(file_obj):
                 if success:
                     # For shapefiles, the actual layer name in GeoServer is the original filename (without extension)
                     original_shp_name = Path(file_path).stem
+                    
+                    # DETECT ACTUAL LAYER NAME CREATED BY GEOSERVER (auto-numbering fix)
+                    try:
+                        import requests
+                        import xml.etree.ElementTree as ET
+                        
+                        # Get WMS capabilities to find the actual layer name
+                        wms_url = f"{settings.GEOSERVER_URL}/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities"
+                        wms_response = requests.get(wms_url, timeout=5)
+                        
+                        if wms_response.status_code == 200:
+                            root = ET.fromstring(wms_response.content)
+                            ns = {'wms': 'http://www.opengis.net/wms'}
+                            wms_layers = [element.text for element in root.findall('.//wms:Layer/wms:Name', ns)]
+                            
+                            # Look for layers with our base name
+                            workspace = geoserver_api.workspace
+                            similar_layers = [layer for layer in wms_layers if original_shp_name in layer and layer.startswith(f'{workspace}:')]
+                            
+                            if similar_layers:
+                                # Get the highest numbered version (most recent)
+                                numbered_layers = []
+                                for layer in similar_layers:
+                                    layer_name = layer.replace(f'{workspace}:', '')
+                                    if layer_name == original_shp_name:
+                                        numbered_layers.append((0, layer_name))
+                                    else:
+                                        try:
+                                            suffix = layer_name.replace(original_shp_name, '')
+                                            if suffix.isdigit():
+                                                num = int(suffix)
+                                                numbered_layers.append((num, layer_name))
+                                            else:
+                                                numbered_layers.append((999, layer_name))
+                                        except:
+                                            numbered_layers.append((999, layer_name))
+                                
+                                if numbered_layers:
+                                    numbered_layers.sort(reverse=True)
+                                    actual_layer_name = numbered_layers[0][1]
+                                    
+                                    logger.info(f"Detected actual layer name: {original_shp_name} -> {actual_layer_name}")
+                                    file_obj.processing_log += f"\nDetected actual layer name: {actual_layer_name}"
+                                    original_shp_name = actual_layer_name  # Use the detected name
+                                
+                    except Exception as e:
+                        logger.warning(f"Could not detect actual layer name, using base name: {str(e)}")
+                    
                     file_obj.geoserver_layer_name = original_shp_name
                     file_obj.gis_status = 'published'
                     file_obj.processing_log += f"\nShapefile published to GeoServer as vector layer"
@@ -544,9 +607,28 @@ def publish_to_geoserver(file_obj):
 
 def bundle_and_publish_shapefile(shp_file_obj):
     """
-    Bundle scattered shapefile components and publish to GeoServer
+    Bundle scattered shapefile components and publish to GeoServer with systematic naming
     This handles cases where shapefile components are uploaded separately
     and need to be reassembled for GeoServer upload.
+    """
+    try:
+        # Use the new systematic GeoServer manager
+        from .geoserver_manager import SystematicGeoServerManager
+        geoserver_manager = SystematicGeoServerManager()
+        
+        # Publish with systematic naming (handles bundling internally)
+        success, message, layer_name = geoserver_manager.publish_file_to_geoserver(shp_file_obj)
+        
+        return success, message
+            
+    except Exception as e:
+        logger.error(f"Error bundling shapefile: {str(e)}")
+        return False, f"Error bundling shapefile: {str(e)}"
+
+
+def bundle_and_publish_shapefile_legacy(shp_file_obj):
+    """
+    Legacy bundling function - kept for reference
     """
     try:
         # Get the base name without extension
@@ -584,7 +666,7 @@ def bundle_and_publish_shapefile(shp_file_obj):
         with tempfile.TemporaryDirectory() as temp_dir:
             logger.info(f"Bundling shapefile components in {temp_dir}")
             
-            # Copy all components to temp directory with proper names
+            # Copy all components to temp directory with CONSISTENT base name
             bundled_files = {}
             for ext, file_obj in component_files.items():
                 source_path = file_obj.file.path
@@ -595,40 +677,91 @@ def bundle_and_publish_shapefile(shp_file_obj):
                 bundled_files[ext] = target_path
                 logger.info(f"Copied {file_obj.name} → {target_name}")
             
-            # Now upload the bundled shapefile to GeoServer
+            # Now use the ORIGINAL working method with the bundled files
+            # This mimics the original publish_to_geoserver approach
             geoserver_api = GeoServerAPI()
             
-            # Generate clean layer name (use original base name)
-            layer_name = f"{shp_file_obj.owner.username}_{base_name}_{str(shp_file_obj.id)[:8]}".replace(' ', '_').replace('-', '_').replace('.', '_')
-            layer_name = ''.join(c for c in layer_name if c.isalnum() or c == '_')
+            # Use simple base name as layer name (like original method)
+            layer_name = base_name
             
             # Ensure workspace exists
             if not geoserver_api.create_workspace():
                 return False, "Failed to create/verify GeoServer workspace"
             
-            # Upload the bundled shapefile
+            # Upload using the original method - pass the main .shp file path
             main_shp_path = bundled_files['.shp']
             success = geoserver_api.upload_shapefile(layer_name, main_shp_path)
             
             if success:
-                # Update the main shapefile record
-                shp_file_obj.geoserver_layer_name = base_name  # Use original name
-                shp_file_obj.gis_status = 'published'
-                shp_file_obj.processing_log += f"\nShapefile bundled and published to GeoServer"
+                # Use original naming approach - get stem from the bundled file
+                original_shp_name = Path(main_shp_path).stem
                 
-                # Try to get spatial extent
+                # DETECT ACTUAL LAYER NAME CREATED BY GEOSERVER (auto-numbering fix)
                 try:
-                    real_extent = geoserver_api.get_layer_extent(base_name)
+                    import requests
+                    import xml.etree.ElementTree as ET
+                    from django.conf import settings
+                    
+                    # Get WMS capabilities to find the actual layer name
+                    wms_url = f"{settings.GEOSERVER_URL}/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities"
+                    wms_response = requests.get(wms_url, timeout=5)
+                    
+                    if wms_response.status_code == 200:
+                        root = ET.fromstring(wms_response.content)
+                        ns = {'wms': 'http://www.opengis.net/wms'}
+                        wms_layers = [element.text for element in root.findall('.//wms:Layer/wms:Name', ns)]
+                        
+                        # Look for layers with our base name
+                        workspace = geoserver_api.workspace
+                        similar_layers = [layer for layer in wms_layers if original_shp_name in layer and layer.startswith(f'{workspace}:')]
+                        
+                        if similar_layers:
+                            # Get the highest numbered version (most recent)
+                            numbered_layers = []
+                            for layer in similar_layers:
+                                layer_name = layer.replace(f'{workspace}:', '')
+                                if layer_name == original_shp_name:
+                                    numbered_layers.append((0, layer_name))
+                                else:
+                                    try:
+                                        suffix = layer_name.replace(original_shp_name, '')
+                                        if suffix.isdigit():
+                                            num = int(suffix)
+                                            numbered_layers.append((num, layer_name))
+                                        else:
+                                            numbered_layers.append((999, layer_name))
+                                    except:
+                                        numbered_layers.append((999, layer_name))
+                            
+                            if numbered_layers:
+                                numbered_layers.sort(reverse=True)
+                                actual_layer_name = numbered_layers[0][1]
+                                
+                                logger.info(f"Detected actual layer name: {original_shp_name} -> {actual_layer_name}")
+                                shp_file_obj.processing_log += f"\nDetected actual layer name: {actual_layer_name}"
+                                original_shp_name = actual_layer_name  # Use the detected name
+                            
+                except Exception as e:
+                    logger.warning(f"Could not detect actual layer name, using base name: {str(e)}")
+                
+                # Update the main shapefile record with the actual layer name
+                shp_file_obj.geoserver_layer_name = original_shp_name
+                shp_file_obj.gis_status = 'published'
+                shp_file_obj.processing_log += f"\nShapefile bundled and published to GeoServer as vector layer"
+                
+                # Try to get spatial extent (original approach)
+                try:
+                    real_extent = geoserver_api.get_layer_extent(original_shp_name)
                     if real_extent:
                         shp_file_obj.spatial_extent = json.dumps(real_extent)
-                        shp_file_obj.processing_log += f"\nSpatial extent retrieved from GeoServer"
+                        shp_file_obj.processing_log += f"\nSpatial extent updated from GeoServer"
                 except Exception as e:
-                    logger.warning(f"Could not get spatial extent: {str(e)}")
+                    logger.warning(f"Could not get spatial extent from GeoServer: {str(e)}")
                 
                 shp_file_obj.save()
                 
-                logger.info(f"Successfully bundled and published {base_name}")
-                return True, f"Shapefile bundled and published successfully as {base_name}"
+                logger.info(f"Successfully bundled and published {original_shp_name}")
+                return True, f"Shapefile bundled and published successfully as {original_shp_name}"
             else:
                 return False, "Failed to upload bundled shapefile to GeoServer"
             

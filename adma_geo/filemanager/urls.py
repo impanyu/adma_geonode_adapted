@@ -7,6 +7,7 @@ urlpatterns = [
     # Public URLs
     path('', views.HomeView.as_view(), name='home'),
     path('register/', views.RegisterView.as_view(), name='register'),
+    path('search/', views.SearchView.as_view(), name='search'),
     path('documentation/', views.DocumentationView.as_view(), name='documentation'),
     path('public/folder/<uuid:folder_id>/', views.public_folder_detail, name='public_folder_detail'),
     path('public/file/<uuid:file_id>/', views.public_file_detail, name='public_file_detail'),
@@ -28,4 +29,5 @@ urlpatterns = [
     path('api/folders/upload/', views.upload_folders, name='upload_folders'),
     path('api/item/delete/', views.delete_item, name='delete_item'),
     path('api/item/toggle-visibility/', views.toggle_visibility, name='toggle_visibility'),
+    path('api/search/', views.search_api, name='search_api'),
 ]
