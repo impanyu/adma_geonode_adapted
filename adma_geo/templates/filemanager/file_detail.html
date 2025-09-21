@@ -1,0 +1,266 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ file.name }} - ADMA{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb Navigation -->
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            <a href="{% url 'filemanager:dashboard' %}">
+                <i class="fas fa-home me-1"></i>Dashboard
+            </a>
+        </li>
+        {% if file.folder %}
+            {% for breadcrumb in file.folder.get_breadcrumbs %}
+            <li class="breadcrumb-item">
+                <a href="{% url 'filemanager:folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+            </li>
+            {% endfor %}
+        {% endif %}
+        <li class="breadcrumb-item active">
+            <i class="{{ file.get_icon_class }} me-1"></i>{{ file.name }}
+        </li>
+    </ol>
+</nav>
+
+<div class="row">
+    <!-- File Details -->
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">
+                    <i class="{{ file.get_icon_class }} me-2"></i>{{ file.name }}
+                </h4>
+                {% if can_edit %}
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary" data-bs-toggle="dropdown">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="{% url 'filemanager:download_file' file.id %}">
+                            <i class="fas fa-download me-2"></i>Download
+                        </a></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteFile()">
+                            <i class="fas fa-trash me-2"></i>Delete
+                        </a></li>
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <!-- File Preview -->
+                {% if file.can_preview %}
+                <div class="mb-4">
+                    {% if file.file_type == 'image' %}
+                    <div class="text-center">
+                        <img src="{{ file.file.url }}" class="img-fluid rounded" style="max-height: 400px;" alt="{{ file.name }}">
+                    </div>
+                    {% elif file.file_type == 'text' and file_content %}
+                    <div class="bg-light p-3 rounded">
+                        <h6>File Content Preview:</h6>
+                        <pre class="bg-white p-3 rounded border" style="max-height: 300px; overflow-y: auto;"><code>{{ file_content }}</code></pre>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- File Information -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>File Information</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th width="30%">Name:</th>
+                                <td>{{ file.name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Size:</th>
+                                <td>{{ file.get_size_display }}</td>
+                            </tr>
+                            <tr>
+                                <th>Type:</th>
+                                <td>
+                                    <span class="badge bg-info">{{ file.file_type|title }}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Owner:</th>
+                                <td>{{ file.owner.username }}</td>
+                            </tr>
+                            <tr>
+                                <th>Visibility:</th>
+                                <td>
+                                    {% if file.is_public %}
+                                        <span class="badge bg-success">Public</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Private</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Timestamps</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th width="30%">Created:</th>
+                                <td>{{ file.created_at|date:"M d, Y H:i" }}</td>
+                            </tr>
+                            <tr>
+                                <th>Modified:</th>
+                                <td>{{ file.updated_at|date:"M d, Y H:i" }}</td>
+                            </tr>
+                            {% if file.folder %}
+                            <tr>
+                                <th>Folder:</th>
+                                <td>
+                                    <a href="{% url 'filemanager:folder_detail' file.folder.id %}" class="text-decoration-none">
+                                        <i class="fas fa-folder me-1"></i>{{ file.folder.name }}
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions Sidebar -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'filemanager:download_file' file.id %}" class="btn btn-primary">
+                        <i class="fas fa-download me-2"></i>Download File
+                    </a>
+                    
+                    {% if file.can_preview and file.file_type == 'image' %}
+                    <button class="btn btn-outline-primary" onclick="openImageModal()">
+                        <i class="fas fa-expand me-2"></i>View Full Size
+                    </button>
+                    {% endif %}
+                    
+                    {% if file.folder %}
+                    <a href="{% url 'filemanager:folder_detail' file.folder.id %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-folder me-2"></i>Go to Folder
+                    </a>
+                    {% else %}
+                    <a href="{% url 'filemanager:dashboard' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-home me-2"></i>Back to Dashboard
+                    </a>
+                    {% endif %}
+                    
+                    {% if can_edit %}
+                    <button class="btn btn-danger" onclick="deleteFile()">
+                        <i class="fas fa-trash me-2"></i>Delete File
+                    </button>
+                    {% endif %}
+                </div>
+                
+                <!-- File Stats -->
+                <div class="mt-4">
+                    <h6>File Details</h6>
+                    <ul class="list-unstyled">
+                        <li><i class="fas fa-file me-2"></i>{{ file.get_size_display }}</li>
+                        <li><i class="fas fa-calendar me-2"></i>{{ file.created_at|timesince }} ago</li>
+                        <li><i class="fas fa-user me-2"></i>{{ file.owner.username }}</li>
+                        {% if file.is_public %}
+                        <li><i class="fas fa-globe me-2"></i>Public file</li>
+                        {% else %}
+                        <li><i class="fas fa-lock me-2"></i>Private file</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal for Full Size View -->
+{% if file.file_type == 'image' %}
+<div class="modal fade" id="imageModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ file.name }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img src="{{ file.file.url }}" class="img-fluid" alt="{{ file.name }}">
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// CSRF token setup
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+const csrftoken = getCookie('csrftoken');
+
+{% if file.file_type == 'image' %}
+function openImageModal() {
+    const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+    modal.show();
+}
+{% endif %}
+
+{% if can_edit %}
+async function deleteFile() {
+    if (!confirm('Are you sure you want to delete "{{ file.name }}"?')) return;
+    
+    try {
+        const response = await fetch('{% url "filemanager:delete_item" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                type: 'file',
+                id: '{{ file.id }}'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Redirect back to folder or dashboard
+            {% if file.folder %}
+            window.location.href = '{% url "filemanager:folder_detail" file.folder.id %}';
+            {% else %}
+            window.location.href = '{% url "filemanager:dashboard" %}';
+            {% endif %}
+        } else {
+            alert(data.error || 'Error deleting file');
+        }
+    } catch (error) {
+        alert('Error deleting file: ' + error.message);
+    }
+}
+{% endif %}
+</script>
+{% endblock %}

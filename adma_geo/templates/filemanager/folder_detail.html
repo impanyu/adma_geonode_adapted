@@ -1,0 +1,436 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ folder.name }} - ADMA{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb Navigation -->
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            <a href="{% url 'filemanager:dashboard' %}">
+                <i class="fas fa-home me-1"></i>Dashboard
+            </a>
+        </li>
+        {% for breadcrumb in breadcrumbs %}
+            {% if forloop.last %}
+            <li class="breadcrumb-item active">
+                <i class="fas fa-folder me-1"></i>{{ breadcrumb.name }}
+            </li>
+            {% else %}
+            <li class="breadcrumb-item">
+                <a href="{% url 'filemanager:folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+            </li>
+            {% endif %}
+        {% endfor %}
+    </ol>
+</nav>
+
+<!-- Folder Header -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h2 mb-1">
+                    <i class="fas fa-folder me-2" style="color: #ffc107;"></i>{{ folder.name }}
+                </h1>
+                <p class="text-muted">
+                    {% if folder.is_public %}
+                        <span class="badge bg-info me-2">Public</span>
+                    {% endif %}
+                    Created by {{ folder.owner.username }} on {{ folder.created_at|date:"M d, Y" }}
+                </p>
+            </div>
+            {% if can_edit %}
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary" onclick="showCreateFolderModal()">
+                    <i class="fas fa-folder-plus me-2"></i>New Folder
+                </button>
+                <button class="btn btn-primary" onclick="showUploadModal()">
+                    <i class="fas fa-upload me-2"></i>Upload Files
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Folder Contents -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>Contents
+                    <span class="text-muted">({{ subfolders.count }} folders, {{ files.count }} files)</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if subfolders or files %}
+                <!-- Subfolders -->
+                {% if subfolders %}
+                <div class="mb-4">
+                    <h6 class="text-muted mb-3"><i class="fas fa-folder me-2"></i>Folders</h6>
+                    <div class="row">
+                        {% for subfolder in subfolders %}
+                        <div class="col-md-4 col-sm-6 mb-3">
+                            <div class="folder-item" onclick="window.location.href='{% url 'filemanager:folder_detail' subfolder.id %}'">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-folder folder-icon"></i>
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-1 fw-bold">{{ subfolder.name }}</h6>
+                                        <small class="text-muted">
+                                            {{ subfolder.file_count }} files • {{ subfolder.subfolder_count }} folders
+                                        </small>
+                                        <br>
+                                        <small class="text-muted">
+                                            {% if subfolder.is_public %}
+                                                <span class="badge bg-info">Public</span> •
+                                            {% endif %}
+                                            {{ subfolder.created_at|date:"M d, Y" }}
+                                        </small>
+                                    </div>
+                                    {% if can_edit %}
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown" onclick="event.stopPropagation()">
+                                            <i class="fas fa-ellipsis-v"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item" href="#" onclick="deleteItem('folder', '{{ subfolder.id }}', '{{ subfolder.name }}')">
+                                                <i class="fas fa-trash me-2"></i>Delete
+                                            </a></li>
+                                        </ul>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Files -->
+                {% if files %}
+                <div>
+                    <h6 class="text-muted mb-3"><i class="fas fa-file me-2"></i>Files</h6>
+                    <div class="row">
+                        {% for file in files %}
+                        <div class="col-md-4 col-sm-6 mb-3">
+                            <div class="file-item" onclick="window.location.href='{% url 'filemanager:file_detail' file.id %}'">
+                                <div class="d-flex align-items-center">
+                                    <i class="{{ file.get_icon_class }} file-icon"></i>
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-1 fw-bold">{{ file.name|truncatechars:25 }}</h6>
+                                        <small class="text-muted">
+                                            {{ file.get_size_display }} • {{ file.file_type|title }}
+                                        </small>
+                                        <br>
+                                        <small class="text-muted">
+                                            {% if file.is_public %}
+                                                <span class="badge bg-info">Public</span> •
+                                            {% endif %}
+                                            {{ file.created_at|date:"M d, Y" }}
+                                        </small>
+                                    </div>
+                                    {% if can_edit %}
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown" onclick="event.stopPropagation()">
+                                            <i class="fas fa-ellipsis-v"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item" href="{% url 'filemanager:download_file' file.id %}">
+                                                <i class="fas fa-download me-2"></i>Download
+                                            </a></li>
+                                            <li><a class="dropdown-item" href="#" onclick="deleteItem('file', '{{ file.id }}', '{{ file.name }}')">
+                                                <i class="fas fa-trash me-2"></i>Delete
+                                            </a></li>
+                                        </ul>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                {% else %}
+                <!-- Empty Folder -->
+                <div class="text-center py-5">
+                    <i class="fas fa-folder-open" style="font-size: 4rem; color: #007bff; opacity: 0.3;"></i>
+                    <h4 class="mt-3 text-muted">This folder is empty</h4>
+                    <p class="text-muted">Add files or create subfolders to organize your data</p>
+                    {% if can_edit %}
+                    <div class="d-flex justify-content-center gap-2 mt-3">
+                        <button class="btn btn-outline-primary" onclick="showCreateFolderModal()">
+                            <i class="fas fa-folder-plus me-2"></i>Create Folder
+                        </button>
+                        <button class="btn btn-primary" onclick="showUploadModal()">
+                            <i class="fas fa-upload me-2"></i>Upload Files
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Include modals if user can edit -->
+{% if can_edit %}
+<!-- Create Folder Modal -->
+<div class="modal fade" id="createFolderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Folder</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createFolderForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="folderName" class="form-label">Folder Name</label>
+                        <input type="text" class="form-control" id="folderName" required>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="folderIsPublic">
+                        <label class="form-check-label" for="folderIsPublic">
+                            Make this folder public
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Folder</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Files Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Upload Files to {{ folder.name }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="uploadForm">
+                <div class="modal-body">
+                    <div class="upload-zone" id="uploadZone">
+                        <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #007bff; opacity: 0.5;"></i>
+                        <h5 class="mt-3">Drop files here or click to browse</h5>
+                        <p class="text-muted">You can upload multiple files at once</p>
+                        <input type="file" id="fileInput" multiple style="display: none;">
+                    </div>
+                    <div id="selectedFiles" class="mt-3" style="display: none;">
+                        <h6>Selected Files:</h6>
+                        <ul id="fileList" class="list-group"></ul>
+                    </div>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="filesArePublic">
+                        <label class="form-check-label" for="filesArePublic">
+                            Make these files public
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="uploadBtn" disabled>Upload Files</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+{% if can_edit %}
+<script>
+// CSRF token setup
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+const csrftoken = getCookie('csrftoken');
+
+// Create Folder Modal
+function showCreateFolderModal() {
+    const modal = new bootstrap.Modal(document.getElementById('createFolderModal'));
+    modal.show();
+}
+
+// Handle Create Folder Form
+document.getElementById('createFolderForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const name = document.getElementById('folderName').value.trim();
+    const isPublic = document.getElementById('folderIsPublic').checked;
+    
+    if (!name) return;
+    
+    try {
+        const response = await fetch('{% url "filemanager:create_folder" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                name: name,
+                parent_id: '{{ folder.id }}',
+                is_public: isPublic
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload(); // Reload to show new folder
+        } else {
+            alert(data.error || 'Error creating folder');
+        }
+    } catch (error) {
+        alert('Error creating folder: ' + error.message);
+    }
+});
+
+// Upload Files Modal
+function showUploadModal() {
+    const modal = new bootstrap.Modal(document.getElementById('uploadModal'));
+    modal.show();
+}
+
+// File upload handling
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const selectedFiles = document.getElementById('selectedFiles');
+const fileList = document.getElementById('fileList');
+const uploadBtn = document.getElementById('uploadBtn');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+
+uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+});
+
+function handleFiles(files) {
+    if (files.length === 0) return;
+    
+    fileList.innerHTML = '';
+    for (let file of files) {
+        const li = document.createElement('li');
+        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+        li.innerHTML = `
+            <span><i class="fas fa-file me-2"></i>${file.name}</span>
+            <span class="badge bg-secondary">${(file.size / 1024 / 1024).toFixed(2)} MB</span>
+        `;
+        fileList.appendChild(li);
+    }
+    
+    selectedFiles.style.display = 'block';
+    uploadBtn.disabled = false;
+}
+
+// Handle Upload Form
+document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const files = fileInput.files;
+    if (files.length === 0) return;
+    
+    const formData = new FormData();
+    for (let file of files) {
+        formData.append('files', file);
+    }
+    formData.append('folder_id', '{{ folder.id }}');
+    formData.append('is_public', document.getElementById('filesArePublic').checked);
+    
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
+    
+    try {
+        const response = await fetch('{% url "filemanager:upload_files" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrftoken
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload(); // Reload to show new files
+        } else {
+            alert(data.error || 'Error uploading files');
+        }
+    } catch (error) {
+        alert('Error uploading files: ' + error.message);
+    } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = 'Upload Files';
+    }
+});
+
+// Delete item function
+async function deleteItem(type, id, name) {
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    
+    try {
+        const response = await fetch('{% url "filemanager:delete_item" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                type: type,
+                id: id
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload(); // Reload to show updated contents
+        } else {
+            alert(data.error || 'Error deleting item');
+        }
+    } catch (error) {
+        alert('Error deleting item: ' + error.message);
+    }
+}
+</script>
+{% endif %}
+{% endblock %}
