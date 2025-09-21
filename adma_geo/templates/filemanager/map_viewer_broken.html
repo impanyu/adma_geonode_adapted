@@ -3,8 +3,9 @@
 
 {% block title %}Map Viewer - {{ file.name }}{% endblock %}
 
-{% block extra_css %}
+{% block extra_head %}
 <!-- OpenLayers CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v8.2.0/ol.css">
 
 <style>
     .map-container {
@@ -277,11 +278,7 @@
         margin-bottom: 0 !important;
         font-weight: 600 !important;
     }
-
-
-    
 </style>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v8.2.0/ol.css">
 {% endblock %}
 
 {% block content %}
@@ -342,6 +339,9 @@
                     <option value="terrain">Terrain</option>
                     <option value="topo">Topographic</option>
                 </select>
+                <button id="testWMS" class="btn btn-sm btn-outline-info">
+                    <i class="fas fa-bug me-1"></i>Test WMS
+                </button>
             </div>
         </div>
         
@@ -743,6 +743,22 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }, 100);
         
+        // Add WMS test functionality
+        document.getElementById('testWMS').addEventListener('click', function() {
+            console.log('=== WMS DEBUGGING INFO ===');
+            console.log('Layer visible:', wmsLayer.getVisible());
+            console.log('Layer opacity:', wmsLayer.getOpacity());
+            console.log('Layer extent:', wmsLayer.getExtent());
+            console.log('Map zoom:', map.getView().getZoom());
+            console.log('Map center:', ol.proj.toLonLat(map.getView().getCenter()));
+            
+            // Force refresh the layer
+            wmsLayer.getSource().refresh();
+            console.log('Layer refreshed');
+            
+            // Open test WMS URL in new tab
+            window.open(testWMSUrl, '_blank');
+        });
         
         // Auto-zoom to layer extent when map loads
         console.log('Auto-zooming to layer extent...');

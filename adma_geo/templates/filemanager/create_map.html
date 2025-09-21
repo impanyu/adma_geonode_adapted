@@ -1,0 +1,317 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Create New Map - ADMA GEO{% endblock %}
+
+{% block extra_css %}
+<style>
+    .file-selector {
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1rem;
+    }
+    
+    .file-item {
+        padding: 0.75rem;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .file-item:hover {
+        background-color: #f8f9fa;
+        border-color: #d00000;
+    }
+    
+    .file-item.selected {
+        background-color: #ffeaa7;
+        border-color: #d00000;
+    }
+    
+    .file-type-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+    }
+    
+    .gis-badge {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .layer-preview {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-top: 1rem;
+        min-height: 200px;
+    }
+    
+    .selected-count {
+        font-weight: bold;
+        color: #d00000;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="fas fa-plus-circle text-primary me-2"></i>Create New Map</h2>
+                    <p class="text-muted mb-0">Combine multiple spatial datasets into a composite map</p>
+                </div>
+                <a href="{% url 'filemanager:maps_list' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Maps
+                </a>
+            </div>
+
+            <form method="post" id="createMapForm">
+                {% csrf_token %}
+                <div class="row">
+                    <!-- Map Configuration -->
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Map Configuration</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="map_name" class="form-label">Map Name *</label>
+                                    <input type="text" class="form-control" id="map_name" name="map_name" required>
+                                    <div id="map-name-feedback" class="feedback" style="display: none;"></div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="map_description" class="form-label">Description</label>
+                                    <textarea class="form-control" id="map_description" name="map_description" rows="3"></textarea>
+                                </div>
+                                
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="is_public" name="is_public">
+                                    <label class="form-check-label" for="is_public">
+                                        Make this map public
+                                    </label>
+                                </div>
+                                
+                                <!-- Selected Layers Preview -->
+                                <div class="layer-preview">
+                                    <h6><i class="fas fa-layers me-1"></i>Selected Layers <span class="selected-count" id="selectedCount">0</span></h6>
+                                    <div id="selectedLayersList">
+                                        <p class="text-muted small">No layers selected yet</p>
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-danger w-100 mt-3" disabled id="createBtn">
+                                    <i class="fas fa-plus me-1"></i>Create Map
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- File Selection -->
+                    <div class="col-lg-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0"><i class="fas fa-database me-2"></i>Select Spatial Data</h5>
+                            </div>
+                            <div class="card-body">
+                                <!-- Your Files -->
+                                {% if user_files %}
+                                <div class="mb-4">
+                                    <h6 class="mb-3">
+                                        <i class="fas fa-user text-secondary me-2"></i>Your Spatial Files 
+                                        <span class="badge bg-secondary">{{ user_files.count }}</span>
+                                    </h6>
+                                    <div class="file-selector">
+                                        {% for file in user_files %}
+                                        <div class="file-item" data-file-id="{{ file.id }}" onclick="toggleFileSelection(this)">
+                                            <div class="d-flex justify-content-between align-items-start">
+                                                <div class="flex-grow-1">
+                                                    <h6 class="mb-1">{{ file.name }}</h6>
+                                                    {% if file.folder %}
+                                                    <small class="text-muted">{{ file.folder.get_full_path }}</small>
+                                                    {% endif %}
+                                                </div>
+                                                <div class="text-end">
+                                                    <span class="file-type-badge gis-badge">{{ file.file_type|upper }}</span>
+                                                    {% if file.is_spatial %}
+                                                    <span class="file-type-badge gis-badge">GIS</span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            <input type="checkbox" name="selected_files" value="{{ file.id }}" style="display: none;">
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                <!-- Public Files -->
+                                {% if public_files %}
+                                <div class="mb-4">
+                                    <h6 class="mb-3">
+                                        <i class="fas fa-globe text-success me-2"></i>Public Spatial Files 
+                                        <span class="badge bg-success">{{ public_files.count }}</span>
+                                    </h6>
+                                    <div class="file-selector">
+                                        {% for file in public_files %}
+                                        <div class="file-item" data-file-id="{{ file.id }}" onclick="toggleFileSelection(this)">
+                                            <div class="d-flex justify-content-between align-items-start">
+                                                <div class="flex-grow-1">
+                                                    <h6 class="mb-1">{{ file.name }}</h6>
+                                                    <small class="text-muted">by {{ file.owner.username }}</small>
+                                                </div>
+                                                <div class="text-end">
+                                                    <span class="file-type-badge gis-badge">{{ file.file_type|upper }}</span>
+                                                    {% if file.is_spatial %}
+                                                    <span class="file-type-badge gis-badge">GIS</span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            <input type="checkbox" name="selected_files" value="{{ file.id }}" style="display: none;">
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                <!-- No Files Message -->
+                                {% if not user_files and not public_files %}
+                                <div class="text-center py-5">
+                                    <i class="fas fa-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                                    <h5 class="mt-3 text-muted">No Spatial Data Available</h5>
+                                    <p class="text-muted">You need to upload some spatial files (TIF, SHP, GeoJSON) before creating maps.</p>
+                                    <a href="{% url 'filemanager:dashboard' %}" class="btn btn-primary">
+                                        <i class="fas fa-upload me-1"></i>Upload Spatial Data
+                                    </a>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedFiles = new Set();
+let mapNameTimeout = null;
+
+function toggleFileSelection(element) {
+    const fileId = element.dataset.fileId;
+    const checkbox = element.querySelector('input[type="checkbox"]');
+    
+    if (selectedFiles.has(fileId)) {
+        // Deselect
+        selectedFiles.delete(fileId);
+        element.classList.remove('selected');
+        checkbox.checked = false;
+    } else {
+        // Select
+        selectedFiles.add(fileId);
+        element.classList.add('selected');
+        checkbox.checked = true;
+    }
+    
+    updateSelectedLayersList();
+}
+
+function updateSelectedLayersList() {
+    const count = selectedFiles.size;
+    const countElement = document.getElementById('selectedCount');
+    const listElement = document.getElementById('selectedLayersList');
+    const createBtn = document.getElementById('createBtn');
+    
+    countElement.textContent = count;
+    
+    if (count === 0) {
+        listElement.innerHTML = '<p class="text-muted small">No layers selected yet</p>';
+        createBtn.disabled = true;
+    } else {
+        const selectedElements = Array.from(selectedFiles).map(fileId => {
+            const element = document.querySelector(`[data-file-id="${fileId}"]`);
+            const fileName = element.querySelector('h6').textContent;
+            return `<div class="small text-success"><i class="fas fa-check me-1"></i>${fileName}</div>`;
+        });
+        listElement.innerHTML = selectedElements.join('');
+        createBtn.disabled = false;
+    }
+}
+
+// Map name validation
+function checkMapName() {
+    const mapNameInput = document.getElementById('map_name');
+    const mapName = mapNameInput.value.trim();
+    const feedback = document.getElementById('map-name-feedback');
+    
+    if (!mapName) {
+        feedback.style.display = 'none';
+        mapNameInput.classList.remove('is-invalid', 'is-valid');
+        return;
+    }
+    
+    // Clear previous timeout
+    if (mapNameTimeout) {
+        clearTimeout(mapNameTimeout);
+    }
+    
+    // Set new timeout to avoid too many requests
+    mapNameTimeout = setTimeout(() => {
+        fetch(`{% url 'filemanager:check_map_name' %}?name=${encodeURIComponent(mapName)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.exists) {
+                    mapNameInput.classList.add('is-invalid');
+                    mapNameInput.classList.remove('is-valid');
+                    feedback.textContent = 'A map with this name already exists. Please choose a different name.';
+                    feedback.className = 'invalid-feedback';
+                    feedback.style.display = 'block';
+                } else {
+                    mapNameInput.classList.add('is-valid');
+                    mapNameInput.classList.remove('is-invalid');
+                    feedback.textContent = 'This name is available.';
+                    feedback.className = 'valid-feedback';
+                    feedback.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error checking map name:', error);
+                feedback.style.display = 'none';
+                mapNameInput.classList.remove('is-invalid', 'is-valid');
+            });
+    }, 500); // Wait 500ms after user stops typing
+}
+
+// Add event listener for map name input
+document.getElementById('map_name').addEventListener('input', checkMapName);
+
+// Form submission
+document.getElementById('createMapForm').addEventListener('submit', function(e) {
+    const mapNameInput = document.getElementById('map_name');
+    
+    if (selectedFiles.size === 0) {
+        e.preventDefault();
+        alert('Please select at least one spatial file for the map.');
+        return false;
+    }
+    
+    if (mapNameInput.classList.contains('is-invalid')) {
+        e.preventDefault();
+        alert('Please choose a different map name. A map with this name already exists.');
+        return false;
+    }
+});
+</script>
+{% endblock %}

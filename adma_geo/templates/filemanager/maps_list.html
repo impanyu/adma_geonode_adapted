@@ -1,0 +1,337 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Maps - ADMA GEO{% endblock %}
+
+{% block extra_css %}
+<style>
+    .map-card {
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        height: 100%;
+    }
+    
+    .map-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .map-thumbnail {
+        height: 180px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 2rem;
+    }
+    
+    .map-meta {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    
+    .layer-count-badge {
+        background-color: #d00000;
+        color: white;
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+    }
+    
+    .view-toggle {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 0.25rem;
+    }
+    
+    .view-toggle .btn {
+        border: none;
+        background: none;
+        color: #6c757d;
+        padding: 0.5rem 0.75rem;
+        border-radius: 6px;
+    }
+    
+    .view-toggle .btn.active {
+        background-color: white;
+        color: #d00000;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .list-item {
+        border-left: 4px solid transparent;
+        transition: border-color 0.2s ease;
+    }
+    
+    .list-item:hover {
+        border-left-color: #d00000;
+        background-color: #f8f9fa;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="fas fa-map text-primary me-2"></i>Maps</h2>
+                    <p class="text-muted mb-0">Create and manage composite maps from your spatial data</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <!-- View Toggle -->
+                    <div class="view-toggle d-flex">
+                        <button class="btn {% if view_mode == 'panel' %}active{% endif %}" 
+                                onclick="changeView('panel')">
+                            <i class="fas fa-th"></i>
+                        </button>
+                        <button class="btn {% if view_mode == 'list' %}active{% endif %}" 
+                                onclick="changeView('list')">
+                            <i class="fas fa-list"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Create Map Button -->
+                    <a href="{% url 'filemanager:create_map' %}" class="btn btn-danger">
+                        <i class="fas fa-plus me-1"></i>Create New Map
+                    </a>
+                </div>
+            </div>
+
+            <!-- User's Maps Section -->
+            {% if user_maps %}
+            <div class="mb-4">
+                <h4 class="mb-3">
+                    <i class="fas fa-user text-secondary me-2"></i>My Maps 
+                    <span class="badge bg-secondary">{{ user_maps.count }}</span>
+                </h4>
+                
+                {% if view_mode == 'panel' %}
+                <div class="row">
+                    {% for map_obj in user_maps %}
+                    <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
+                        <div class="card map-card">
+                            <div class="map-thumbnail">
+                                <i class="fas fa-map"></i>
+                            </div>
+                            <div class="card-body">
+                                <h6 class="card-title mb-2">{{ map_obj.name }}</h6>
+                                {% if map_obj.description %}
+                                <p class="card-text text-muted small mb-2">{{ map_obj.description|truncatewords:15 }}</p>
+                                {% endif %}
+                                
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="layer-count-badge">{{ map_obj.layer_count }} layers</span>
+                                    {% if map_obj.is_public %}
+                                    <span class="badge bg-success">Public</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Private</span>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="map-meta mb-3">
+                                    <small><i class="far fa-clock me-1"></i>{{ map_obj.updated_at|date:"M d, Y" }}</small>
+                                </div>
+                                
+                                <div class="d-flex gap-2">
+                                    <a href="{{ map_obj.get_map_viewer_url }}" class="btn btn-outline-primary btn-sm flex-fill">
+                                        <i class="fas fa-eye me-1"></i>View
+                                    </a>
+                                    <a href="{{ map_obj.get_absolute_url }}" class="btn btn-outline-secondary btn-sm flex-fill">
+                                        <i class="fas fa-edit me-1"></i>Edit
+                                    </a>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="deleteMap('{{ map_obj.id }}', '{{ map_obj.name }}')">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <!-- List View -->
+                <div class="list-group">
+                    {% for map_obj in user_maps %}
+                    <div class="list-group-item list-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">{{ map_obj.name }}</h6>
+                                {% if map_obj.description %}
+                                <p class="mb-1 text-muted">{{ map_obj.description|truncatewords:20 }}</p>
+                                {% endif %}
+                                <small class="text-muted">
+                                    {{ map_obj.layer_count }} layers • {{ map_obj.updated_at|date:"M d, Y" }}
+                                    {% if map_obj.is_public %} • Public{% endif %}
+                                </small>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <a href="{{ map_obj.get_map_viewer_url }}" class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{{ map_obj.get_absolute_url }}" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button class="btn btn-outline-danger btn-sm" onclick="deleteMap('{{ map_obj.id }}', '{{ map_obj.name }}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Public Maps Section -->
+            {% if public_maps %}
+            <div class="mb-4">
+                <h4 class="mb-3">
+                    <i class="fas fa-globe text-success me-2"></i>Public Maps 
+                    <span class="badge bg-success">{{ public_maps.count }}</span>
+                </h4>
+                
+                {% if view_mode == 'panel' %}
+                <div class="row">
+                    {% for map_obj in public_maps %}
+                    <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
+                        <div class="card map-card">
+                            <div class="map-thumbnail">
+                                <i class="fas fa-map"></i>
+                            </div>
+                            <div class="card-body">
+                                <h6 class="card-title mb-2">{{ map_obj.name }}</h6>
+                                {% if map_obj.description %}
+                                <p class="card-text text-muted small mb-2">{{ map_obj.description|truncatewords:15 }}</p>
+                                {% endif %}
+                                
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="layer-count-badge">{{ map_obj.layer_count }} layers</span>
+                                    <span class="badge bg-success">Public</span>
+                                </div>
+                                
+                                <div class="map-meta mb-3">
+                                    <small><i class="fas fa-user me-1"></i>{{ map_obj.owner.username }}</small><br>
+                                    <small><i class="far fa-clock me-1"></i>{{ map_obj.updated_at|date:"M d, Y" }}</small>
+                                </div>
+                                
+                                <div class="d-flex gap-2">
+                                    <a href="{{ map_obj.get_map_viewer_url }}" class="btn btn-outline-primary btn-sm flex-fill">
+                                        <i class="fas fa-eye me-1"></i>View
+                                    </a>
+                                    <a href="{{ map_obj.get_absolute_url }}" class="btn btn-outline-info btn-sm flex-fill">
+                                        <i class="fas fa-info me-1"></i>Details
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <!-- List View -->
+                <div class="list-group">
+                    {% for map_obj in public_maps %}
+                    <div class="list-group-item list-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">{{ map_obj.name }}</h6>
+                                {% if map_obj.description %}
+                                <p class="mb-1 text-muted">{{ map_obj.description|truncatewords:20 }}</p>
+                                {% endif %}
+                                <small class="text-muted">
+                                    {{ map_obj.layer_count }} layers • by {{ map_obj.owner.username }} • {{ map_obj.updated_at|date:"M d, Y" }}
+                                </small>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <a href="{{ map_obj.get_map_viewer_url }}" class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{{ map_obj.get_absolute_url }}" class="btn btn-outline-info btn-sm">
+                                    <i class="fas fa-info"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- No Maps Message -->
+            {% if not user_maps and not public_maps %}
+            <div class="text-center py-5">
+                <i class="fas fa-map-marked-alt text-muted" style="font-size: 4rem;"></i>
+                <h4 class="mt-3 text-muted">No Maps Yet</h4>
+                <p class="text-muted">Create your first composite map by combining spatial datasets</p>
+                <a href="{% url 'filemanager:create_map' %}" class="btn btn-danger">
+                    <i class="fas fa-plus me-1"></i>Create Your First Map
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function changeView(viewMode) {
+    const url = new URL(window.location);
+    url.searchParams.set('view', viewMode);
+    window.location = url;
+}
+
+function deleteMap(mapId, mapName) {
+    if (confirm(`Are you sure you want to delete the map "${mapName}"? This action cannot be undone.`)) {
+        // Get CSRF token
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+                         getCookie('csrftoken');
+        
+        fetch(`{% url 'filemanager:delete_map' '00000000-0000-0000-0000-000000000000' %}`.replace('00000000-0000-0000-0000-000000000000', mapId), {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                alert(data.message);
+                // Reload the page to refresh the map list
+                window.location.reload();
+            } else {
+                alert('Error deleting map: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting map. Please try again.');
+        });
+    }
+}
+
+// Helper function to get CSRF token from cookies
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

@@ -144,6 +144,93 @@
     </div>
 </div>
 
+<!-- Folder Metadata Panel -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>Folder Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- Folder Information -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Folder Details</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th width="30%">Name:</th>
+                                <td>{{ folder.name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Contents:</th>
+                                <td>{{ subfolders.count }} folders, {{ files.count }} files</td>
+                            </tr>
+                            <tr>
+                                <th>Owner:</th>
+                                <td>{{ folder.owner.username }}</td>
+                            </tr>
+                            <tr>
+                                <th>Visibility:</th>
+                                <td>
+                                    <span id="visibility-badge" class="badge {% if folder.is_public %}bg-success{% else %}bg-secondary{% endif %}">
+                                        {% if folder.is_public %}Public{% else %}Private{% endif %}
+                                    </span>
+                                    {% if can_edit %}
+                                    <button id="toggle-visibility-btn" class="btn btn-sm btn-outline-primary ms-2" onclick="toggleVisibility()">
+                                        <i class="fas fa-exchange-alt me-1"></i>Toggle
+                                    </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if folder.parent %}
+                            <tr>
+                                <th>Parent Folder:</th>
+                                <td>
+                                    {% if is_public_view %}
+                                        <a href="{% url 'filemanager:public_folder_detail' folder.parent.id %}" class="text-decoration-none">
+                                            <i class="fas fa-folder me-1"></i>{{ folder.parent.name }}
+                                        </a>
+                                    {% else %}
+                                        <a href="{% url 'filemanager:folder_detail' folder.parent.id %}" class="text-decoration-none">
+                                            <i class="fas fa-folder me-1"></i>{{ folder.parent.name }}
+                                        </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Timestamps</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th width="30%">Created:</th>
+                                <td>{{ folder.created_at|date:"M d, Y H:i" }}</td>
+                            </tr>
+                            <tr>
+                                <th>Modified:</th>
+                                <td>{{ folder.updated_at|date:"M d, Y H:i" }}</td>
+                            </tr>
+                            <tr>
+                                <th>Total Size:</th>
+                                <td>
+                                    {% if folder.get_total_size > 0 %}
+                                        {{ folder.get_total_size|filesizeformat }}
+                                    {% else %}
+                                        <span class="text-muted">0 bytes</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Folder Contents -->
 <div class="row">
     <div class="col-12">
@@ -874,6 +961,66 @@ function renderSimpleFolderTree(structure, container) {
 
     } // End if statement for element checks
 }); // End DOMContentLoaded event listener
+
+// Folder visibility toggle function
+async function toggleVisibility() {
+    const button = document.getElementById('toggle-visibility-btn');
+    const badge = document.getElementById('visibility-badge');
+    
+    // Disable button during request
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
+    
+    try {
+        const response = await fetch('{% url "filemanager:toggle_visibility" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                type: 'folder',
+                id: '{{ folder.id }}'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update badge
+            badge.className = `badge ${data.is_public ? 'bg-success' : 'bg-secondary'}`;
+            badge.textContent = data.status;
+            
+            // Show success message
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+            alertDiv.innerHTML = `
+                <i class="fas fa-check-circle me-2"></i>
+                Folder visibility changed to <strong>${data.status.toLowerCase()}</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // Insert alert after breadcrumb
+            const breadcrumb = document.querySelector('nav[aria-label="breadcrumb"]');
+            breadcrumb.insertAdjacentElement('afterend', alertDiv);
+            
+            // Auto-hide alert after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        } else {
+            alert(data.error || 'Error toggling visibility');
+        }
+    } catch (error) {
+        alert('Error toggling visibility: ' + error.message);
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.innerHTML = '<i class="fas fa-exchange-alt me-1"></i>Toggle';
+    }
+}
 
 // CSRF token helper
 function getCookie(name) {

@@ -534,11 +534,36 @@ function generateChart() {
         return;
     }
     
+    console.log('Chart generation:', {
+        xAxisIndex: xAxisIndex,
+        yAxisIndex: yAxisIndex,
+        xAxisColumn: csvHeaders[xAxisIndex],
+        yAxisColumn: csvHeaders[yAxisIndex],
+        sampleData: csvData.slice(0, 3)
+    });
+    
     // Extract data for selected columns
-    const chartData = csvData.map(row => ({
-        x: row[xAxisIndex],
-        y: parseFloat(row[yAxisIndex]) || 0
-    })).filter(point => !isNaN(point.y));
+    const chartData = csvData.map((row, rowIndex) => {
+        let xValue = row[xAxisIndex];
+        
+        // If x-axis is row_number column (index 0), ensure we use actual row numbers
+        if (xAxisIndex === 0) {
+            // Use the row number from the data, or fallback to array index + 1
+            xValue = parseInt(xValue) || (rowIndex + 1);
+        } else {
+            // For non-row-number columns, try to parse as number if possible
+            const parsedValue = parseFloat(xValue);
+            xValue = !isNaN(parsedValue) ? parsedValue : xValue;
+        }
+        
+        return {
+            x: xValue,
+            y: parseFloat(row[yAxisIndex]) || 0,
+            rowNumber: parseInt(row[0]) || (rowIndex + 1) // Always include actual row number
+        };
+    }).filter(point => !isNaN(point.y));
+    
+    console.log('Processed chart data (first 5 points):', chartData.slice(0, 5));
     
     // Sort by x-axis for line chart
     chartData.sort((a, b) => {
@@ -546,6 +571,14 @@ function generateChart() {
             return a.x.localeCompare(b.x);
         }
         return parseFloat(a.x) - parseFloat(b.x);
+    });
+    
+    console.log('Final sorted chart data (first 5 points):', chartData.slice(0, 5));
+    console.log('Chart configuration:', {
+        type: 'scatter',
+        xAxisColumn: csvHeaders[xAxisIndex],
+        yAxisColumn: csvHeaders[yAxisIndex],
+        dataLength: chartData.length
     });
     
     // Hide placeholder and show chart
@@ -561,7 +594,7 @@ function generateChart() {
     // Create new chart
     const ctx = canvas.getContext('2d');
     window.csvChart = new Chart(ctx, {
-        type: 'line',
+        type: 'scatter', // Use scatter plot to ensure proper x,y coordinate handling
         data: {
             datasets: [{
                 label: `${csvHeaders[yAxisIndex]} vs ${csvHeaders[xAxisIndex]}`,
@@ -569,8 +602,11 @@ function generateChart() {
                 borderColor: '#d00000',
                 backgroundColor: 'rgba(208, 0, 0, 0.1)',
                 borderWidth: 2,
+                showLine: true, // Connect points with lines
                 fill: false,
-                tension: 0.4
+                tension: 0.4,
+                pointRadius: 3,
+                pointHoverRadius: 5
             }]
         },
         options: {
@@ -597,6 +633,21 @@ function generateChart() {
                 },
                 legend: {
                     display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            const dataPoint = context[0].raw;
+                            return `Row #${dataPoint.rowNumber}`;
+                        },
+                        label: function(context) {
+                            const dataPoint = context.raw;
+                            return [
+                                `${csvHeaders[xAxisIndex]}: ${dataPoint.x}`,
+                                `${csvHeaders[yAxisIndex]}: ${dataPoint.y}`
+                            ];
+                        }
+                    }
                 }
             }
         }

@@ -86,9 +86,7 @@ class HomeView(TemplateView):
             Q(parent__is_public=False)  # Parent is private (so this is top public level)
         ).annotate(
             public_file_count=Count('files', filter=Q(files__is_public=True)),
-            public_subfolder_count=Count('subfolders', filter=Q(subfolders__is_public=True)),
-            file_count=Count('files'),
-            subfolder_count=Count('subfolders')
+            public_subfolder_count=Count('subfolders', filter=Q(subfolders__is_public=True))
         ).filter(
             Q(public_file_count__gt=0) | Q(public_subfolder_count__gt=0)  # Only folders with public content
         ).order_by('name')
@@ -164,11 +162,8 @@ def dashboard(request):
     """Main dashboard for authenticated users"""
     user = request.user
     
-    # Get user's root folders with annotations
-    folders_queryset = Folder.objects.filter(owner=user, parent=None).annotate(
-        file_count=Count('files'),
-        subfolder_count=Count('subfolders')
-    ).order_by('name')
+    # Get user's root folders
+    folders_queryset = Folder.objects.filter(owner=user, parent=None).order_by('name')
     
     # Get root-level files (not files inside folders)
     files_queryset = File.objects.filter(owner=user, folder=None).order_by('-created_at')
@@ -246,10 +241,7 @@ def folder_detail(request, folder_id):
         return redirect('filemanager:dashboard')
     
     # Get subfolders and files with pagination
-    subfolders_queryset = folder.subfolders.annotate(
-        file_count=Count('files'),
-        subfolder_count=Count('subfolders')
-    ).order_by('name')
+    subfolders_queryset = folder.subfolders.order_by('name')
     files_queryset = folder.files.all().order_by('-created_at')
     
     # Combine subfolders and files for pagination
@@ -314,10 +306,7 @@ def public_folder_detail(request, folder_id):
         return redirect('filemanager:folder_detail', folder_id=folder_id)
     
     # Get public subfolders and files
-    subfolders = folder.subfolders.filter(is_public=True).annotate(
-        file_count=Count('files'),
-        subfolder_count=Count('subfolders')
-    )
+    subfolders = folder.subfolders.filter(is_public=True)
     files = folder.files.filter(is_public=True)
     
     # Reuse the same template as private folder detail, but with public view context

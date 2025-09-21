@@ -1,0 +1,367 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ map_obj.name }} - ADMA GEO{% endblock %}
+
+{% block extra_css %}
+<style>
+    .map-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .layer-item {
+        background: white;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        transition: all 0.2s ease;
+    }
+    
+    .layer-item:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border-color: #d00000;
+    }
+    
+    .layer-handle {
+        cursor: grab;
+        color: #6c757d;
+    }
+    
+    .layer-handle:active {
+        cursor: grabbing;
+    }
+    
+    .layer-controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+    
+    .opacity-slider {
+        width: 100px;
+    }
+    
+    .file-type-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .map-stats {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 1.5rem;
+    }
+    
+    .stat-item {
+        text-align: center;
+        padding: 1rem;
+    }
+    
+    .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #d00000;
+    }
+    
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Map Header -->
+    <div class="map-header">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h1 class="mb-2">{{ map_obj.name }}</h1>
+                {% if map_obj.description %}
+                <p class="mb-0 opacity-75">{{ map_obj.description }}</p>
+                {% endif %}
+            </div>
+            <div class="text-end">
+                {% if map_obj.is_public %}
+                <span class="badge bg-success fs-6 mb-2">Public</span>
+                {% else %}
+                <span class="badge bg-secondary fs-6 mb-2">Private</span>
+                {% endif %}
+                <br>
+                <small class="opacity-75">by {{ map_obj.owner.username }} • {{ map_obj.updated_at|date:"M d, Y" }}</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Map Content -->
+        <div class="col-lg-8">
+            <!-- Action Buttons -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <a href="{% url 'filemanager:maps_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Maps
+                    </a>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{{ map_obj.get_map_viewer_url }}" class="btn btn-primary">
+                        <i class="fas fa-eye me-1"></i>View Map
+                    </a>
+                    {% if can_edit %}
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-cog me-1"></i>Actions
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="editMapSettings()">
+                                <i class="fas fa-edit me-2"></i>Edit Settings
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="toggleMapVisibility()">
+                                <i class="fas fa-eye me-2"></i>Toggle Visibility
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="#" onclick="deleteMap()">
+                                <i class="fas fa-trash me-2"></i>Delete Map
+                            </a></li>
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Map Layers -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-layers me-2"></i>Map Layers
+                        <span class="badge bg-primary">{{ map_layers.count }}</span>
+                    </h5>
+                    {% if can_edit %}
+                    <button class="btn btn-outline-primary btn-sm" onclick="addNewLayer()">
+                        <i class="fas fa-plus me-1"></i>Add Layer
+                    </button>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if map_layers %}
+                    <div id="layersList">
+                        {% for layer in map_layers %}
+                        <div class="layer-item" data-layer-id="{{ layer.id }}">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center flex-grow-1">
+                                    {% if can_edit %}
+                                    <i class="fas fa-grip-vertical layer-handle me-3"></i>
+                                    {% endif %}
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-1">{{ layer.file.name }}</h6>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="file-type-badge">{{ layer.file.file_type|upper }}</span>
+                                            {% if layer.file.folder %}
+                                            <small class="text-muted">{{ layer.file.folder.get_full_path }}</small>
+                                            {% endif %}
+                                            <small class="text-muted">• by {{ layer.file.owner.username }}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {% if can_edit %}
+                                <div class="layer-controls">
+                                    <label class="form-label mb-0 me-2 small">Opacity:</label>
+                                    <input type="range" class="form-range opacity-slider" 
+                                           min="0" max="1" step="0.1" value="{{ layer.opacity }}"
+                                           onchange="updateLayerOpacity('{{ layer.id }}', this.value)">
+                                    
+                                    <div class="form-check form-switch ms-3">
+                                        <input class="form-check-input" type="checkbox" 
+                                               {% if layer.is_visible %}checked{% endif %}
+                                               onchange="toggleLayerVisibility('{{ layer.id }}', this.checked)">
+                                        <label class="form-check-label small">Visible</label>
+                                    </div>
+                                    
+                                    <button class="btn btn-outline-danger btn-sm ms-2" 
+                                            onclick="removeLayer('{{ layer.id }}')">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                {% else %}
+                                <div class="text-muted">
+                                    <small>Order: {{ layer.layer_order }} • Opacity: {{ layer.opacity }}
+                                    {% if layer.is_visible %} • Visible{% else %} • Hidden{% endif %}</small>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-layer-group text-muted" style="font-size: 3rem;"></i>
+                        <h5 class="mt-3 text-muted">No Layers in Map</h5>
+                        <p class="text-muted">This map doesn't contain any layers yet.</p>
+                        {% if can_edit %}
+                        <button class="btn btn-primary" onclick="addNewLayer()">
+                            <i class="fas fa-plus me-1"></i>Add First Layer
+                        </button>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Map Statistics -->
+            <div class="map-stats mb-4">
+                <h5 class="mb-3"><i class="fas fa-chart-bar me-2"></i>Map Statistics</h5>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="stat-item">
+                            <div class="stat-number">{{ map_obj.layer_count }}</div>
+                            <div class="stat-label">Layers</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stat-item">
+                            <div class="stat-number">{{ map_obj.file_count }}</div>
+                            <div class="stat-label">Files</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Information -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Map Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <strong>Created:</strong><br>
+                        <small class="text-muted">{{ map_obj.created_at|date:"F d, Y \a\t g:i A" }}</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Last Updated:</strong><br>
+                        <small class="text-muted">{{ map_obj.updated_at|date:"F d, Y \a\t g:i A" }}</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Owner:</strong><br>
+                        <small class="text-muted">{{ map_obj.owner.username }}</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Visibility:</strong><br>
+                        {% if map_obj.is_public %}
+                        <span class="badge bg-success">Public</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Private</span>
+                        {% endif %}
+                    </div>
+                    
+                    {% if map_obj.center_lat and map_obj.center_lng %}
+                    <div class="mb-3">
+                        <strong>Map Center:</strong><br>
+                        <small class="text-muted">{{ map_obj.center_lat|floatformat:4 }}, {{ map_obj.center_lng|floatformat:4 }}</small>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mb-3">
+                        <strong>GeoServer Layer Group:</strong><br>
+                        <small class="text-muted font-monospace">{{ map_obj.geoserver_layer_group_name }}</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updateLayerOpacity(layerId, opacity) {
+    // Update layer opacity via AJAX
+    console.log(`Update layer ${layerId} opacity to ${opacity}`);
+    // TODO: Implement AJAX call
+}
+
+function toggleLayerVisibility(layerId, visible) {
+    // Toggle layer visibility via AJAX
+    console.log(`Toggle layer ${layerId} visibility to ${visible}`);
+    // TODO: Implement AJAX call
+}
+
+function removeLayer(layerId) {
+    if (confirm('Are you sure you want to remove this layer from the map?')) {
+        // Remove layer via AJAX
+        fetch(`/api/maps/{{ map_obj.id }}/layers/${layerId}/remove/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.querySelector(`[data-layer-id="${layerId}"]`).remove();
+                location.reload(); // Refresh to update counts
+            } else {
+                alert('Error removing layer: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error removing layer');
+        });
+    }
+}
+
+function addNewLayer() {
+    // TODO: Implement add layer modal
+    alert('Add layer functionality coming soon!');
+}
+
+function editMapSettings() {
+    // TODO: Implement edit settings modal
+    alert('Edit settings functionality coming soon!');
+}
+
+function toggleMapVisibility() {
+    // TODO: Implement toggle visibility
+    alert('Toggle visibility functionality coming soon!');
+}
+
+function deleteMap() {
+    if (confirm('Are you sure you want to delete this map? This action cannot be undone.')) {
+        fetch(`/api/maps/{{ map_obj.id }}/delete/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = '{% url "filemanager:maps_list" %}';
+            } else {
+                alert('Error deleting map: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting map');
+        });
+    }
+}
+</script>
+{% endblock %}
