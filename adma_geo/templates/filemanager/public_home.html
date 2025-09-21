@@ -2,6 +2,122 @@
 
 {% block title %}ADMA - Agricultural Data Management & Analytics{% endblock %}
 
+{% block extra_css %}
+<style>
+/* View toggle styling */
+.view-container {
+    transition: all 0.3s ease;
+}
+
+.btn-group .btn.active {
+    background-color: #d00000 !important;
+    border-color: #d00000 !important;
+    color: white !important;
+}
+
+.folder-item, .file-item {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: inherit;
+}
+
+.folder-item:hover, .file-item:hover {
+    background: #e9ecef;
+    border-color: #d00000;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(208, 0, 0, 0.1);
+    text-decoration: none;
+    color: inherit;
+}
+
+.folder-icon, .file-icon {
+    font-size: 1.5rem;
+    margin-right: 1rem;
+    color: #d00000;
+    flex-shrink: 0;
+}
+
+.table .folder-icon, .table .file-icon {
+    font-size: 1.2rem;
+    margin-right: 0.5rem;
+}
+
+/* Table fixes for list view */
+.table-responsive table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.table td {
+    word-wrap: break-word;
+    word-break: break-all;
+    overflow-wrap: break-word;
+    padding: 0.75rem 0.5rem;
+}
+
+.table td:first-child {
+    width: 40%;
+}
+
+.table td:nth-child(2) {
+    width: 15%;
+}
+
+.table td:nth-child(3) {
+    width: 15%;
+}
+
+.table td:nth-child(4) {
+    width: 15%;
+}
+
+.table td:nth-child(5) {
+    width: 15%;
+}
+
+.table small {
+    font-size: 0.8rem;
+    line-height: 1.2;
+}
+
+.stats-card {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    height: 100%;
+}
+
+.stats-card:hover {
+    border-color: #d00000;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(208, 0, 0, 0.1);
+}
+
+.stats-card h3 {
+    color: #d00000;
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+.stats-card p {
+    color: #6c757d;
+    margin-bottom: 0;
+    font-weight: 500;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Hero Section -->
 <div class="row mb-5">
@@ -47,22 +163,107 @@
     </div>
 </div>
 
-<!-- Public Folders -->
-{% if public_folders %}
-<div class="row mb-5">
+<!-- Public Data Section -->
+{% if public_folders or public_files %}
+<div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h4 class="mb-0"><i class="fas fa-folder-open me-2"></i>All Public Folders</h4>
-                <span class="badge bg-secondary">{{ stats.total_public_folders }} total</span>
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+                <div class="d-flex align-items-center mb-2 mb-md-0">
+                    <h4 class="mb-0 me-3">
+                        <i class="fas fa-database me-2"></i>Public Data
+                    </h4>
+                    <span class="badge bg-secondary">{{ total_items }} total items</span>
+                </div>
+                
+                <!-- View Toggle -->
+                <div class="btn-group" role="group" aria-label="View toggle">
+                    <button type="button" class="btn btn-outline-secondary active" onclick="toggleView('list')" id="listViewBtn">
+                        <i class="fas fa-list me-1"></i>List
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="toggleView('panel')" id="panelViewBtn">
+                        <i class="fas fa-th me-1"></i>Panels
+                    </button>
+                </div>
             </div>
+            
             <div class="card-body">
-                <div class="row">
-                    {% for folder in public_folders %}
-                    <div class="col-md-4 col-sm-6 mb-3">
-                        <a href="{% url 'filemanager:public_folder_detail' folder.id %}" class="text-decoration-none">
-                            <div class="folder-item">
-                                <div class="d-flex align-items-center">
+                <!-- List View -->
+                <div id="listView" class="view-container">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Size</th>
+                                    <th>Owner</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Folders first -->
+                                {% for folder in public_folders %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'filemanager:public_folder_detail' folder.id %}" class="text-decoration-none d-flex align-items-center">
+                                            <i class="fas fa-folder folder-icon"></i>
+                                            <div>
+                                                <div class="fw-bold">{{ folder.name }}</div>
+                                                <small class="text-muted">{{ folder.file_count }} files • {{ folder.subfolder_count }} folders</small>
+                                            </div>
+                                        </a>
+                                    </td>
+                                    <td><span class="badge bg-primary">Folder</span></td>
+                                    <td><small class="text-muted">-</small></td>
+                                    <td><small>{{ folder.owner.username }}</small></td>
+                                    <td><small>{{ folder.created_at|date:"M d, Y" }}</small></td>
+                                </tr>
+                                {% endfor %}
+                                
+                                <!-- Files second -->
+                                {% for file in public_files %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'filemanager:public_file_detail' file.id %}" class="text-decoration-none d-flex align-items-center">
+                                            <i class="{{ file.get_icon_class }} file-icon"></i>
+                                            <div>
+                                                <div class="fw-bold">{{ file.name }}</div>
+                                                {% if file.is_spatial %}
+                                                    <small class="text-muted">
+                                                        <span class="badge bg-info me-1">GIS</span>
+                                                        {{ file.file_type|title }}
+                                                    </small>
+                                                {% else %}
+                                                    <small class="text-muted">{{ file.file_type|title }}</small>
+                                                {% endif %}
+                                            </div>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ file.file_type|title }}</span>
+                                        {% if file.is_spatial %}
+                                            <br><span class="badge bg-info">GIS</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><small>{{ file.get_size_display }}</small></td>
+                                    <td><small>{{ file.owner.username }}</small></td>
+                                    <td><small>{{ file.created_at|date:"M d, Y" }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Panel View -->
+                <div id="panelView" class="view-container" style="display: none;">
+                    <div class="row">
+                        <!-- Folders first -->
+                        {% for folder in public_folders %}
+                        <div class="col-md-4 col-sm-6 mb-3">
+                            <a href="{% url 'filemanager:public_folder_detail' folder.id %}" class="text-decoration-none">
+                                <div class="folder-item">
                                     <i class="fas fa-folder folder-icon"></i>
                                     <div class="flex-grow-1">
                                         <h6 class="mb-1 fw-bold">{{ folder.name|truncatechars:25 }}</h6>
@@ -75,78 +276,23 @@
                                         </small>
                                     </div>
                                 </div>
-                            </div>
-                        </a>
-                    </div>
-                    {% endfor %}
-                </div>
-                
-                <!-- Folders Pagination -->
-                {% if public_folders.has_other_pages %}
-                <nav aria-label="Folders pagination" class="mt-4">
-                    <ul class="pagination justify-content-center">
-                        {% if public_folders.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?folders_page={{ public_folders.previous_page_number }}{% if request.GET.files_page %}&files_page={{ request.GET.files_page }}{% endif %}">
-                                    <i class="fas fa-chevron-left"></i> Previous
-                                </a>
-                            </li>
-                        {% endif %}
-                        
-                        {% for num in public_folders.paginator.page_range %}
-                            {% if num == public_folders.number %}
-                                <li class="page-item active">
-                                    <span class="page-link">{{ num }}</span>
-                                </li>
-                            {% elif num > public_folders.number|add:'-3' and num < public_folders.number|add:'3' %}
-                                <li class="page-item">
-                                    <a class="page-link" href="?folders_page={{ num }}{% if request.GET.files_page %}&files_page={{ request.GET.files_page }}{% endif %}">{{ num }}</a>
-                                </li>
-                            {% endif %}
+                            </a>
+                        </div>
                         {% endfor %}
                         
-                        {% if public_folders.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="?folders_page={{ public_folders.next_page_number }}{% if request.GET.files_page %}&files_page={{ request.GET.files_page }}{% endif %}">
-                                    Next <i class="fas fa-chevron-right"></i>
-                                </a>
-                            </li>
-                        {% endif %}
-                    </ul>
-                    <div class="text-center mt-2">
-                        <small class="text-muted">
-                            Showing {{ public_folders.start_index }} - {{ public_folders.end_index }} of {{ public_folders.paginator.count }} folders
-                        </small>
-                    </div>
-                </nav>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Public Files -->
-{% if public_files %}
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h4 class="mb-0"><i class="fas fa-file me-2"></i>All Public Files</h4>
-                <span class="badge bg-secondary">{{ stats.total_public_files }} total</span>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    {% for file in public_files %}
-                    <div class="col-md-4 col-sm-6 mb-3">
-                        <a href="{% url 'filemanager:public_file_detail' file.id %}" class="text-decoration-none">
-                            <div class="file-item">
-                                <div class="d-flex align-items-center">
+                        <!-- Files second -->
+                        {% for file in public_files %}
+                        <div class="col-md-4 col-sm-6 mb-3">
+                            <a href="{% url 'filemanager:public_file_detail' file.id %}" class="text-decoration-none">
+                                <div class="file-item">
                                     <i class="{{ file.get_icon_class }} file-icon"></i>
                                     <div class="flex-grow-1">
                                         <h6 class="mb-1 fw-bold">{{ file.name|truncatechars:25 }}</h6>
                                         <small class="text-muted">
                                             {{ file.get_size_display }} • {{ file.file_type|title }}
+                                            {% if file.is_spatial %}
+                                                <span class="badge bg-info ms-1">GIS</span>
+                                            {% endif %}
                                         </small>
                                         <br>
                                         <small class="text-muted">
@@ -154,47 +300,58 @@
                                         </small>
                                     </div>
                                 </div>
-                            </div>
-                        </a>
+                            </a>
+                        </div>
+                        {% endfor %}
                     </div>
-                    {% endfor %}
                 </div>
                 
-                <!-- Files Pagination -->
-                {% if public_files.has_other_pages %}
-                <nav aria-label="Files pagination" class="mt-4">
+                <!-- Unified Pagination -->
+                {% if page_obj.has_other_pages %}
+                <nav aria-label="Public data pagination" class="mt-4">
                     <ul class="pagination justify-content-center">
-                        {% if public_files.has_previous %}
+                        {% if page_obj.has_previous %}
                             <li class="page-item">
-                                <a class="page-link" href="?files_page={{ public_files.previous_page_number }}{% if request.GET.folders_page %}&folders_page={{ request.GET.folders_page }}{% endif %}">
+                                <a class="page-link" href="?page=1">
+                                    <i class="fas fa-angle-double-left"></i> First
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
                                     <i class="fas fa-chevron-left"></i> Previous
                                 </a>
                             </li>
                         {% endif %}
                         
-                        {% for num in public_files.paginator.page_range %}
-                            {% if num == public_files.number %}
+                        {% for num in page_obj.paginator.page_range %}
+                            {% if num == page_obj.number %}
                                 <li class="page-item active">
                                     <span class="page-link">{{ num }}</span>
                                 </li>
-                            {% elif num > public_files.number|add:'-3' and num < public_files.number|add:'3' %}
+                            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
                                 <li class="page-item">
-                                    <a class="page-link" href="?files_page={{ num }}{% if request.GET.folders_page %}&folders_page={{ request.GET.folders_page }}{% endif %}">{{ num }}</a>
+                                    <a class="page-link" href="?page={{ num }}">{{ num }}</a>
                                 </li>
                             {% endif %}
                         {% endfor %}
                         
-                        {% if public_files.has_next %}
+                        {% if page_obj.has_next %}
                             <li class="page-item">
-                                <a class="page-link" href="?files_page={{ public_files.next_page_number }}{% if request.GET.folders_page %}&folders_page={{ request.GET.folders_page }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}">
                                     Next <i class="fas fa-chevron-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">
+                                    Last <i class="fas fa-angle-double-right"></i>
                                 </a>
                             </li>
                         {% endif %}
                     </ul>
                     <div class="text-center mt-2">
                         <small class="text-muted">
-                            Showing {{ public_files.start_index }} - {{ public_files.end_index }} of {{ public_files.paginator.count }} files
+                            Showing {{ page_obj.start_index }} - {{ page_obj.end_index }} of {{ total_items }} items
+                            ({{ stats.total_public_folders }} folders, {{ stats.total_public_files }} files)
                         </small>
                     </div>
                 </nav>
@@ -223,4 +380,36 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// View toggle functionality
+function toggleView(viewType) {
+    const listView = document.getElementById('listView');
+    const panelView = document.getElementById('panelView');
+    const listBtn = document.getElementById('listViewBtn');
+    const panelBtn = document.getElementById('panelViewBtn');
+    
+    if (viewType === 'list') {
+        listView.style.display = 'block';
+        panelView.style.display = 'none';
+        listBtn.classList.add('active');
+        panelBtn.classList.remove('active');
+        localStorage.setItem('homeViewMode', 'list');
+    } else {
+        listView.style.display = 'none';
+        panelView.style.display = 'block';
+        listBtn.classList.remove('active');
+        panelBtn.classList.add('active');
+        localStorage.setItem('homeViewMode', 'panel');
+    }
+}
+
+// Load saved view preference on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const savedView = localStorage.getItem('homeViewMode') || 'list';
+    toggleView(savedView);
+});
+</script>
 {% endblock %}

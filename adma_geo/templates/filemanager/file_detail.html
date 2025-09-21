@@ -7,14 +7,24 @@
 <nav aria-label="breadcrumb" class="mb-4">
     <ol class="breadcrumb">
         <li class="breadcrumb-item">
-            <a href="{% url 'filemanager:dashboard' %}">
-                <i class="fas fa-home me-1"></i>Dashboard
-            </a>
+            {% if is_public_view %}
+                <a href="{% url 'filemanager:home' %}">
+                    <i class="fas fa-home me-1"></i>Home
+                </a>
+            {% else %}
+                <a href="{% url 'filemanager:dashboard' %}">
+                    <i class="fas fa-home me-1"></i>Dashboard
+                </a>
+            {% endif %}
         </li>
         {% if file.folder %}
             {% for breadcrumb in file.folder.get_breadcrumbs %}
             <li class="breadcrumb-item">
-                <a href="{% url 'filemanager:folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+                {% if is_public_view %}
+                    <a href="{% url 'filemanager:public_folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+                {% else %}
+                    <a href="{% url 'filemanager:folder_detail' breadcrumb.id %}">{{ breadcrumb.name }}</a>
+                {% endif %}
             </li>
             {% endfor %}
         {% endif %}
@@ -176,13 +186,24 @@
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
-                        <a href="{% url 'filemanager:download_file' file.id %}" class="btn btn-primary">
-                            <i class="fas fa-download me-2"></i>Download File
-                        </a>
-                        {% if file.is_spatial %}
-                        <a href="{% url 'filemanager:map_viewer' file.id %}" class="btn btn-success">
-                            <i class="fas fa-map-marked-alt me-2"></i>View on Map
-                        </a>
+                        {% if is_public_view %}
+                            <a href="{% url 'filemanager:public_file_download' file.id %}" class="btn btn-primary">
+                                <i class="fas fa-download me-2"></i>Download File
+                            </a>
+                            {% if file.is_spatial and file.gis_status == 'published' %}
+                            <a href="{% url 'filemanager:public_map_viewer' file.id %}" class="btn btn-success">
+                                <i class="fas fa-map-marked-alt me-2"></i>View on Map
+                            </a>
+                            {% endif %}
+                        {% else %}
+                            <a href="{% url 'filemanager:download_file' file.id %}" class="btn btn-primary">
+                                <i class="fas fa-download me-2"></i>Download File
+                            </a>
+                            {% if file.is_spatial %}
+                            <a href="{% url 'filemanager:map_viewer' file.id %}" class="btn btn-success">
+                                <i class="fas fa-map-marked-alt me-2"></i>View on Map
+                            </a>
+                            {% endif %}
                         {% endif %}
                     
                     {% if file.can_preview and file.file_type == 'image' %}
@@ -192,13 +213,25 @@
                     {% endif %}
                     
                     {% if file.folder %}
-                    <a href="{% url 'filemanager:folder_detail' file.folder.id %}" class="btn btn-outline-secondary">
-                        <i class="fas fa-folder me-2"></i>Go to Folder
-                    </a>
+                        {% if is_public_view %}
+                            <a href="{% url 'filemanager:public_folder_detail' file.folder.id %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-folder me-2"></i>Go to Folder
+                            </a>
+                        {% else %}
+                            <a href="{% url 'filemanager:folder_detail' file.folder.id %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-folder me-2"></i>Go to Folder
+                            </a>
+                        {% endif %}
                     {% else %}
-                    <a href="{% url 'filemanager:dashboard' %}" class="btn btn-outline-secondary">
-                        <i class="fas fa-home me-2"></i>Back to Dashboard
-                    </a>
+                        {% if is_public_view %}
+                            <a href="{% url 'filemanager:home' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-home me-2"></i>Back to Home
+                            </a>
+                        {% else %}
+                            <a href="{% url 'filemanager:dashboard' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-home me-2"></i>Back to Dashboard
+                            </a>
+                        {% endif %}
                     {% endif %}
                     
                     {% if can_edit %}
@@ -296,9 +329,17 @@ async function deleteFile() {
         if (data.success) {
             // Redirect back to folder or dashboard
             {% if file.folder %}
-            window.location.href = '{% url "filemanager:folder_detail" file.folder.id %}';
+                {% if is_public_view %}
+                window.location.href = '{% url "filemanager:public_folder_detail" file.folder.id %}';
+                {% else %}
+                window.location.href = '{% url "filemanager:folder_detail" file.folder.id %}';
+                {% endif %}
             {% else %}
-            window.location.href = '{% url "filemanager:dashboard" %}';
+                {% if is_public_view %}
+                window.location.href = '{% url "filemanager:home" %}';
+                {% else %}
+                window.location.href = '{% url "filemanager:dashboard" %}';
+                {% endif %}
             {% endif %}
         } else {
             alert(data.error || 'Error deleting file');

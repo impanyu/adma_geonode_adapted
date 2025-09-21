@@ -10,6 +10,7 @@ urlpatterns = [
     path('documentation/', views.DocumentationView.as_view(), name='documentation'),
     path('public/folder/<uuid:folder_id>/', views.public_folder_detail, name='public_folder_detail'),
     path('public/file/<uuid:file_id>/', views.public_file_detail, name='public_file_detail'),
+    path('public/file/<uuid:file_id>/download/', views.download_file, name='public_file_download'),
     
     # Authenticated URLs
     path('dashboard/', views.dashboard, name='dashboard'),

@@ -75,45 +75,69 @@ class HomeView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         
-        # Get pagination parameters
-        folders_page = self.request.GET.get('folders_page', 1)
-        files_page = self.request.GET.get('files_page', 1)
-        
-        # Get all public folders with pagination
-        all_public_folders = Folder.objects.filter(
+        # Get all public folders and files
+        public_folders_queryset = Folder.objects.filter(
             is_public=True, 
             parent=None
         ).annotate(
             file_count=Count('files'),
             subfolder_count=Count('subfolders')
-        ).order_by('-created_at')
+        ).order_by('name')
         
-        folders_paginator = Paginator(all_public_folders, 12)  # 12 folders per page
+        public_files_queryset = File.objects.filter(is_public=True).order_by('-created_at')
+        
+        # Combine folders and files for unified pagination (100 items per page)
+        page = self.request.GET.get('page', 1)
+        items_per_page = 100
+        
+        # Calculate total items
+        total_folders = public_folders_queryset.count()
+        total_files = public_files_queryset.count()
+        total_items = total_folders + total_files
+        
+        # Set up pagination
+        paginator = Paginator(range(total_items), items_per_page)
+        
         try:
-            public_folders = folders_paginator.page(folders_page)
+            page_obj = paginator.page(page)
         except PageNotAnInteger:
-            public_folders = folders_paginator.page(1)
+            page_obj = paginator.page(1)
         except EmptyPage:
-            public_folders = folders_paginator.page(folders_paginator.num_pages)
+            page_obj = paginator.page(paginator.num_pages)
         
-        # Get all public files with pagination
-        all_public_files = File.objects.filter(is_public=True).order_by('-created_at')
+        # Calculate which items to show on this page
+        start_index = (page_obj.number - 1) * items_per_page
+        end_index = start_index + items_per_page
         
-        files_paginator = Paginator(all_public_files, 12)  # 12 files per page
-        try:
-            public_files = files_paginator.page(files_page)
-        except PageNotAnInteger:
-            public_files = files_paginator.page(1)
-        except EmptyPage:
-            public_files = files_paginator.page(files_paginator.num_pages)
+        # Get the actual items for this page
+        if start_index < total_folders:
+            # Page starts with folders
+            if end_index <= total_folders:
+                # Page contains only folders
+                public_folders = public_folders_queryset[start_index:end_index]
+                public_files = File.objects.none()
+            else:
+                # Page contains some folders and some files
+                public_folders = public_folders_queryset[start_index:]
+                files_start = 0
+                files_end = end_index - total_folders
+                public_files = public_files_queryset[files_start:files_end]
+        else:
+            # Page starts with files
+            public_folders = Folder.objects.none()
+            files_start = start_index - total_folders
+            files_end = files_start + items_per_page
+            public_files = public_files_queryset[files_start:files_end]
         
         context['public_folders'] = public_folders
         context['public_files'] = public_files
+        context['page_obj'] = page_obj
+        context['total_items'] = total_items
         
         # Statistics for public data
         context['stats'] = {
-            'total_public_files': File.objects.filter(is_public=True).count(),
-            'total_public_folders': Folder.objects.filter(is_public=True).count(),
+            'total_public_files': total_files,
+            'total_public_folders': total_folders,
         }
         
         return context
@@ -320,9 +344,12 @@ def public_file_detail(request, file_id):
         except (UnicodeDecodeError, FileNotFoundError):
             file_content = None
     
-    return render(request, 'filemanager/public_file_detail.html', {
+    # Reuse the same template as private file detail, but with can_edit=False
+    return render(request, 'filemanager/file_detail.html', {
         'file': file_obj,
         'file_content': file_content,
+        'can_edit': False,  # Public users can't edit
+        'is_public_view': True,  # Flag to adjust breadcrumbs and navigation
     })
 
 @login_required
@@ -532,9 +559,11 @@ def public_map_viewer(request, file_id):
             'is_published': file_obj.gis_status == 'published',
         }
     
-    return render(request, 'filemanager/public_map_viewer.html', {
+    # Reuse the same template as private map viewer, but with public view context
+    return render(request, 'filemanager/map_viewer.html', {
         'file': file_obj,
         'geoserver_info': geoserver_info,
+        'is_public_view': True,  # Flag to adjust breadcrumbs and navigation
     })
 
 @login_required

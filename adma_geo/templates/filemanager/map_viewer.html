@@ -121,12 +121,22 @@
 <nav aria-label="breadcrumb" class="mb-4">
     <ol class="breadcrumb">
         <li class="breadcrumb-item">
-            <a href="{% url 'filemanager:dashboard' %}">
-                <i class="fas fa-home me-1"></i>Dashboard
-            </a>
+            {% if is_public_view %}
+                <a href="{% url 'filemanager:home' %}">
+                    <i class="fas fa-home me-1"></i>Home
+                </a>
+            {% else %}
+                <a href="{% url 'filemanager:dashboard' %}">
+                    <i class="fas fa-home me-1"></i>Dashboard
+                </a>
+            {% endif %}
         </li>
         <li class="breadcrumb-item">
-            <a href="{% url 'filemanager:file_detail' file.id %}">{{ file.name }}</a>
+            {% if is_public_view %}
+                <a href="{% url 'filemanager:public_file_detail' file.id %}">{{ file.name }}</a>
+            {% else %}
+                <a href="{% url 'filemanager:file_detail' file.id %}">{{ file.name }}</a>
+            {% endif %}
         </li>
         <li class="breadcrumb-item active">Map View</li>
     </ol>
