@@ -246,6 +246,71 @@ class GeoServerAPI:
         except Exception as e:
             logger.error(f"Error uploading shapefile to GeoServer: {str(e)}")
             return False
+    
+    def get_layer_extent(self, layer_name):
+        """Get the spatial extent of a layer from GeoServer"""
+        try:
+            # Method 1: Try direct feature type access
+            url = f"{self.base_url}/rest/workspaces/{self.workspace}/datastores/{layer_name}/featuretypes/{layer_name}.json"
+            response = requests.get(url, auth=self.auth)
+            
+            if response.status_code == 404:
+                # Method 2: Search through all datastores for this layer
+                datastores_url = f"{self.base_url}/rest/workspaces/{self.workspace}/datastores.json"
+                ds_response = requests.get(datastores_url, auth=self.auth)
+                
+                if ds_response.status_code == 200:
+                    datastores = ds_response.json().get('dataStores', {}).get('dataStore', [])
+                    for ds in datastores:
+                        ds_name = ds['name']
+                        # Try to get feature types from this datastore
+                        ft_url = f"{self.base_url}/rest/workspaces/{self.workspace}/datastores/{ds_name}/featuretypes/{layer_name}.json"
+                        ft_response = requests.get(ft_url, auth=self.auth)
+                        if ft_response.status_code == 200:
+                            response = ft_response
+                            logger.info(f"Found layer {layer_name} in datastore {ds_name}")
+                            break
+                        
+                        # Also try getting feature types list to find the layer
+                        fts_url = f"{self.base_url}/rest/workspaces/{self.workspace}/datastores/{ds_name}/featuretypes.json"
+                        fts_response = requests.get(fts_url, auth=self.auth)
+                        if fts_response.status_code == 200:
+                            feature_types = fts_response.json().get('featureTypes', {}).get('featureType', [])
+                            for ft in feature_types:
+                                if ft['name'] == layer_name:
+                                    ft_detail_url = f"{self.base_url}/rest/workspaces/{self.workspace}/datastores/{ds_name}/featuretypes/{layer_name}.json"
+                                    ft_detail_response = requests.get(ft_detail_url, auth=self.auth)
+                                    if ft_detail_response.status_code == 200:
+                                        response = ft_detail_response
+                                        logger.info(f"Found layer {layer_name} in datastore {ds_name} via feature types list")
+                                        break
+                            if response.status_code == 200:
+                                break
+            
+            if response.status_code == 200:
+                feature_type = response.json().get('featureType', {})
+                bbox = feature_type.get('latLonBoundingBox', {})
+                
+                if bbox and all(key in bbox for key in ['minx', 'miny', 'maxx', 'maxy']):
+                    extent = {
+                        "type": "envelope",
+                        "coordinates": [
+                            [bbox['minx'], bbox['miny']], 
+                            [bbox['maxx'], bbox['maxy']]
+                        ]
+                    }
+                    logger.info(f"Retrieved extent for {layer_name}: {extent}")
+                    return extent
+                else:
+                    logger.warning(f"Incomplete bounding box data for layer {layer_name}: {bbox}")
+            else:
+                logger.warning(f"Could not find layer {layer_name} in GeoServer (status: {response.status_code})")
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting layer extent from GeoServer: {str(e)}")
+            return None
 
 def extract_zip_file(file_path, extract_to):
     """Extract zip file and return list of extracted files"""
@@ -440,11 +505,23 @@ def publish_to_geoserver(file_obj):
                 # For shapefiles, we need to handle the components
                 success = geoserver_api.upload_shapefile(layer_name, file_path)
                 if success:
-                    file_obj.geoserver_layer_name = layer_name
+                    # For shapefiles, the actual layer name in GeoServer is the original filename (without extension)
+                    original_shp_name = Path(file_path).stem
+                    file_obj.geoserver_layer_name = original_shp_name
                     file_obj.gis_status = 'published'
                     file_obj.processing_log += f"\nShapefile published to GeoServer as vector layer"
+                    
+                    # Get the real spatial extent from GeoServer
+                    try:
+                        real_extent = geoserver_api.get_layer_extent(original_shp_name)
+                        if real_extent:
+                            file_obj.spatial_extent = json.dumps(real_extent)
+                            file_obj.processing_log += f"\nSpatial extent updated from GeoServer"
+                    except Exception as e:
+                        logger.warning(f"Could not get spatial extent from GeoServer: {str(e)}")
+                    
                     file_obj.save()
-                    return True, f"Shapefile published successfully as {layer_name}"
+                    return True, f"Shapefile published successfully as {original_shp_name}"
                 else:
                     file_obj.gis_status = 'processed'
                     file_obj.processing_log += f"\nShapefile processed but publishing to GeoServer failed"
@@ -464,3 +541,97 @@ def publish_to_geoserver(file_obj):
             
     except Exception as e:
         return False, f"Error publishing to GeoServer: {str(e)}"
+
+def bundle_and_publish_shapefile(shp_file_obj):
+    """
+    Bundle scattered shapefile components and publish to GeoServer
+    This handles cases where shapefile components are uploaded separately
+    and need to be reassembled for GeoServer upload.
+    """
+    try:
+        # Get the base name without extension
+        base_name = shp_file_obj.name.replace('.shp', '')
+        
+        # Find all related shapefile components
+        from filemanager.models import File
+        components = File.objects.filter(
+            owner=shp_file_obj.owner,
+            name__startswith=base_name,
+            folder=shp_file_obj.folder
+        )
+        
+        # Group components by extension
+        component_files = {}
+        for comp in components:
+            # Extract extension
+            parts = comp.name.split('.')
+            if len(parts) >= 2:
+                ext = '.' + parts[-1].lower()
+                component_files[ext] = comp
+        
+        # Check if we have the required components
+        required_exts = ['.shp', '.shx', '.dbf']
+        missing_components = [ext for ext in required_exts if ext not in component_files]
+        
+        if missing_components:
+            logger.error(f"Missing required shapefile components: {missing_components}")
+            return False, f"Missing components: {', '.join(missing_components)}"
+        
+        # Create temporary directory for shapefile bundle
+        import tempfile
+        import shutil
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            logger.info(f"Bundling shapefile components in {temp_dir}")
+            
+            # Copy all components to temp directory with proper names
+            bundled_files = {}
+            for ext, file_obj in component_files.items():
+                source_path = file_obj.file.path
+                target_name = f"{base_name}{ext}"
+                target_path = os.path.join(temp_dir, target_name)
+                
+                shutil.copy2(source_path, target_path)
+                bundled_files[ext] = target_path
+                logger.info(f"Copied {file_obj.name} → {target_name}")
+            
+            # Now upload the bundled shapefile to GeoServer
+            geoserver_api = GeoServerAPI()
+            
+            # Generate clean layer name (use original base name)
+            layer_name = f"{shp_file_obj.owner.username}_{base_name}_{str(shp_file_obj.id)[:8]}".replace(' ', '_').replace('-', '_').replace('.', '_')
+            layer_name = ''.join(c for c in layer_name if c.isalnum() or c == '_')
+            
+            # Ensure workspace exists
+            if not geoserver_api.create_workspace():
+                return False, "Failed to create/verify GeoServer workspace"
+            
+            # Upload the bundled shapefile
+            main_shp_path = bundled_files['.shp']
+            success = geoserver_api.upload_shapefile(layer_name, main_shp_path)
+            
+            if success:
+                # Update the main shapefile record
+                shp_file_obj.geoserver_layer_name = base_name  # Use original name
+                shp_file_obj.gis_status = 'published'
+                shp_file_obj.processing_log += f"\nShapefile bundled and published to GeoServer"
+                
+                # Try to get spatial extent
+                try:
+                    real_extent = geoserver_api.get_layer_extent(base_name)
+                    if real_extent:
+                        shp_file_obj.spatial_extent = json.dumps(real_extent)
+                        shp_file_obj.processing_log += f"\nSpatial extent retrieved from GeoServer"
+                except Exception as e:
+                    logger.warning(f"Could not get spatial extent: {str(e)}")
+                
+                shp_file_obj.save()
+                
+                logger.info(f"Successfully bundled and published {base_name}")
+                return True, f"Shapefile bundled and published successfully as {base_name}"
+            else:
+                return False, "Failed to upload bundled shapefile to GeoServer"
+            
+    except Exception as e:
+        logger.error(f"Error bundling shapefile: {str(e)}")
+        return False, f"Error bundling shapefile: {str(e)}"

@@ -44,6 +44,35 @@
     border-color: #d00000;
     color: white;
 }
+
+.upload-zone {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.upload-zone:hover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+}
+
+.upload-zone.dragover {
+    border-color: #007bff;
+    background-color: #e3f2fd;
+}
+
+.folder-tree {
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.875rem;
+}
+
+.folder-tree .badge {
+    font-size: 0.7rem;
+}
 </style>
 {% endblock %}
 
@@ -167,7 +196,7 @@
 
                             <!-- Files -->
                             {% for file in recent_files %}
-                            <tr style="cursor: pointer;" onclick="window.location.href='{% url 'filemanager:file_detail' file.id %}'">
+                            <tr data-file-id="{{ file.id }}" style="cursor: pointer;" onclick="window.location.href='{% url 'filemanager:file_detail' file.id %}'">
                                 <td>
                                     <div class="d-flex align-items-center">
                                         <i class="{{ file.get_icon_class }} me-3"></i>
@@ -266,7 +295,7 @@
                         <div class="row">
                             {% for file in recent_files %}
                             <div class="col-md-4 col-sm-6 mb-3">
-                                <div class="file-item" onclick="window.location.href='{% url 'filemanager:file_detail' file.id %}'">
+                                <div class="file-item" data-file-id="{{ file.id }}" onclick="window.location.href='{% url 'filemanager:file_detail' file.id %}'">
                                     <div class="d-flex align-items-center">
                                         <i class="{{ file.get_icon_class }} file-icon"></i>
                                         <div class="flex-grow-1">
@@ -459,43 +488,6 @@
     </div>
 </div>
 
-{% endblock %}
-
-{% block extra_css %}
-<style>
-.upload-zone {
-    border: 2px dashed #ccc;
-    border-radius: 8px;
-    padding: 2rem;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.upload-zone:hover {
-    border-color: #007bff;
-    background-color: #f8f9fa;
-}
-
-.upload-zone.dragover {
-    border-color: #007bff;
-    background-color: #e3f2fd;
-}
-
-.folder-tree {
-    max-height: 200px;
-    overflow-y: auto;
-    font-size: 0.875rem;
-}
-
-.folder-item, .file-item {
-    padding: 2px 0;
-}
-
-.folder-tree .badge {
-    font-size: 0.7rem;
-}
-</style>
 {% endblock %}
 
 {% block extra_js %}

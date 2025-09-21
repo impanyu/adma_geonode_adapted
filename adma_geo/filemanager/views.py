@@ -1,5 +1,6 @@
 import json
 import magic
+import os
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -13,6 +14,59 @@ from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from .models import Folder, File
 from .forms import RegistrationForm, FolderForm, FileUploadForm
 from .tasks import process_gis_file_task
+
+def generate_unique_name(name, owner, folder=None, is_folder=False):
+    """
+    Generate a unique name by adding _1, _2, etc. to avoid duplicates
+    
+    Args:
+        name: Original name
+        owner: User object
+        folder: Parent folder (for files) or folder parent (for folders)
+        is_folder: True if checking folder names, False for file names
+    
+    Returns:
+        Unique name string
+    """
+    if is_folder:
+        # For folders, check against other folders in the same parent
+        base_queryset = Folder.objects.filter(owner=owner, parent=folder)
+    else:
+        # For files, check against other files in the same folder
+        base_queryset = File.objects.filter(owner=owner, folder=folder)
+    
+    # Check if the original name already exists
+    if not base_queryset.filter(name=name).exists():
+        return name
+    
+    # Split name and extension for files
+    if not is_folder and '.' in name:
+        name_part, extension = os.path.splitext(name)
+    else:
+        name_part = name
+        extension = ""
+    
+    # Try adding _1, _2, _3, etc. until we find a unique name
+    counter = 1
+    while True:
+        if extension:
+            new_name = f"{name_part}_{counter}{extension}"
+        else:
+            new_name = f"{name_part}_{counter}"
+        
+        if not base_queryset.filter(name=new_name).exists():
+            return new_name
+        
+        counter += 1
+        # Safety check to prevent infinite loop
+        if counter > 1000:
+            # If we somehow reach 1000, add timestamp
+            import time
+            timestamp = int(time.time())
+            if extension:
+                return f"{name_part}_{timestamp}{extension}"
+            else:
+                return f"{name_part}_{timestamp}"
 
 class HomeView(TemplateView):
     """Public home page"""
@@ -197,17 +251,17 @@ def create_folder(request):
             if parent_id:
                 parent_folder = get_object_or_404(Folder, id=parent_id, owner=request.user)
             
-            # Check if folder already exists
-            if Folder.objects.filter(
-                name=folder_name, 
-                parent=parent_folder, 
-                owner=request.user
-            ).exists():
-                return JsonResponse({'error': 'Folder with this name already exists'}, status=400)
+            # Generate unique folder name if duplicate exists
+            unique_folder_name = generate_unique_name(
+                folder_name,
+                request.user,
+                folder=parent_folder,
+                is_folder=True
+            )
             
-            # Create folder
+            # Create folder with unique name
             folder = Folder.objects.create(
-                name=folder_name,
+                name=unique_folder_name,
                 parent=parent_folder,
                 owner=request.user,
                 is_public=is_public
@@ -248,17 +302,17 @@ def upload_files(request):
             
             uploaded_files = []
             for uploaded_file in files:
-                # Check file name uniqueness
-                if File.objects.filter(
-                    name=uploaded_file.name, 
-                    folder=folder, 
-                    owner=request.user
-                ).exists():
-                    continue  # Skip duplicate files
+                # Generate unique filename if duplicate exists
+                unique_filename = generate_unique_name(
+                    uploaded_file.name,
+                    request.user,
+                    folder=folder,
+                    is_folder=False
+                )
                 
-                # Create file object
+                # Create file object with unique name
                 file_obj = File.objects.create(
-                    name=uploaded_file.name,
+                    name=unique_filename,
                     file=uploaded_file,
                     folder=folder,
                     owner=request.user,
@@ -403,13 +457,45 @@ def upload_folders(request):
             if not files or len(files) != len(file_paths):
                 return JsonResponse({'error': 'No files selected or paths mismatch'}, status=400)
             
-            # Create a mapping of created folders to avoid duplicates
+            # First, identify unique root folders and their target names
+            root_folders = {}  # original_name -> unique_name
+            file_mappings = []  # (uploaded_file, original_path, mapped_path)
+            
+            # Collect all root folder names and determine unique names
+            for uploaded_file, file_path in zip(files, file_paths):
+                path_parts = file_path.split('/')
+                if len(path_parts) > 1:  # File is inside a folder
+                    root_folder_name = path_parts[0]
+                    if root_folder_name not in root_folders:
+                        # Generate unique name for this root folder
+                        unique_root_name = generate_unique_name(
+                            root_folder_name,
+                            request.user,
+                            folder=None,  # Root level
+                            is_folder=True
+                        )
+                        root_folders[root_folder_name] = unique_root_name
+                
+                file_mappings.append((uploaded_file, file_path, None))  # Will set mapped_path later
+            
+            # Update file mappings with unique root folder names
+            for i, (uploaded_file, original_path, _) in enumerate(file_mappings):
+                path_parts = original_path.split('/')
+                if len(path_parts) > 1:
+                    root_folder = path_parts[0]
+                    unique_root = root_folders[root_folder]
+                    mapped_path = f"{unique_root}/{'/'.join(path_parts[1:])}"
+                else:
+                    mapped_path = original_path  # File at root level
+                file_mappings[i] = (uploaded_file, original_path, mapped_path)
+            
+            # Now create the folder structure and files
             created_folders = {}
             uploaded_files = []
             
-            for uploaded_file, file_path in zip(files, file_paths):
-                # Parse the path to create folder structure
-                path_parts = file_path.split('/')
+            for uploaded_file, original_path, mapped_path in file_mappings:
+                # Parse the mapped path to create folder structure
+                path_parts = mapped_path.split('/')
                 filename = path_parts[-1]
                 folder_path = path_parts[:-1]
                 
@@ -421,38 +507,28 @@ def upload_folders(request):
                     current_path = f"{current_path}/{folder_name}" if current_path else folder_name
                     
                     if current_path not in created_folders:
-                        # Check if folder already exists
-                        existing_folder = Folder.objects.filter(
-                            name=folder_name, 
-                            parent=current_folder, 
-                            owner=request.user
-                        ).first()
-                        
-                        if existing_folder:
-                            created_folders[current_path] = existing_folder
-                        else:
-                            # Create new folder
-                            folder = Folder.objects.create(
-                                name=folder_name,
-                                parent=current_folder,
-                                owner=request.user,
-                                is_public=is_public
-                            )
-                            created_folders[current_path] = folder
+                        # Create new folder (no need to check for existing since we already made names unique)
+                        folder = Folder.objects.create(
+                            name=folder_name,
+                            parent=current_folder,
+                            owner=request.user,
+                            is_public=is_public
+                        )
+                        created_folders[current_path] = folder
                     
                     current_folder = created_folders[current_path]
                 
-                # Check if file already exists
-                if File.objects.filter(
-                    name=filename, 
-                    folder=current_folder, 
-                    owner=request.user
-                ).exists():
-                    continue  # Skip duplicate files
+                # Generate unique filename if duplicate exists
+                unique_filename = generate_unique_name(
+                    filename,
+                    request.user,
+                    folder=current_folder,
+                    is_folder=False
+                )
                 
-                # Create file object
+                # Create file object with unique name
                 file_obj = File.objects.create(
-                    name=filename,
+                    name=unique_filename,
                     file=uploaded_file,
                     folder=current_folder,
                     owner=request.user,
@@ -475,11 +551,19 @@ def upload_folders(request):
             folders_created = len(created_folders)
             files_created = len(uploaded_files)
             
+            # Check if any folders were renamed
+            renamed_folders = [f"{orig} → {unique}" for orig, unique in root_folders.items() if orig != unique]
+            
+            message = f'Successfully uploaded {files_created} files in {folders_created} folders'
+            if renamed_folders:
+                message += f'. Renamed duplicate folders: {", ".join(renamed_folders)}'
+            
             return JsonResponse({
                 'success': True,
                 'folders_created': folders_created,
                 'files_created': files_created,
-                'message': f'Successfully uploaded {files_created} files in {folders_created} folders'
+                'renamed_folders': renamed_folders,
+                'message': message
             })
             
         except Exception as e:

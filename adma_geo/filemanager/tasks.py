@@ -4,7 +4,7 @@ Celery tasks for processing GIS files
 from celery import shared_task
 from django.contrib.auth import get_user_model
 from .models import File
-from .gis_utils import process_gis_file, publish_to_geoserver
+from .gis_utils import process_gis_file, publish_to_geoserver, bundle_and_publish_shapefile
 import logging
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,14 @@ def publish_to_geoserver_task(self, file_id):
         if file_obj.gis_status != 'processed':
             return f"File {file_obj.name} is not in processed state"
         
-        # Publish to GeoServer
+        # Check if this is a shapefile that needs bundling
+        if file_obj.name.lower().endswith('.shp'):
+            logger.info(f"Delegating shapefile to delayed publishing task: {file_obj.name}")
+            # Use delayed task to allow all components to upload first
+            delayed_shapefile_publish_task.apply_async(args=[file_id], countdown=30)  # Wait 30 seconds
+            return f"Scheduled delayed publishing for shapefile: {file_obj.name}"
+        
+        # Use regular publishing for other file types
         success, message = publish_to_geoserver(file_obj)
         
         if success:
@@ -115,3 +122,78 @@ def process_folder_gis_files(folder_id):
     except Exception as e:
         logger.error(f"Error in process_folder_gis_files: {str(e)}")
         return f"Error processing folder GIS files: {str(e)}"
+
+@shared_task(bind=True)
+def delayed_shapefile_publish_task(self, file_id, max_retries=5):
+    """
+    Delayed task to publish shapefiles after allowing time for all components to upload
+    """
+    try:
+        file_obj = File.objects.get(id=file_id)
+        
+        # Check if file is still in processed state (not already published)
+        if file_obj.gis_status != 'processed':
+            logger.info(f"Shapefile {file_obj.name} is no longer in processed state: {file_obj.gis_status}")
+            return f"Shapefile {file_obj.name} status: {file_obj.gis_status}"
+        
+        # Check if this is a shapefile
+        if not file_obj.name.lower().endswith('.shp'):
+            logger.warning(f"File {file_obj.name} is not a shapefile, using regular publishing")
+            return publish_to_geoserver_task.delay(file_id)
+        
+        # Get the base name and check for components
+        base_name = file_obj.name.replace('.shp', '')
+        required_exts = ['.shp', '.shx', '.dbf']
+        
+        # Find all related components
+        components = File.objects.filter(
+            owner=file_obj.owner,
+            name__startswith=base_name,
+            folder=file_obj.folder
+        )
+        
+        # Check if we have all required components
+        available_exts = set()
+        for comp in components:
+            parts = comp.name.split('.')
+            if len(parts) >= 2:
+                ext = '.' + parts[-1].lower()
+                available_exts.add(ext)
+        
+        missing_components = [ext for ext in required_exts if ext not in available_exts]
+        
+        if missing_components:
+            # If we're missing components and haven't hit max retries, retry later
+            if self.request.retries < max_retries:
+                logger.info(f"Missing components {missing_components} for {file_obj.name}, retrying in 10 seconds (attempt {self.request.retries + 1}/{max_retries})")
+                raise self.retry(countdown=10, max_retries=max_retries)
+            else:
+                # Max retries reached, log error and continue with what we have
+                logger.error(f"Max retries reached for {file_obj.name}, missing components: {missing_components}")
+                file_obj.gis_status = 'error'
+                file_obj.processing_log += f"\n✗ Missing shapefile components after {max_retries} retries: {', '.join(missing_components)}"
+                file_obj.save()
+                return f"Failed to find all components for {file_obj.name}"
+        
+        # All components available, proceed with bundling and publishing
+        logger.info(f"All components available for {file_obj.name}, proceeding with bundling")
+        success, message = bundle_and_publish_shapefile(file_obj)
+        
+        if success:
+            file_obj.processing_log += f"\n✓ Auto-published to GeoServer: {message}"
+            file_obj.save()
+            logger.info(f"Successfully auto-published shapefile: {file_obj.name}")
+            return f"Successfully auto-published shapefile: {file_obj.name}"
+        else:
+            file_obj.gis_status = 'error'
+            file_obj.processing_log += f"\n✗ Auto-publishing failed: {message}"
+            file_obj.save()
+            logger.error(f"Failed to auto-publish shapefile: {file_obj.name} - {message}")
+            return f"Failed to auto-publish shapefile: {message}"
+            
+    except File.DoesNotExist:
+        return f"File with ID {file_id} not found"
+    except Exception as e:
+        if 'retry' not in str(e):  # Don't log retry exceptions
+            logger.error(f"Error in delayed_shapefile_publish_task: {str(e)}")
+        raise  # Re-raise for Celery to handle retries
