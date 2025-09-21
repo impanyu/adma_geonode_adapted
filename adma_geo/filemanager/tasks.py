@@ -295,3 +295,57 @@ def update_all_embeddings_task():
     except Exception as e:
         logger.error(f"Error updating all embeddings: {str(e)}")
         return f"Error updating all embeddings: {str(e)}"
+
+@shared_task
+def generate_map_embedding_task(map_id):
+    """
+    Generate embeddings for a specific map
+    """
+    try:
+        from .models import Map
+        from .embedding_service import embedding_service
+        
+        map_obj = Map.objects.get(id=map_id)
+        success = embedding_service.generate_map_embedding(map_obj)
+        
+        if success:
+            message = f"Successfully generated embeddings for map: {map_obj.name}"
+            logger.info(message)
+            return message
+        else:
+            message = f"Failed to generate embeddings for map: {map_obj.name}"
+            logger.error(message)
+            return message
+        
+    except Map.DoesNotExist:
+        logger.error(f"Map with ID {map_id} not found")
+        return f"Map with ID {map_id} not found"
+    except Exception as e:
+        logger.error(f"Error generating map embeddings: {str(e)}")
+        return f"Error generating map embeddings: {str(e)}"
+
+@shared_task
+def update_map_embeddings_task():
+    """
+    Update embeddings for all maps in the system
+    """
+    try:
+        from .models import Map
+        from .embedding_service import embedding_service
+        
+        maps_updated = 0
+        for map_obj in Map.objects.all():
+            try:
+                if embedding_service.generate_map_embedding(map_obj):
+                    maps_updated += 1
+            except Exception as e:
+                logger.error(f"Error updating embeddings for map {map_obj.name}: {str(e)}")
+                continue
+        
+        message = f"Updated embeddings for {maps_updated} maps"
+        logger.info(message)
+        return message
+        
+    except Exception as e:
+        logger.error(f"Error updating map embeddings: {str(e)}")
+        return f"Error updating map embeddings: {str(e)}"

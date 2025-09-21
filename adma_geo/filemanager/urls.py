@@ -40,8 +40,11 @@ urlpatterns = [
     
     # Map AJAX endpoints
     path('api/maps/check-name/', map_views.check_map_name, name='check_map_name'),
+    path('api/maps/<uuid:map_id>/available-layers/', map_views.get_available_layers, name='get_available_layers'),
+    path('api/maps/<uuid:map_id>/add-layers/', map_views.add_layers_to_map, name='add_layers_to_map'),
     path('api/maps/<uuid:map_id>/add-layer/', map_views.add_layer_to_map, name='add_layer_to_map'),
     path('api/maps/<uuid:map_id>/layers/<uuid:layer_id>/remove/', map_views.remove_layer_from_map, name='remove_layer_from_map'),
     path('api/maps/<uuid:map_id>/update-order/', map_views.update_layer_order, name='update_layer_order'),
+    path('api/maps/<uuid:map_id>/toggle-visibility/', map_views.toggle_map_visibility, name='toggle_map_visibility'),
     path('api/maps/<uuid:map_id>/delete/', map_views.delete_map, name='delete_map'),
 ]

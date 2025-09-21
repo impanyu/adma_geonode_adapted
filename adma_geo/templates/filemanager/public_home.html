@@ -242,6 +242,27 @@
                                     <td><small>{{ file.created_at|date:"M d, Y" }}</small></td>
                                 </tr>
                                 {% endfor %}
+                                
+                                <!-- Maps third -->
+                                {% for map in public_maps %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'filemanager:map_detail' map.id %}" class="text-decoration-none d-flex align-items-center">
+                                            <i class="fas fa-map file-icon"></i>
+                                            <div>
+                                                <div class="fw-bold">{{ map.name }}</div>
+                                            </div>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-warning">Map</span>
+                                        <span class="badge bg-info ms-1">GIS</span>
+                                    </td>
+                                    <td><small>{{ map.map_layers.count }} layers</small></td>
+                                    <td><small>{{ map.owner.username }}</small></td>
+                                    <td><small>{{ map.created_at|date:"M d, Y" }}</small></td>
+                                </tr>
+                                {% endfor %}
                             </tbody>
                         </table>
                     </div>
@@ -285,6 +306,27 @@
                                         <br>
                                         <small class="text-muted">
                                             by {{ file.owner.username }} • {{ file.created_at|date:"M d, Y" }}
+                                        </small>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                        {% endfor %}
+                        
+                        <!-- Maps third -->
+                        {% for map in public_maps %}
+                        <div class="col-md-4 col-sm-6 mb-3">
+                            <a href="{% url 'filemanager:map_detail' map.id %}" class="text-decoration-none">
+                                <div class="file-item map-item">
+                                    <i class="fas fa-map file-icon"></i>
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-1 fw-bold">{{ map.name|truncatechars:25 }}</h6>
+                                        <small class="text-muted">
+                                            {{ map.map_layers.count }} layers
+                                        </small>
+                                        <br>
+                                        <small class="text-muted">
+                                            by {{ map.owner.username }} • {{ map.created_at|date:"M d, Y" }}
                                         </small>
                                     </div>
                                 </div>

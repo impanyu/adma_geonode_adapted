@@ -12,7 +12,7 @@ from django.db.models import Q, Count
 from django.urls import reverse_lazy
 from django.conf import settings
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from .models import Folder, File
+from .models import Folder, File, Map
 from .forms import RegistrationForm, FolderForm, FileUploadForm
 from .tasks import process_gis_file_task
 
@@ -101,14 +101,20 @@ class HomeView(TemplateView):
             Q(folder__is_public=False)  # Folder is private (so this file is top public level)
         ).order_by('-created_at')
         
-        # Combine folders and files for unified pagination (100 items per page)
+        # Get public maps
+        public_maps_queryset = Map.objects.filter(
+            is_public=True
+        ).order_by('-created_at')
+        
+        # Combine folders, files, and maps for unified pagination (100 items per page)
         page = self.request.GET.get('page', 1)
         items_per_page = 100
         
         # Calculate total items
         total_folders = public_folders_queryset.count()
         total_files = public_files_queryset.count()
-        total_items = total_folders + total_files
+        total_maps = public_maps_queryset.count()
+        total_items = total_folders + total_files + total_maps
         
         # Set up pagination
         paginator = Paginator(range(total_items), items_per_page)
@@ -124,28 +130,49 @@ class HomeView(TemplateView):
         start_index = (page_obj.number - 1) * items_per_page
         end_index = start_index + items_per_page
         
-        # Get the actual items for this page
+        # Initialize empty querysets
+        public_folders = Folder.objects.none()
+        public_files = File.objects.none()
+        public_maps = Map.objects.none()
+        
+        # Determine which content types are in this page range
         if start_index < total_folders:
             # Page starts with folders
             if end_index <= total_folders:
                 # Page contains only folders
                 public_folders = public_folders_queryset[start_index:end_index]
-                public_files = File.objects.none()
             else:
-                # Page contains some folders and some files
+                # Page contains folders and other content
                 public_folders = public_folders_queryset[start_index:]
-                files_start = 0
-                files_end = end_index - total_folders
-                public_files = public_files_queryset[files_start:files_end]
-        else:
+                remaining_slots = end_index - total_folders
+                
+                if remaining_slots > 0 and remaining_slots <= total_files:
+                    # Remaining slots filled with files
+                    public_files = public_files_queryset[0:remaining_slots]
+                elif remaining_slots > total_files:
+                    # All files + some maps
+                    public_files = public_files_queryset[0:total_files]
+                    maps_count = remaining_slots - total_files
+                    public_maps = public_maps_queryset[0:maps_count]
+        elif start_index < total_folders + total_files:
             # Page starts with files
-            public_folders = Folder.objects.none()
             files_start = start_index - total_folders
-            files_end = files_start + items_per_page
-            public_files = public_files_queryset[files_start:files_end]
+            if end_index <= total_folders + total_files:
+                # Page contains only files
+                public_files = public_files_queryset[files_start:files_start + items_per_page]
+            else:
+                # Page contains files and maps
+                public_files = public_files_queryset[files_start:]
+                maps_count = end_index - (total_folders + total_files)
+                public_maps = public_maps_queryset[0:maps_count]
+        else:
+            # Page starts with maps
+            maps_start = start_index - (total_folders + total_files)
+            public_maps = public_maps_queryset[maps_start:maps_start + items_per_page]
         
         context['public_folders'] = public_folders
         context['public_files'] = public_files
+        context['public_maps'] = public_maps
         context['page_obj'] = page_obj
         context['total_items'] = total_items
         
@@ -153,6 +180,7 @@ class HomeView(TemplateView):
         context['stats'] = {
             'total_public_files': total_files,
             'total_public_folders': total_folders,
+            'total_public_maps': total_maps,
         }
         
         return context
@@ -828,6 +856,19 @@ def upload_folders(request):
             # Check if any folders were renamed
             renamed_folders = [f"{orig} → {unique}" for orig, unique in root_folders.items() if orig != unique]
             
+            # Trigger recursive embedding generation for root folders
+            # This will generate embeddings for all subfolders and files recursively
+            for folder_path, folder_obj in created_folders.items():
+                # Only trigger for root folders (no parent or parent is the specified parent folder)
+                if folder_obj.parent == parent_folder:
+                    try:
+                        from .tasks import generate_recursive_embeddings_task
+                        generate_recursive_embeddings_task.delay(str(folder_obj.id))
+                    except Exception as e:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Failed to trigger recursive embeddings for folder {folder_obj.name}: {e}")
+            
             message = f'Successfully uploaded {files_created} files in {folders_created} folders'
             if renamed_folders:
                 message += f'. Renamed duplicate folders: {", ".join(renamed_folders)}'
@@ -988,7 +1029,15 @@ class SearchView(TemplateView):
                                 'similarity': result['similarity'],
                                 'metadata_text': result['document']
                             })
-                    except (File.DoesNotExist, Folder.DoesNotExist):
+                        elif result['type'] == 'map':
+                            obj = Map.objects.get(id=result['id'])
+                            search_results.append({
+                                'object': obj,
+                                'type': 'map',
+                                'similarity': result['similarity'],
+                                'metadata_text': result['document']
+                            })
+                    except (File.DoesNotExist, Folder.DoesNotExist, Map.DoesNotExist):
                         # Object might have been deleted, skip
                         continue
                 
@@ -1071,7 +1120,18 @@ def search_api(request):
                             'is_public': obj.is_public,
                             'similarity': round(result['similarity'], 3)
                         })
-                except (File.DoesNotExist, Folder.DoesNotExist):
+                    elif result['type'] == 'map':
+                        obj = Map.objects.get(id=result['id'])
+                        suggestions.append({
+                            'id': str(obj.id),
+                            'type': 'map',
+                            'name': obj.name,
+                            'icon': 'fas fa-map',
+                            'url': obj.get_absolute_url(),
+                            'is_public': obj.is_public,
+                            'similarity': round(result['similarity'], 3)
+                        })
+                except (File.DoesNotExist, Folder.DoesNotExist, Map.DoesNotExist):
                     continue
             
             return JsonResponse({'suggestions': suggestions})

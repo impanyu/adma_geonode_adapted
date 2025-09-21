@@ -13,7 +13,7 @@ from sentence_transformers import SentenceTransformer
 from django.conf import settings
 from django.utils import timezone
 
-from .models import File, Folder
+from .models import File, Folder, Map
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +163,64 @@ class EmbeddingService:
             logger.error(f"Error adding folder embedding for {folder_obj.name}: {e}")
             return False
     
+    def generate_map_embedding(self, map_obj) -> bool:
+        """Add or update map embedding in ChromaDB"""
+        try:
+            metadata_text = map_obj.get_metadata_for_embedding()
+            embedding = self.generate_embedding(metadata_text)
+            
+            if not embedding:
+                return False
+            
+            # Generate ChromaDB ID if not exists
+            if not map_obj.chroma_id:
+                map_obj.chroma_id = f"map_{map_obj.id}"
+            
+            # Get layer information
+            layer_count = map_obj.map_layers.count()
+            layer_names = [layer.file.name for layer in map_obj.map_layers.all()]
+            layer_types = list(set([layer.file.file_type for layer in map_obj.map_layers.all()]))
+            
+            # Prepare metadata for ChromaDB
+            metadata = {
+                "type": "map",
+                "id": str(map_obj.id),
+                "name": map_obj.name,
+                "owner_id": str(map_obj.owner.id),
+                "owner_username": map_obj.owner.username,
+                "is_public": map_obj.is_public,
+                "description": map_obj.description or "",
+                "layer_count": layer_count,
+                "layer_names": ", ".join(layer_names) if layer_names else "",
+                "layer_types": ", ".join(layer_types) if layer_types else "",
+                "file_type": "map",  # For search filtering
+                "spatial": True,     # Maps are always spatial
+                "created_at": map_obj.created_at.isoformat(),
+                "updated_at": map_obj.updated_at.isoformat(),
+                "center_lat": map_obj.center_lat,
+                "center_lng": map_obj.center_lng,
+                "zoom_level": map_obj.zoom_level,
+            }
+            
+            # Add to ChromaDB
+            self.collection.upsert(
+                ids=[map_obj.chroma_id],
+                embeddings=[embedding],
+                documents=[metadata_text],
+                metadatas=[metadata]
+            )
+            
+            # Update timestamp
+            map_obj.embedding_updated_at = timezone.now()
+            map_obj.save(update_fields=['chroma_id', 'embedding_updated_at'])
+            
+            logger.info(f"Added map embedding: {map_obj.name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error adding map embedding for {map_obj.name}: {e}")
+            return False
+    
     def remove_embedding(self, chroma_id: str) -> bool:
         """Remove embedding from ChromaDB"""
         try:
@@ -228,7 +286,7 @@ class EmbeddingService:
             query_text_stripped = query_text.strip() if query_text else ""
             
             if not query_text_stripped:
-                # No search query - return all items matching filters (metadata-only search)
+                # No search query - return all eligible items based on filters
                 logger.info("Performing metadata-only search (no query text)")
                 results = self.collection.get(
                     where=where_clause,
@@ -267,8 +325,8 @@ class EmbeddingService:
                     return []
                 
                 # Search in ChromaDB with semantic similarity
-                # Get more results initially to apply flexible threshold logic
-                search_limit = max(limit * 2, 50)  # Get extra results for comparison
+                # Get enough results to apply threshold logic  
+                search_limit = max(limit * 3, 100)  # Get more results for better filtering
                 results = self.collection.query(
                     query_embeddings=[query_embedding],
                     n_results=search_limit,
@@ -296,18 +354,18 @@ class EmbeddingService:
                             'distance': distance
                         })
                 
-                # Apply flexible threshold logic: top 10 OR similarity > -0.5, whichever is smaller
+                # Apply new logic: top 10 OR similarity > -0.5, whichever is larger
                 top_n = min(10, len(all_items))
                 threshold_filtered = [item for item in all_items if item['similarity'] > -0.5]
                 
-                if len(threshold_filtered) < top_n:
-                    # Threshold filtering gives fewer results, use it
+                if len(threshold_filtered) > top_n:
+                    # Threshold filtering gives more results, use it
                     items = threshold_filtered[:limit]  # Still respect overall limit
-                    logger.info(f"Using threshold filtering: {len(threshold_filtered)} items > -0.5 similarity (smaller than top {top_n})")
+                    logger.info(f"Using threshold filtering: {len(threshold_filtered)} items > -0.5 similarity (larger than top {top_n})")
                 else:
-                    # Top N gives fewer results, use it
+                    # Top N gives more results (or equal), use it
                     items = all_items[:top_n]
-                    logger.info(f"Using top-N filtering: top {top_n} results (smaller than {len(threshold_filtered)} threshold results)")
+                    logger.info(f"Using top-N filtering: top {top_n} results (larger than or equal to {len(threshold_filtered)} threshold results)")
                 
                 logger.info(f"Semantic search for '{query_text_stripped}' returned {len(items)} results")
                 return items

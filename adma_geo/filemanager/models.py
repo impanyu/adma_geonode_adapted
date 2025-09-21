@@ -125,6 +125,34 @@ class Folder(models.Model):
     def subfolder_count(self):
         """Get total count of subfolders in this folder"""
         return self.subfolders.count()
+    
+    def delete(self, *args, **kwargs):
+        """Override delete to clean up ChromaDB embeddings recursively"""
+        # Manually delete all subfolders and files to ensure their delete() methods are called
+        # This is necessary because Django's CASCADE doesn't call custom delete() methods
+        
+        # First, recursively delete all subfolders
+        for subfolder in self.subfolders.all():
+            subfolder.delete()
+        
+        # Then delete all files in this folder
+        for file_obj in self.files.all():
+            file_obj.delete()
+        
+        # Clean up ChromaDB embedding for this folder
+        if self.chroma_id:
+            try:
+                from .embedding_service import EmbeddingService
+                embedding_service = EmbeddingService()
+                embedding_service.remove_embedding(self.chroma_id)
+            except Exception as e:
+                # Log error but don't prevent folder deletion
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to delete ChromaDB embedding for folder {self.name}: {e}")
+        
+        # Proceed with normal deletion (subfolders and files are already deleted)
+        super().delete(*args, **kwargs)
 
 class File(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -197,7 +225,7 @@ class File(models.Model):
             try:
                 from .embedding_service import EmbeddingService
                 embedding_service = EmbeddingService()
-                embedding_service.delete_file_embedding(self.chroma_id)
+                embedding_service.remove_embedding(self.chroma_id)
             except Exception as e:
                 # Log error but don't prevent file deletion
                 import logging
@@ -358,6 +386,10 @@ class Map(models.Model):
     bbox_min_lng = models.FloatField(null=True, blank=True, help_text="Minimum longitude of all files")
     bbox_max_lng = models.FloatField(null=True, blank=True, help_text="Maximum longitude of all files")
     
+    # ChromaDB integration for search
+    chroma_id = models.CharField(max_length=255, blank=True, null=True, help_text="ChromaDB collection ID for search")
+    embedding_updated_at = models.DateTimeField(null=True, blank=True, help_text="Last time embeddings were updated")
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -398,6 +430,49 @@ class Map(models.Model):
                 logger.error(f"Failed to delete GeoServer Layer Group for map {self.name}: {e}")
         
         super().delete(*args, **kwargs)
+
+    def get_metadata_for_embedding(self):
+        """Get map metadata as a text string for embedding generation"""
+        layer_names = []
+        layer_types = []
+        layer_owners = []
+        
+        # Get information about map layers
+        for map_layer in self.map_layers.select_related('file').all():
+            layer_names.append(map_layer.file.name)
+            layer_types.append(map_layer.file.file_type)
+            layer_owners.append(map_layer.file.owner.username)
+        
+        layer_count = self.map_layers.count()
+        visibility = "public" if self.is_public else "private"
+        
+        # Build comprehensive metadata string
+        metadata_parts = [
+            f"Map name: {self.name}",
+            f"Map type: composite spatial map",
+            f"Owner: {self.owner.username}",
+            f"Visibility: {visibility}",
+            f"Layer count: {layer_count}",
+        ]
+        
+        if self.description:
+            metadata_parts.append(f"Description: {self.description}")
+            
+        if layer_names:
+            metadata_parts.append(f"Contains layers: {', '.join(layer_names)}")
+            metadata_parts.append(f"Layer types: {', '.join(set(layer_types))}")
+            metadata_parts.append(f"Layer owners: {', '.join(set(layer_owners))}")
+            
+        if self.center_lat and self.center_lng:
+            metadata_parts.append(f"Map center: {self.center_lat:.4f}, {self.center_lng:.4f}")
+            
+        if self.bbox_min_lat and self.bbox_max_lat:
+            metadata_parts.append(f"Spatial extent: {self.bbox_min_lat:.4f} to {self.bbox_max_lat:.4f} latitude, {self.bbox_min_lng:.4f} to {self.bbox_max_lng:.4f} longitude")
+            
+        metadata_parts.append(f"Created: {self.created_at.strftime('%Y-%m-%d')}")
+        metadata_parts.append(f"Updated: {self.updated_at.strftime('%Y-%m-%d')}")
+        
+        return " | ".join(metadata_parts)
 
     def calculate_and_update_center(self):
         """Calculate center point and zoom level from all file bounding boxes and update the model"""

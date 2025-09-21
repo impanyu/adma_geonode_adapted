@@ -250,12 +250,14 @@
                         <option value="">All Types</option>
                         <option value="file" {% if content_type == 'file' %}selected{% endif %}>Files Only</option>
                         <option value="folder" {% if content_type == 'folder' %}selected{% endif %}>Folders Only</option>
+                        <option value="map" {% if content_type == 'map' %}selected{% endif %}>Maps Only</option>
                     </select>
                 </div>
                 <div class="col-md-2">
                     <select class="form-select" name="file_type">
                         <option value="">All File Types</option>
                         <option value="gis" {% if file_type == 'gis' %}selected{% endif %}>GIS Files</option>
+                        <option value="map" {% if file_type == 'map' %}selected{% endif %}>Maps</option>
                         <option value="image" {% if file_type == 'image' %}selected{% endif %}>Images</option>
                         <option value="document" {% if file_type == 'document' %}selected{% endif %}>Documents</option>
                         <option value="text" {% if file_type == 'text' %}selected{% endif %}>Text Files</option>
@@ -343,13 +345,15 @@
                             </thead>
                             <tbody>
                                 {% for result in search_results %}
-                                <tr onclick="window.location.href='{% if result.object.owner == user %}{{ result.object.get_absolute_url }}{% else %}{% if result.type == 'file' %}{% url 'filemanager:public_file_detail' result.object.id %}{% else %}{% url 'filemanager:public_folder_detail' result.object.id %}{% endif %}{% endif %}';" style="cursor: pointer;">
+                                <tr onclick="window.location.href='{% if result.object.owner == user %}{{ result.object.get_absolute_url }}{% else %}{% if result.type == 'file' %}{% url 'filemanager:public_file_detail' result.object.id %}{% elif result.type == 'folder' %}{% url 'filemanager:public_folder_detail' result.object.id %}{% elif result.type == 'map' %}{% url 'filemanager:map_detail' result.object.id %}{% endif %}{% endif %}';" style="cursor: pointer;">
                                     <td>
                                         <div class="d-flex align-items-center">
                                             {% if result.type == 'file' %}
                                                 <i class="{{ result.object.get_icon_class }} file-icon"></i>
-                                            {% else %}
+                                            {% elif result.type == 'folder' %}
                                                 <i class="fas fa-folder folder-icon"></i>
+                                            {% elif result.type == 'map' %}
+                                                <i class="fas fa-map file-icon"></i>
                                             {% endif %}
                                             <div>
                                                 <div class="fw-bold">{{ result.object.name }}</div>
@@ -360,15 +364,22 @@
                                                     </small>
                                                 {% elif result.type == 'file' %}
                                                     <small class="text-muted">{{ result.object.file_type|title }}</small>
+                                                {% elif result.type == 'map' %}
+                                                    <small class="text-muted">
+                                                        <span class="badge bg-info me-1">GIS</span>
+                                                        {{ result.object.map_layers.count }} layers
+                                                    </small>
                                                 {% endif %}
                                             </div>
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="badge {% if result.type == 'file' %}bg-secondary{% else %}bg-primary{% endif %}">
+                                        <span class="badge {% if result.type == 'file' %}bg-secondary{% elif result.type == 'folder' %}bg-primary{% elif result.type == 'map' %}bg-warning{% endif %}">
                                             {{ result.type|title }}
                                         </span>
                                         {% if result.type == 'file' and result.object.is_spatial %}
+                                            <br><span class="badge bg-info">GIS</span>
+                                        {% elif result.type == 'map' %}
                                             <br><span class="badge bg-info">GIS</span>
                                         {% endif %}
                                     </td>
@@ -392,8 +403,10 @@
                                         <small class="text-muted">
                                             {% if result.type == 'file' %}
                                                 {{ result.object.get_size_display }}
-                                            {% else %}
+                                            {% elif result.type == 'folder' %}
                                                 {{ result.object.files.count }} files
+                                            {% elif result.type == 'map' %}
+                                                {{ result.object.map_layers.count }} layers
                                             {% endif %}
                                         </small>
                                     </td>
@@ -409,12 +422,14 @@
                     <div class="row">
                         {% for result in search_results %}
                         <div class="col-md-4 col-sm-6 mb-3">
-                            <a href="{% if result.object.owner == user %}{{ result.object.get_absolute_url }}{% else %}{% if result.type == 'file' %}{% url 'filemanager:public_file_detail' result.object.id %}{% else %}{% url 'filemanager:public_folder_detail' result.object.id %}{% endif %}{% endif %}" class="text-decoration-none">
-                                <div class="{% if result.type == 'file' %}file-item{% else %}folder-item{% endif %}">
+                            <a href="{% if result.object.owner == user %}{{ result.object.get_absolute_url }}{% else %}{% if result.type == 'file' %}{% url 'filemanager:public_file_detail' result.object.id %}{% elif result.type == 'folder' %}{% url 'filemanager:public_folder_detail' result.object.id %}{% elif result.type == 'map' %}{% url 'filemanager:map_detail' result.object.id %}{% endif %}{% endif %}" class="text-decoration-none">
+                                <div class="{% if result.type == 'file' %}file-item{% elif result.type == 'folder' %}folder-item{% elif result.type == 'map' %}file-item map-item{% endif %}">
                                     {% if result.type == 'file' %}
                                         <i class="{{ result.object.get_icon_class }} file-icon"></i>
-                                    {% else %}
+                                    {% elif result.type == 'folder' %}
                                         <i class="fas fa-folder folder-icon"></i>
+                                    {% elif result.type == 'map' %}
+                                        <i class="fas fa-map file-icon"></i>
                                     {% endif %}
                                     <div class="flex-grow-1">
                                         <div class="d-flex justify-content-between align-items-start">
@@ -429,8 +444,11 @@
                                                 {% if result.object.is_spatial %}
                                                     <span class="badge bg-info ms-1">GIS</span>
                                                 {% endif %}
-                                            {% else %}
+                                            {% elif result.type == 'folder' %}
                                                 {{ result.object.files.count }} files • {{ result.object.subfolders.count }} folders
+                                            {% elif result.type == 'map' %}
+                                                {{ result.object.map_layers.count }} layers • Map
+                                                <span class="badge bg-info ms-1">GIS</span>
                                             {% endif %}
                                         </small>
                                         <br>

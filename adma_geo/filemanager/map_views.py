@@ -228,6 +228,16 @@ def create_map_view(request):
                 if success:
                     # Calculate and store the center point based on all file bounding boxes
                     map_obj.calculate_and_update_center()
+                    
+                    # Generate embeddings for the new map
+                    try:
+                        from .tasks import generate_map_embedding_task
+                        generate_map_embedding_task.delay(str(map_obj.id))
+                    except Exception as e:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Failed to generate embeddings for map {map_obj.name}: {e}")
+                    
                     messages.success(request, f'Map "{map_name}" created successfully!')
                     return redirect('filemanager:map_detail', map_id=map_obj.id)
                 else:
@@ -356,6 +366,176 @@ def check_map_name(request):
     
     exists = Map.objects.filter(name=map_name, owner=request.user).exists()
     return JsonResponse({'exists': exists})
+
+
+@login_required
+@require_http_methods(["POST"])
+def toggle_map_visibility(request, map_id):
+    """Toggle map visibility between private and public"""
+    try:
+        map_obj = get_object_or_404(Map, id=map_id, owner=request.user)
+        
+        import json
+        data = json.loads(request.body)
+        is_public = data.get('is_public', False)
+        
+        map_obj.is_public = is_public
+        map_obj.save(update_fields=['is_public'])
+        
+        # Regenerate embeddings since visibility changed
+        try:
+            from .tasks import generate_map_embedding_task
+            generate_map_embedding_task.delay(str(map_obj.id))
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to regenerate embeddings for map {map_obj.name}: {e}")
+        
+        status = 'public' if is_public else 'private'
+        return JsonResponse({
+            'success': True, 
+            'message': f'Map "{map_obj.name}" is now {status}',
+            'is_public': is_public
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def get_available_layers(request, map_id):
+    """Get available spatial files that can be added to the map"""
+    try:
+        map_obj = get_object_or_404(Map, id=map_id, owner=request.user)
+        
+        # Get files already in the map
+        existing_file_ids = set(map_obj.map_layers.values_list('file_id', flat=True))
+        
+        # Get available spatial files (user's + public) that are not already in the map
+        user_files = File.objects.filter(
+            owner=request.user,
+            is_spatial=True,
+            gis_status='published',
+            geoserver_layer_name__isnull=False
+        ).exclude(id__in=existing_file_ids).order_by('name')
+        
+        public_files = File.objects.filter(
+            is_public=True,
+            is_spatial=True,
+            gis_status='published',
+            geoserver_layer_name__isnull=False
+        ).exclude(owner=request.user).exclude(id__in=existing_file_ids).order_by('name')
+        
+        # Format response
+        user_files_data = []
+        for file_obj in user_files:
+            user_files_data.append({
+                'id': str(file_obj.id),
+                'name': file_obj.name,
+                'file_type': file_obj.file_type,
+                'folder': file_obj.folder.get_full_path() if file_obj.folder else None,
+                'created_at': file_obj.created_at.strftime('%Y-%m-%d'),
+                'size': file_obj.get_size_display(),
+            })
+        
+        public_files_data = []
+        for file_obj in public_files:
+            public_files_data.append({
+                'id': str(file_obj.id),
+                'name': file_obj.name,
+                'file_type': file_obj.file_type,
+                'folder': file_obj.folder.get_full_path() if file_obj.folder else None,
+                'owner': file_obj.owner.username,
+                'created_at': file_obj.created_at.strftime('%Y-%m-%d'),
+                'size': file_obj.get_size_display(),
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'user_files': user_files_data,
+            'public_files': public_files_data
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def add_layers_to_map(request, map_id):
+    """Add selected layers to the map"""
+    try:
+        map_obj = get_object_or_404(Map, id=map_id, owner=request.user)
+        
+        import json
+        data = json.loads(request.body)
+        selected_file_ids = data.get('file_ids', [])
+        
+        if not selected_file_ids:
+            return JsonResponse({'success': False, 'error': 'No files selected'})
+        
+        # Get the current highest layer order
+        max_order = map_obj.map_layers.aggregate(
+            max_order=models.Max('layer_order')
+        )['max_order'] or -1
+        
+        added_layers = []
+        layer_order = max_order + 1
+        
+        with transaction.atomic():
+            for file_id in selected_file_ids:
+                try:
+                    file_obj = File.objects.get(
+                        id=file_id,
+                        is_spatial=True,
+                        gis_status='published',
+                        geoserver_layer_name__isnull=False
+                    )
+                    
+                    # Check permissions
+                    if file_obj.owner != request.user and not file_obj.is_public:
+                        continue
+                    
+                    # Check if already in map
+                    if map_obj.map_layers.filter(file=file_obj).exists():
+                        continue
+                    
+                    # Create map layer
+                    map_layer = MapLayer.objects.create(
+                        map=map_obj,
+                        file=file_obj,
+                        layer_order=layer_order
+                    )
+                    
+                    added_layers.append({
+                        'id': str(map_layer.id),
+                        'name': file_obj.name,
+                        'file_type': file_obj.file_type,
+                        'layer_order': layer_order
+                    })
+                    
+                    layer_order += 1
+                    
+                except File.DoesNotExist:
+                    continue
+        
+        if added_layers:
+            # Recalculate map center and bounds
+            map_obj.calculate_and_update_center()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Added {len(added_layers)} layer(s) to the map',
+                'added_layers': added_layers
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'No valid layers could be added'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 
 @login_required
