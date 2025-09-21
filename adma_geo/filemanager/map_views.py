@@ -13,6 +13,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import ListView, DetailView, CreateView
 from django.http import JsonResponse, HttpResponseForbidden
+from django.db import models
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -87,57 +88,6 @@ class MapDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
-class MapViewerView(LoginRequiredMixin, DetailView):
-    """Map viewer page for visualizing composite maps"""
-    model = Map
-    template_name = 'filemanager/composite_map_viewer.html'
-    context_object_name = 'map_obj'
-    pk_url_kwarg = 'map_id'
-
-    def get_object(self, queryset=None):
-        """Get map with permission check"""
-        map_obj = get_object_or_404(Map, id=self.kwargs['map_id'])
-        
-        # Check permissions
-        if not map_obj.is_public and map_obj.owner != self.request.user:
-            raise HttpResponseForbidden("You don't have permission to view this map.")
-        
-        return map_obj
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        
-        # Get visible map layers
-        map_layers = self.object.map_layers.filter(
-            is_visible=True,
-            file__geoserver_layer_name__isnull=False
-        ).select_related('file').order_by('layer_order')
-        
-        context['map_layers'] = map_layers
-        
-        # Generate Layer Group WMS URL
-        layer_group_manager = LayerGroupManager()
-        context['layer_group_wms_url'] = layer_group_manager.get_layer_group_wms_url(
-            self.object,
-            BBOX='-180,-90,180,90',
-            WIDTH='512',
-            HEIGHT='512'
-        )
-        
-        # Map configuration using stored values
-        context['map_config'] = {
-            'center_lat': self.object.center_lat or 40.0,
-            'center_lng': self.object.center_lng or -100.0,
-            'zoom_level': self.object.zoom_level or 4,
-            'layer_group_name': f"{self.object.geoserver_workspace}:{self.object.geoserver_layer_group_name}",
-            # Bounding box for fitting the map
-            'bbox_min_lat': self.object.bbox_min_lat,
-            'bbox_max_lat': self.object.bbox_max_lat,
-            'bbox_min_lng': self.object.bbox_min_lng,
-            'bbox_max_lng': self.object.bbox_max_lng,
-        }
-        
-        return context
 
 
 @login_required
@@ -511,7 +461,11 @@ def add_layers_to_map(request, map_id):
                         'id': str(map_layer.id),
                         'name': file_obj.name,
                         'file_type': file_obj.file_type,
-                        'layer_order': layer_order
+                        'layer_order': layer_order,
+                        'workspace': file_obj.geoserver_workspace,
+                        'geoserver_layer_name': file_obj.geoserver_layer_name,
+                        'opacity': map_layer.opacity,
+                        'is_visible': map_layer.is_visible
                     })
                     
                     layer_order += 1
@@ -533,6 +487,59 @@ def add_layers_to_map(request, map_id):
                 'success': False,
                 'error': 'No valid layers could be added'
             })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def update_layer_opacity(request, map_id, layer_id):
+    """Update layer opacity"""
+    try:
+        map_obj = get_object_or_404(Map, id=map_id, owner=request.user)
+        layer = get_object_or_404(MapLayer, id=layer_id, map=map_obj)
+        
+        import json
+        data = json.loads(request.body)
+        opacity = data.get('opacity')
+        
+        if opacity is None or opacity < 0 or opacity > 1:
+            return JsonResponse({'success': False, 'error': 'Invalid opacity value'})
+        
+        layer.opacity = opacity
+        layer.save(update_fields=['opacity'])
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Layer opacity updated to {opacity}',
+            'opacity': opacity
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def update_layer_visibility(request, map_id, layer_id):
+    """Update layer visibility"""
+    try:
+        map_obj = get_object_or_404(Map, id=map_id, owner=request.user)
+        layer = get_object_or_404(MapLayer, id=layer_id, map=map_obj)
+        
+        import json
+        data = json.loads(request.body)
+        visible = data.get('visible', True)
+        
+        layer.is_visible = visible
+        layer.save(update_fields=['is_visible'])
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Layer visibility updated to {"visible" if visible else "hidden"}',
+            'visible': visible
+        })
         
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})

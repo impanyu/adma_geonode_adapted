@@ -28,7 +28,6 @@ urlpatterns = [
     path('maps/', map_views.MapsListView.as_view(), name='maps_list'),
     path('maps/create/', map_views.create_map_view, name='create_map'),
     path('maps/<uuid:map_id>/', map_views.MapDetailView.as_view(), name='map_detail'),
-    path('maps/<uuid:map_id>/viewer/', map_views.MapViewerView.as_view(), name='composite_map_viewer'),
     
     # AJAX endpoints
     path('api/folder/create/', views.create_folder, name='create_folder'),
@@ -44,6 +43,8 @@ urlpatterns = [
     path('api/maps/<uuid:map_id>/add-layers/', map_views.add_layers_to_map, name='add_layers_to_map'),
     path('api/maps/<uuid:map_id>/add-layer/', map_views.add_layer_to_map, name='add_layer_to_map'),
     path('api/maps/<uuid:map_id>/layers/<uuid:layer_id>/remove/', map_views.remove_layer_from_map, name='remove_layer_from_map'),
+    path('api/maps/<uuid:map_id>/layers/<uuid:layer_id>/opacity/', map_views.update_layer_opacity, name='update_layer_opacity'),
+    path('api/maps/<uuid:map_id>/layers/<uuid:layer_id>/visibility/', map_views.update_layer_visibility, name='update_layer_visibility'),
     path('api/maps/<uuid:map_id>/update-order/', map_views.update_layer_order, name='update_layer_order'),
     path('api/maps/<uuid:map_id>/toggle-visibility/', map_views.toggle_map_visibility, name='toggle_map_visibility'),
     path('api/maps/<uuid:map_id>/delete/', map_views.delete_map, name='delete_map'),

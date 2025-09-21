@@ -55,6 +55,27 @@
         font-weight: bold;
         color: #d00000;
     }
+    
+    /* Search box styles */
+    .search-box {
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 10;
+        padding-bottom: 0.5rem;
+        margin-bottom: 1rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .file-item.hidden {
+        display: none !important;
+    }
+    
+    .search-results-info {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-bottom: 0.5rem;
+    }
 </style>
 {% endblock %}
 
@@ -128,11 +149,24 @@
                                 <div class="mb-4">
                                     <h6 class="mb-3">
                                         <i class="fas fa-user text-secondary me-2"></i>Your Spatial Files 
-                                        <span class="badge bg-secondary">{{ user_files.count }}</span>
+                                        <span class="badge bg-secondary" id="userFilesCount">{{ user_files.count }}</span>
                                     </h6>
                                     <div class="file-selector">
+                                        <!-- Search Box for User Files -->
+                                        <div class="search-box">
+                                            <div class="input-group input-group-sm">
+                                                <input type="text" class="form-control" 
+                                                       id="userFilesSearch" 
+                                                       placeholder="Search your spatial files by name..."
+                                                       onkeyup="filterFiles('user')">
+                                                <button class="btn btn-outline-secondary" type="button" onclick="clearSearch('user')">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            <div id="userSearchInfo" class="search-results-info mt-1"></div>
+                                        </div>
                                         {% for file in user_files %}
-                                        <div class="file-item" data-file-id="{{ file.id }}" onclick="toggleFileSelection(this)">
+                                        <div class="file-item user-file" data-file-id="{{ file.id }}" data-file-name="{{ file.name|lower }}" onclick="toggleFileSelection(this)">
                                             <div class="d-flex justify-content-between align-items-start">
                                                 <div class="flex-grow-1">
                                                     <h6 class="mb-1">{{ file.name }}</h6>
@@ -159,11 +193,24 @@
                                 <div class="mb-4">
                                     <h6 class="mb-3">
                                         <i class="fas fa-globe text-success me-2"></i>Public Spatial Files 
-                                        <span class="badge bg-success">{{ public_files.count }}</span>
+                                        <span class="badge bg-success" id="publicFilesCount">{{ public_files.count }}</span>
                                     </h6>
                                     <div class="file-selector">
+                                        <!-- Search Box for Public Files -->
+                                        <div class="search-box">
+                                            <div class="input-group input-group-sm">
+                                                <input type="text" class="form-control" 
+                                                       id="publicFilesSearch" 
+                                                       placeholder="Search public spatial files by name..."
+                                                       onkeyup="filterFiles('public')">
+                                                <button class="btn btn-outline-secondary" type="button" onclick="clearSearch('public')">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            <div id="publicSearchInfo" class="search-results-info mt-1"></div>
+                                        </div>
                                         {% for file in public_files %}
-                                        <div class="file-item" data-file-id="{{ file.id }}" onclick="toggleFileSelection(this)">
+                                        <div class="file-item public-file" data-file-id="{{ file.id }}" data-file-name="{{ file.name|lower }}" onclick="toggleFileSelection(this)">
                                             <div class="d-flex justify-content-between align-items-start">
                                                 <div class="flex-grow-1">
                                                     <h6 class="mb-1">{{ file.name }}</h6>
@@ -296,6 +343,83 @@ function checkMapName() {
 
 // Add event listener for map name input
 document.getElementById('map_name').addEventListener('input', checkMapName);
+
+// File filtering functionality
+function filterFiles(type) {
+    const searchInput = document.getElementById(type + 'FilesSearch');
+    const searchTerm = searchInput.value.toLowerCase().trim();
+    const fileClass = type === 'user' ? '.user-file' : '.public-file';
+    const fileItems = document.querySelectorAll(fileClass);
+    const infoElement = document.getElementById(type + 'SearchInfo');
+    
+    let visibleCount = 0;
+    let totalCount = fileItems.length;
+    
+    fileItems.forEach(item => {
+        const fileName = item.dataset.fileName;
+        
+        if (searchTerm === '' || fileName.includes(searchTerm)) {
+            item.classList.remove('hidden');
+            visibleCount++;
+        } else {
+            item.classList.add('hidden');
+        }
+    });
+    
+    // Update search info
+    if (searchTerm === '') {
+        infoElement.textContent = '';
+    } else {
+        if (visibleCount === 0) {
+            infoElement.textContent = `No files found matching "${searchTerm}"`;
+            infoElement.style.color = '#dc3545'; // Red for no results
+        } else if (visibleCount === totalCount) {
+            infoElement.textContent = `Showing all ${totalCount} files`;
+            infoElement.style.color = '#28a745'; // Green for all results
+        } else {
+            infoElement.textContent = `Showing ${visibleCount} of ${totalCount} files`;
+            infoElement.style.color = '#6c757d'; // Gray for partial results
+        }
+    }
+    
+    // Update badge counts to reflect filtered results
+    updateBadgeCounts();
+}
+
+function updateBadgeCounts() {
+    // Update user files count
+    const visibleUserFiles = document.querySelectorAll('.user-file:not(.hidden)').length;
+    const userFilesCountElement = document.getElementById('userFilesCount');
+    if (userFilesCountElement) {
+        userFilesCountElement.textContent = visibleUserFiles;
+    }
+    
+    // Update public files count
+    const visiblePublicFiles = document.querySelectorAll('.public-file:not(.hidden)').length;
+    const publicFilesCountElement = document.getElementById('publicFilesCount');
+    if (publicFilesCountElement) {
+        publicFilesCountElement.textContent = visiblePublicFiles;
+    }
+}
+
+// Clear search function
+function clearSearch(type) {
+    const searchInput = document.getElementById(type + 'FilesSearch');
+    const infoElement = document.getElementById(type + 'SearchInfo');
+    
+    searchInput.value = '';
+    infoElement.textContent = '';
+    
+    // Show all files
+    const fileClass = type === 'user' ? '.user-file' : '.public-file';
+    const fileItems = document.querySelectorAll(fileClass);
+    
+    fileItems.forEach(item => {
+        item.classList.remove('hidden');
+    });
+    
+    updateBadgeCounts();
+}
 
 // Form submission
 document.getElementById('createMapForm').addEventListener('submit', function(e) {

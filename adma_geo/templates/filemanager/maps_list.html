@@ -67,6 +67,33 @@
         border-left-color: #d00000;
         background-color: #f8f9fa;
     }
+    
+    /* Create New Map Button Styling */
+    .create-map-btn {
+        height: 48px !important;
+        padding: 0.75rem 1.5rem !important;
+        font-size: 1rem !important;
+        font-weight: 500 !important;
+        line-height: 1.2 !important;
+        border-radius: 8px !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.5rem !important;
+        box-shadow: 0 2px 8px rgba(208, 0, 0, 0.2) !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    .create-map-btn:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(208, 0, 0, 0.3) !important;
+        background-color: #b30000 !important;
+        border-color: #b30000 !important;
+    }
+    
+    .create-map-btn:active {
+        transform: translateY(0) !important;
+        box-shadow: 0 2px 8px rgba(208, 0, 0, 0.2) !important;
+    }
 </style>
 {% endblock %}
 
@@ -94,8 +121,9 @@
                     </div>
                     
                     <!-- Create Map Button -->
-                    <a href="{% url 'filemanager:create_map' %}" class="btn btn-danger">
-                        <i class="fas fa-plus me-1"></i>Create New Map
+                    <a href="{% url 'filemanager:create_map' %}" class="btn btn-danger create-map-btn">
+                        <i class="fas fa-plus"></i>
+                        <span>Create New Map</span>
                     </a>
                 </div>
             </div>
@@ -136,10 +164,7 @@
                                 </div>
                                 
                                 <div class="d-flex gap-2">
-                                    <a href="{{ map_obj.get_map_viewer_url }}" class="btn btn-outline-primary btn-sm flex-fill">
-                                        <i class="fas fa-eye me-1"></i>View
-                                    </a>
-                                    <a href="{{ map_obj.get_absolute_url }}" class="btn btn-outline-secondary btn-sm flex-fill">
+                                    <a href="{{ map_obj.get_absolute_url }}" class="btn btn-outline-primary btn-sm flex-fill">
                                         <i class="fas fa-edit me-1"></i>Edit
                                     </a>
                                     <button class="btn btn-outline-danger btn-sm" onclick="deleteMap('{{ map_obj.id }}', '{{ map_obj.name }}')">
@@ -168,10 +193,7 @@
                                 </small>
                             </div>
                             <div class="d-flex gap-2">
-                                <a href="{{ map_obj.get_map_viewer_url }}" class="btn btn-outline-primary btn-sm">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-                                <a href="{{ map_obj.get_absolute_url }}" class="btn btn-outline-secondary btn-sm">
+                                <a href="{{ map_obj.get_absolute_url }}" class="btn btn-outline-primary btn-sm">
                                     <i class="fas fa-edit"></i>
                                 </a>
                                 <button class="btn btn-outline-danger btn-sm" onclick="deleteMap('{{ map_obj.id }}', '{{ map_obj.name }}')">

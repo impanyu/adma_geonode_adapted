@@ -404,9 +404,6 @@ class Map(models.Model):
         from django.urls import reverse
         return reverse('filemanager:map_detail', kwargs={'map_id': self.id})
 
-    def get_map_viewer_url(self):
-        from django.urls import reverse
-        return reverse('filemanager:composite_map_viewer', kwargs={'map_id': self.id})
 
     def generate_layer_group_name(self):
         """Generate unique layer group name for GeoServer"""
