@@ -971,80 +971,170 @@ class SearchView(TemplateView):
         search_results = []
         total_results = 0
         
-        if query:
-            try:
-                from .embedding_service import embedding_service
-                chromadb_available = True
-            except RuntimeError as e:
-                if "sqlite3" in str(e).lower():
-                    # ChromaDB requires SQLite 3.35+, gracefully handle this
-                    chromadb_available = False
-                    context['chromadb_error'] = "ChromaDB requires SQLite 3.35+ to function. Vector search is temporarily unavailable."
+        # Perform search if there's a query OR if there are filters applied
+        has_filters = any([content_type, file_type, is_spatial, is_public, owner_filter])
+        
+        
+        if query or has_filters:
+            if query:
+                # Use ChromaDB for semantic search with text queries
+                try:
+                    from .embedding_service import embedding_service
+                    chromadb_available = True
+                except RuntimeError as e:
+                    if "sqlite3" in str(e).lower():
+                        # ChromaDB requires SQLite 3.35+, gracefully handle this
+                        chromadb_available = False
+                        context['chromadb_error'] = "ChromaDB requires SQLite 3.35+ to function. Vector search is temporarily unavailable."
+                    else:
+                        raise e
+                
+                if chromadb_available:
+                    # Build filters for hybrid search
+                    filters = {}
+                
+                    if content_type:
+                        filters['type'] = content_type
+                    
+                    if file_type:
+                        filters['file_type'] = file_type
+                        
+                    if is_spatial:
+                        filters['is_spatial'] = is_spatial.lower() == 'true'
+                        
+                    if is_public:
+                        filters['is_public'] = is_public.lower() == 'true'
+                        
+                    if owner_filter:
+                        filters['owner_username'] = owner_filter
+                    
+                    # Perform semantic search
+                    user_id = str(self.request.user.id) if self.request.user.is_authenticated else ''
+                    
+                    raw_results = embedding_service.search_similar(
+                        query_text=query,
+                        user_id=user_id,
+                        filters=filters,
+                        limit=1000  # Get more results for pagination
+                    )
+                    
+                    # Convert ChromaDB results to Django objects
+                    for result in raw_results:
+                        try:
+                            if result['type'] == 'file':
+                                obj = File.objects.get(id=result['id'])
+                                search_results.append({
+                                    'object': obj,
+                                    'type': 'file',
+                                    'similarity': result['similarity'],
+                                    'metadata_text': result['document']
+                                })
+                            elif result['type'] == 'folder':
+                                obj = Folder.objects.get(id=result['id'])
+                                search_results.append({
+                                    'object': obj,
+                                    'type': 'folder',
+                                    'similarity': result['similarity'],
+                                    'metadata_text': result['document']
+                                })
+                            elif result['type'] == 'map':
+                                obj = Map.objects.get(id=result['id'])
+                                search_results.append({
+                                    'object': obj,
+                                    'type': 'map',
+                                    'similarity': result['similarity'],
+                                    'metadata_text': result['document']
+                                })
+                        except (File.DoesNotExist, Folder.DoesNotExist, Map.DoesNotExist):
+                            # Object might have been deleted, skip
+                            continue
+                    
+                    total_results = len(search_results)
                 else:
-                    raise e
+                    # ChromaDB not available, show message about requirements
+                    total_results = 0
             
-            if chromadb_available:
-                # Build filters for hybrid search
-                filters = {}
+            else:
+                # Use PostgreSQL for filter-only searches (no text query)
+                from django.db.models import Q
                 
-                if content_type:
-                    filters['type'] = content_type
+                # Build base permission filter
+                base_filter = Q()
+                if self.request.user.is_authenticated:
+                    base_filter = Q(owner=self.request.user) | Q(is_public=True)
+                else:
+                    base_filter = Q(is_public=True)
                 
-                if file_type:
-                    filters['file_type'] = file_type
+                # Search in different content types based on filters
+                if not content_type or content_type == 'file':
+                    # Search files
+                    file_query = File.objects.filter(base_filter)
                     
-                if is_spatial:
-                    filters['is_spatial'] = is_spatial.lower() == 'true'
+                    if file_type:
+                        file_query = file_query.filter(file_type__icontains=file_type)
                     
-                if is_public:
-                    filters['is_public'] = is_public.lower() == 'true'
+                    if is_spatial == 'true':
+                        file_query = file_query.filter(gis_status__in=['processed', 'published'])
+                    elif is_spatial == 'false':
+                        file_query = file_query.exclude(gis_status__in=['processed', 'published'])
                     
-                if owner_filter:
-                    filters['owner_username'] = owner_filter
+                    if is_public == 'true':
+                        file_query = file_query.filter(is_public=True)
+                    elif is_public == 'false':
+                        file_query = file_query.filter(is_public=False)
+                    
+                    if owner_filter:
+                        file_query = file_query.filter(owner__username__icontains=owner_filter)
+                    
+                    for obj in file_query.order_by('-updated_at')[:1000]:
+                        search_results.append({
+                            'object': obj,
+                            'type': 'file',
+                            'similarity': None,
+                            'metadata_text': f"{obj.name} {obj.file_type or ''}"
+                        })
                 
-                # Perform semantic search
-                raw_results = embedding_service.search_similar(
-                    query_text=query,
-                    user_id=str(self.request.user.id) if self.request.user.is_authenticated else '',
-                    filters=filters,
-                    limit=1000  # Get more results for pagination
-                )
+                if not content_type or content_type == 'folder':
+                    # Search folders
+                    folder_query = Folder.objects.filter(base_filter)
+                    
+                    if is_public == 'true':
+                        folder_query = folder_query.filter(is_public=True)
+                    elif is_public == 'false':
+                        folder_query = folder_query.filter(is_public=False)
+                    
+                    if owner_filter:
+                        folder_query = folder_query.filter(owner__username__icontains=owner_filter)
+                    
+                    for obj in folder_query.order_by('-updated_at')[:1000]:
+                        search_results.append({
+                            'object': obj,
+                            'type': 'folder',
+                            'similarity': None,
+                            'metadata_text': f"{obj.name} folder"
+                        })
                 
-                # Convert ChromaDB results to Django objects
-                for result in raw_results:
-                    try:
-                        if result['type'] == 'file':
-                            obj = File.objects.get(id=result['id'])
-                            search_results.append({
-                                'object': obj,
-                                'type': 'file',
-                                'similarity': result['similarity'],
-                                'metadata_text': result['document']
-                            })
-                        elif result['type'] == 'folder':
-                            obj = Folder.objects.get(id=result['id'])
-                            search_results.append({
-                                'object': obj,
-                                'type': 'folder',
-                                'similarity': result['similarity'],
-                                'metadata_text': result['document']
-                            })
-                        elif result['type'] == 'map':
-                            obj = Map.objects.get(id=result['id'])
-                            search_results.append({
-                                'object': obj,
-                                'type': 'map',
-                                'similarity': result['similarity'],
-                                'metadata_text': result['document']
-                            })
-                    except (File.DoesNotExist, Folder.DoesNotExist, Map.DoesNotExist):
-                        # Object might have been deleted, skip
-                        continue
+                if not content_type or content_type == 'map':
+                    # Search maps
+                    map_query = Map.objects.filter(base_filter)
+                    
+                    if is_public == 'true':
+                        map_query = map_query.filter(is_public=True)
+                    elif is_public == 'false':
+                        map_query = map_query.filter(is_public=False)
+                    
+                    if owner_filter:
+                        map_query = map_query.filter(owner__username__icontains=owner_filter)
+                    
+                    for obj in map_query.order_by('-updated_at')[:1000]:
+                        search_results.append({
+                            'object': obj,
+                            'type': 'map',
+                            'similarity': None,
+                            'metadata_text': f"{obj.name} {obj.description or ''}"
+                        })
                 
                 total_results = len(search_results)
-            else:
-                # ChromaDB not available, show message about requirements
-                total_results = 0
         
         # Pagination (100 items per page)
         items_per_page = 100
@@ -1061,7 +1151,7 @@ class SearchView(TemplateView):
             'search_results': page_obj,
             'page_obj': page_obj,
             'total_results': total_results,
-            'has_search': bool(query),
+            'has_search': bool(query or has_filters),
         })
         
         return context

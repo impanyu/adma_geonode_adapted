@@ -337,8 +337,8 @@
             </h5>
             <div class="d-flex align-items-center gap-2">
                 <select id="mapLayerSelect" class="form-select form-select-sm" style="width: auto;">
-                    <option value="osm">Default (OpenStreetMap)</option>
-                    <option value="satellite">Satellite</option>
+                    <option value="osm">OpenStreetMap</option>
+                    <option value="satellite" selected>Satellite</option>
                     <option value="terrain">Terrain</option>
                     <option value="topo">Topographic</option>
                 </select>
@@ -525,7 +525,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'osm': new ol.layer.Tile({
                 source: new ol.source.OSM(), // Use native OpenStreetMap attribution
                 title: 'OpenStreetMap',
-                visible: true
+                visible: false
             }),
             'satellite': new ol.layer.Tile({
                 source: new ol.source.XYZ({
@@ -533,7 +533,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     attributions: '© Esri, Maxar, Earthstar Geographics, and the GIS User Community'
                 }),
                 title: 'Satellite',
-                visible: false
+                visible: true
             }),
             'terrain': new ol.layer.Tile({
                 source: new ol.source.XYZ({
@@ -709,7 +709,7 @@ document.addEventListener('DOMContentLoaded', function() {
         map.addControl(new ol.control.FullScreen());
         
         console.log('Map created successfully');
-        console.log('Base layer: OpenStreetMap');
+        console.log('Base layer: Satellite (default)');
         console.log('WMS layer: {{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}');
         console.log('WMS URL: {{ geoserver_info.wms_url }}');
         

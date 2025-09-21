@@ -174,8 +174,6 @@
         border-radius: 8px;
         position: relative;
         overflow: hidden;
-        margin-bottom: 1rem;
-        margin-top: 1rem;
     }
     
     .map-controls {
@@ -198,8 +196,8 @@
     /* OpenLayers control positioning */
     #map .ol-attribution {
         background: rgba(255,255,255,0.8) !important;
-        border-radius: 4px !important;
-        bottom: 8px !important;
+        border-radius: 0px !important;
+        bottom: 0px !important;
         left: 0px !important;
         right: 0px !important;
         width: 100% !important;
@@ -207,7 +205,7 @@
         font-size: 11px !important;
         line-height: 1.2 !important;
         white-space: nowrap !important;
-        padding: 2px 4px !important;
+        padding: 4px !important;
         text-align: center !important;
         margin: 0 !important;
     }
@@ -216,6 +214,19 @@
         position: absolute !important;
         top: 10px !important;
         right: 10px !important;
+        left: auto !important;
+        bottom: auto !important;
+        background: rgba(255, 255, 255, 0.9) !important;
+        border-radius: 6px !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+        border: 1px solid rgba(0,0,0,0.1) !important;
+        margin: 0 !important;
+    }
+    
+    #map .ol-full-screen {
+        position: absolute !important;
+        top: 10px !important;
+        right: 60px !important;
         left: auto !important;
         bottom: auto !important;
         background: rgba(255, 255, 255, 0.9) !important;
@@ -436,7 +447,7 @@
                         <div class="basemap-selector">
                             <select class="form-select form-select-sm" id="basemapSelector" onchange="changeBasemap()">
                                 <option value="osm">OpenStreetMap</option>
-                                <option value="satellite">Satellite</option>
+                                <option value="satellite" selected>Satellite</option>
                                 <option value="terrain">Terrain</option>
                             </select>
                         </div>
@@ -989,9 +1000,12 @@ let basemapLayer;
 let mapLayers = {}; // Track map layers by layer ID
 
 function initializeMap() {
-    // Initialize base map layer
+    // Initialize base map layer with satellite imagery
     basemapLayer = new ol.layer.Tile({
-        source: new ol.source.OSM()
+        source: new ol.source.XYZ({
+            url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attributions: '© Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+        })
     });
     
     // Map configuration
@@ -1264,12 +1278,14 @@ function changeBasemap() {
     switch(selectedBasemap) {
         case 'satellite':
             newSource = new ol.source.XYZ({
-                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                attributions: '© Esri, Maxar, Earthstar Geographics, and the GIS User Community'
             });
             break;
         case 'terrain':
             newSource = new ol.source.XYZ({
-                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}'
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
+                attributions: '© Esri, USGS, NOAA'
             });
             break;
         default: // osm
