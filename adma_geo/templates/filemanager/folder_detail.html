@@ -44,6 +44,38 @@
     border-color: #d00000;
     color: white;
 }
+
+.upload-zone {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.upload-zone:hover {
+    border-color: #28a745;
+    background-color: #f8f9fa;
+}
+
+.upload-zone.dragover {
+    border-color: #28a745;
+    background-color: #e8f5e8;
+}
+
+.folder-tree .folder-item {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+
+.folder-tree .file-item {
+    padding: 4px 12px;
+    border-left: 2px solid #28a745;
+    margin-left: 8px;
+}
 </style>
 {% endblock %}
 
@@ -334,6 +366,48 @@
                     {% endif %}
                 </div>
                 {% endif %}
+                
+                <!-- Pagination Controls -->
+                {% if page_obj and page_obj.num_pages > 1 %}
+                <div class="d-flex justify-content-between align-items-center mt-4">
+                    <div class="text-muted">
+                        Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ total_items }} items
+                    </div>
+                    <nav aria-label="Folder content pagination">
+                        <ul class="pagination mb-0">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1">First</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+                                </li>
+                            {% endif %}
+                            
+                            {% for num in page_obj.paginator.page_range %}
+                                {% if page_obj.number == num %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ num }}</span>
+                                    </li>
+                                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Last</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -621,6 +695,252 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedView = localStorage.getItem('fileViewType') || 'panel';
     toggleView(savedView);
 });
+
+// Upload Folders Modal Functions
+function showUploadFoldersModal() {
+    const modal = new bootstrap.Modal(document.getElementById('uploadFoldersModal'));
+    modal.show();
+}
+
+// Folder upload handling - initialize after DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadFoldersZone = document.getElementById('uploadFoldersZone');
+    const folderInput = document.getElementById('folderInput');
+    const selectedFolders = document.getElementById('selectedFolders');
+    const folderTree = document.getElementById('folderTree');
+    const uploadFoldersBtn = document.getElementById('uploadFoldersBtn');
+
+    if (uploadFoldersZone && folderInput && selectedFolders && folderTree && uploadFoldersBtn) {
+        uploadFoldersZone.addEventListener('click', () => folderInput.click());
+
+        folderInput.addEventListener('change', function() {
+            const files = this.files;
+            if (files.length === 0) {
+                selectedFolders.style.display = 'none';
+                uploadFoldersBtn.disabled = true;
+                return;
+            }
+            
+            displaySelectedFolders(files);
+        });
+
+        // Move displaySelectedFolders function inside
+        function displaySelectedFolders(files) {
+    const folderStructure = {};
+    const folderPaths = new Set();
+    let totalSize = 0;
+    
+    for (let file of files) {
+        const path = file.webkitRelativePath;
+        const pathParts = path.split('/');
+        const rootFolder = pathParts[0];
+        
+        folderPaths.add(rootFolder);
+        totalSize += file.size;
+        
+        if (!folderStructure[rootFolder]) {
+            folderStructure[rootFolder] = {
+                files: []
+            };
+        }
+        
+        folderStructure[rootFolder].files.push({
+            name: file.name,
+            size: file.size
+        });
+    }
+    
+    // Render simplified folder tree
+    renderSimpleFolderTree(folderStructure, folderTree);
+    
+    // Update summary
+    document.getElementById('totalFolders').textContent = folderPaths.size;
+    document.getElementById('totalFiles').textContent = files.length;
+    document.getElementById('totalSize').textContent = (totalSize / 1024 / 1024).toFixed(2) + ' MB';
+    
+    selectedFolders.style.display = 'block';
+    uploadFoldersBtn.disabled = false;
+}
+
+function renderSimpleFolderTree(structure, container) {
+    container.innerHTML = '';
+    
+    for (let folderName in structure) {
+        const folderDiv = document.createElement('div');
+        folderDiv.className = 'folder-item mb-2';
+        folderDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="fas fa-folder text-warning me-2"></i>
+                <strong>${folderName}</strong>
+                <span class="badge bg-secondary ms-2">${structure[folderName].files.length} files</span>
+            </div>
+        `;
+        container.appendChild(folderDiv);
+        
+        // Show first few files as preview
+        const filesToShow = Math.min(3, structure[folderName].files.length);
+        for (let i = 0; i < filesToShow; i++) {
+            const file = structure[folderName].files[i];
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'file-item ms-3';
+            fileDiv.innerHTML = `
+                <div class="d-flex align-items-center text-muted small">
+                    <i class="fas fa-file me-2"></i>
+                    <span>${file.name}</span>
+                    <small class="ms-auto">${(file.size / 1024).toFixed(1)} KB</small>
+                </div>
+            `;
+            container.appendChild(fileDiv);
+        }
+        
+        // Show "and X more files" if there are more
+        if (structure[folderName].files.length > 3) {
+            const moreDiv = document.createElement('div');
+            moreDiv.className = 'file-item ms-3 text-muted small';
+            moreDiv.innerHTML = `<em>... and ${structure[folderName].files.length - 3} more files</em>`;
+            container.appendChild(moreDiv);
+        }
+    }
+        }
+
+        // Handle Upload Folders Form
+        document.getElementById('uploadFoldersForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const files = folderInput.files;
+    if (files.length === 0) return;
+    
+    const formData = new FormData();
+    for (let file of files) {
+        formData.append('files', file);
+        formData.append('file_paths', file.webkitRelativePath);
+    }
+    formData.append('is_public', document.getElementById('foldersArePublic').checked);
+    // Add the current folder ID so files are uploaded to this folder
+    formData.append('folder_id', '{{ folder.id }}');
+    
+    uploadFoldersBtn.disabled = true;
+    uploadFoldersBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
+    
+    try {
+        const response = await fetch('{% url "filemanager:upload_folders" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: formData
+        });
+        
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            const data = await response.json();
+            
+            if (data.success) {
+                alert(`Success! Uploaded ${data.files_created} files in ${data.folders_created} folders.`);
+                location.reload(); // Reload to show new folders and files
+            } else {
+                alert(data.error || 'Error uploading folders');
+            }
+        } else {
+            // If not JSON, likely an HTML error page
+            const errorText = await response.text();
+            console.error('Server error:', errorText);
+            alert('Server error occurred. Please check the console for details or try with fewer files.');
+        }
+    } catch (error) {
+        console.error('Error uploading folders:', error);
+        alert('Error uploading folders: ' + error.message);
+    } finally {
+        uploadFoldersBtn.disabled = false;
+        uploadFoldersBtn.innerHTML = 'Upload Folders';
+        // Reset form
+        folderInput.value = '';
+        selectedFolders.style.display = 'none';
+        const modal = bootstrap.Modal.getInstance(document.getElementById('uploadFoldersModal'));
+        modal.hide();
+    }
+});
+
+    } // End if statement for element checks
+}); // End DOMContentLoaded event listener
+
+// CSRF token helper
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
 </script>
 {% endif %}
+
+<!-- Upload Folders Modal -->
+<div class="modal fade" id="uploadFoldersModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Upload Folders</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="uploadFoldersForm">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> This will upload entire folder structures with all files and subfolders into "{{ folder.name }}".
+                    </div>
+                    <div class="upload-zone" id="uploadFoldersZone">
+                        <i class="fas fa-folder-open" style="font-size: 3rem; color: #28a745; opacity: 0.5;"></i>
+                        <h5 class="mt-3">Click to select folders</h5>
+                        <p class="text-muted">You can select multiple folders to upload</p>
+                        <input type="file" id="folderInput" webkitdirectory multiple style="display: none;">
+                    </div>
+                    <div id="selectedFolders" class="mt-3" style="display: none;">
+                        <h6>Selected Folders & Files:</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body p-3">
+                                        <h6 class="card-title mb-2">Folder Structure</h6>
+                                        <div id="folderTree" class="folder-tree"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body p-3">
+                                        <h6 class="card-title mb-2">Upload Summary</h6>
+                                        <div id="uploadSummary">
+                                            <p><strong>Total folders:</strong> <span id="totalFolders">0</span></p>
+                                            <p><strong>Total files:</strong> <span id="totalFiles">0</span></p>
+                                            <p><strong>Total size:</strong> <span id="totalSize">0 MB</span></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="foldersArePublic">
+                        <label class="form-check-label" for="foldersArePublic">
+                            Make uploaded folders and files public
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success" id="uploadFoldersBtn" disabled>Upload Folders</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}

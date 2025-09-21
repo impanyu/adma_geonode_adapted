@@ -7,6 +7,7 @@ urlpatterns = [
     # Public URLs
     path('', views.HomeView.as_view(), name='home'),
     path('register/', views.RegisterView.as_view(), name='register'),
+    path('documentation/', views.DocumentationView.as_view(), name='documentation'),
     path('public/folder/<uuid:folder_id>/', views.public_folder_detail, name='public_folder_detail'),
     path('public/file/<uuid:file_id>/', views.public_file_detail, name='public_file_detail'),
     

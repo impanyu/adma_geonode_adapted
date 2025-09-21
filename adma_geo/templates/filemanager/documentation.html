@@ -1,0 +1,1173 @@
+{% extends 'base.html' %}
+
+{% block title %}Documentation - ADMA{% endblock %}
+
+{% block extra_css %}
+<style>
+.doc-sidebar {
+    background-color: #f8f9fa;
+    border-right: 1px solid #dee2e6;
+    min-height: calc(100vh - 76px);
+    padding: 2rem 0;
+}
+
+.doc-nav {
+    position: sticky;
+    top: 2rem;
+}
+
+.doc-nav .nav-link {
+    color: #495057;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 0.25rem;
+    transition: all 0.2s ease;
+}
+
+.doc-nav .nav-link:hover {
+    background-color: #e9ecef;
+    color: #d00000;
+}
+
+.doc-nav .nav-link.active {
+    background-color: #d00000;
+    color: white;
+}
+
+.doc-content {
+    padding: 2rem;
+    max-width: 100%;
+}
+
+.doc-content h1 {
+    color: #d00000;
+    border-bottom: 3px solid #d00000;
+    padding-bottom: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.doc-content h2 {
+    color: #495057;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.doc-content h3 {
+    color: #6c757d;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+}
+
+.feature-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    transition: all 0.2s ease;
+}
+
+.feature-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-color: #d00000;
+}
+
+.feature-icon {
+    color: #d00000;
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.code-block {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 1rem;
+    font-family: 'Courier New', monospace;
+    overflow-x: auto;
+}
+
+.workflow-step {
+    background-color: #f8f9fa;
+    border-left: 4px solid #d00000;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.workflow-step .step-number {
+    background-color: #d00000;
+    color: white;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-right: 1rem;
+}
+
+.table-responsive {
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+}
+
+.table th {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    font-weight: 600;
+}
+
+.badge-feature {
+    background-color: #d00000;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
+    display: inline-block;
+}
+
+.alert-tip {
+    background-color: #e7f3ff;
+    border-color: #0066cc;
+    color: #004499;
+    border-left: 4px solid #0066cc;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffcc02;
+    color: #856404;
+    border-left: 4px solid #ffcc02;
+}
+
+.back-to-top {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background-color: #d00000;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    display: none;
+    z-index: 1000;
+    transition: all 0.3s ease;
+}
+
+.back-to-top:hover {
+    background-color: #b00000;
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar Navigation -->
+        <div class="col-lg-3 doc-sidebar">
+            <div class="doc-nav">
+                <h5 class="px-3 text-muted mb-3">Table of Contents</h5>
+                <nav class="nav flex-column">
+                    <a class="nav-link active" href="#overview">System Overview</a>
+                    <a class="nav-link" href="#getting-started">Getting Started</a>
+                    <a class="nav-link" href="#file-management">File Management</a>
+                    <a class="nav-link" href="#folder-management">Folder Management</a>
+                    <a class="nav-link" href="#gis-features">GIS Features</a>
+                    <a class="nav-link" href="#map-visualization">Map Visualization</a>
+                    <a class="nav-link" href="#user-management">User Management</a>
+                    <a class="nav-link" href="#public-sharing">Public Sharing</a>
+                    <a class="nav-link" href="#search-filter">Search & Filter</a>
+                    <a class="nav-link" href="#api-endpoints">API Endpoints</a>
+                    <a class="nav-link" href="#system-architecture">System Architecture</a>
+                    <a class="nav-link" href="#troubleshooting">Troubleshooting</a>
+                    <a class="nav-link" href="#faq">FAQ</a>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9 doc-content">
+            <section id="overview">
+                <h1><i class="fas fa-seedling me-3"></i>ADMA System Documentation</h1>
+                
+                <p class="lead">Welcome to the Agricultural Data Management & Analytics (ADMA) system documentation. This comprehensive guide covers all aspects of the platform designed for managing, visualizing, and analyzing agricultural data.</p>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="feature-card text-center">
+                            <div class="feature-icon">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <h5>File Management</h5>
+                            <p>Upload, organize, and manage files with hierarchical folder structures and advanced metadata handling.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="feature-card text-center">
+                            <div class="feature-icon">
+                                <i class="fas fa-map-marked-alt"></i>
+                            </div>
+                            <h5>GIS Integration</h5>
+                            <p>Visualize spatial data with integrated GeoServer, supporting multiple coordinate systems and file formats.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="feature-card text-center">
+                            <div class="feature-icon">
+                                <i class="fas fa-share-alt"></i>
+                            </div>
+                            <h5>Data Sharing</h5>
+                            <p>Share files and folders publicly or privately with granular access controls and collaboration features.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Key Features</h3>
+                <div class="mb-3">
+                    <span class="badge-feature">Cloud File Storage</span>
+                    <span class="badge-feature">GIS Data Processing</span>
+                    <span class="badge-feature">Map Visualization</span>
+                    <span class="badge-feature">Public/Private Sharing</span>
+                    <span class="badge-feature">Folder Hierarchies</span>
+                    <span class="badge-feature">Duplicate Handling</span>
+                    <span class="badge-feature">Pagination Support</span>
+                    <span class="badge-feature">RESTful API</span>
+                </div>
+            </section>
+
+            <section id="getting-started">
+                <h2><i class="fas fa-rocket me-2"></i>Getting Started</h2>
+
+                <h3>System Requirements</h3>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Component</th>
+                                <th>Requirement</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Web Browser</td>
+                                <td>Chrome 90+, Firefox 88+, Safari 14+</td>
+                                <td>JavaScript must be enabled</td>
+                            </tr>
+                            <tr>
+                                <td>Internet Connection</td>
+                                <td>Broadband recommended</td>
+                                <td>For file uploads and map tiles</td>
+                            </tr>
+                            <tr>
+                                <td>Screen Resolution</td>
+                                <td>1024x768 minimum</td>
+                                <td>Responsive design supports mobile</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>User Registration & Login</h3>
+                <div class="workflow-step">
+                    <span class="step-number">1</span>
+                    <strong>Registration:</strong> Click "Register" in the top navigation to create a new account with username, email, and password.
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">2</span>
+                    <strong>Login:</strong> Use your credentials to access the dashboard and all authenticated features.
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">3</span>
+                    <strong>Dashboard:</strong> Your personalized workspace for managing files, folders, and data visualization.
+                </div>
+
+                <div class="alert alert-tip">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Tip:</strong> Use a strong password and remember your credentials. Password recovery features are available through the admin interface.
+                </div>
+            </section>
+
+            <section id="file-management">
+                <h2><i class="fas fa-file-alt me-2"></i>File Management</h2>
+
+                <h3>Supported File Types</h3>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>GIS Files</h5>
+                        <ul>
+                            <li><strong>GeoPackage (.gpkg)</strong> - Complete spatial databases</li>
+                            <li><strong>GeoJSON (.geojson)</strong> - Vector data format</li>
+                            <li><strong>ESRI Shapefile (.shp + components)</strong> - Industry standard vector format</li>
+                            <li><strong>KML/KMZ (.kml, .kmz)</strong> - Google Earth formats</li>
+                            <li><strong>GeoTIFF (.tif, .tiff)</strong> - Raster data with georeference</li>
+                            <li><strong>CSV with coordinates</strong> - Tabular spatial data</li>
+                            <li><strong>3D Tiles</strong> - 3D visualization data</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>General Files</h5>
+                        <ul>
+                            <li><strong>Documents:</strong> PDF, DOC, DOCX, TXT, MD</li>
+                            <li><strong>Spreadsheets:</strong> XLS, XLSX, CSV</li>
+                            <li><strong>Images:</strong> JPG, PNG, GIF, BMP, SVG</li>
+                            <li><strong>Archives:</strong> ZIP, RAR, 7Z</li>
+                            <li><strong>Videos:</strong> MP4, AVI, MOV</li>
+                            <li><strong>Other:</strong> JSON, XML, LOG</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>File Upload Methods</h3>
+                
+                <h4>Individual File Upload</h4>
+                <div class="workflow-step">
+                    <span class="step-number">1</span>
+                    Click "Upload Files" button from dashboard or within any folder
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">2</span>
+                    Drag and drop files or click to browse and select multiple files
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">3</span>
+                    Choose public/private visibility setting
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">4</span>
+                    Click "Upload Files" to start the upload process
+                </div>
+
+                <h4>Folder Upload</h4>
+                <div class="workflow-step">
+                    <span class="step-number">1</span>
+                    Click "Upload Folders" button (available in dashboard and all folders)
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">2</span>
+                    Select entire folder structures with all nested files and subfolders
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">3</span>
+                    Preview folder structure and file count before upload
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">4</span>
+                    Upload preserves complete directory hierarchy
+                </div>
+
+                <h3>File Operations</h3>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Operation</th>
+                                <th>Location</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Download</td>
+                                <td>File actions menu (⋮)</td>
+                                <td>Download original file to your device</td>
+                            </tr>
+                            <tr>
+                                <td>Delete</td>
+                                <td>File actions menu (⋮)</td>
+                                <td>Permanently remove file from system</td>
+                            </tr>
+                            <tr>
+                                <td>View Details</td>
+                                <td>Click file name</td>
+                                <td>See metadata, properties, and spatial information</td>
+                            </tr>
+                            <tr>
+                                <td>Toggle Visibility</td>
+                                <td>File detail page</td>
+                                <td>Switch between public and private access</td>
+                            </tr>
+                            <tr>
+                                <td>View on Map</td>
+                                <td>File actions menu (⋮)</td>
+                                <td>Visualize GIS files on interactive map</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Duplicate File Handling</h3>
+                <p>When uploading files with names that already exist, the system automatically renames them:</p>
+                <div class="code-block">
+Original: document.pdf
+Duplicate 1: document_1.pdf
+Duplicate 2: document_2.pdf
+Duplicate 3: document_3.pdf
+                </div>
+
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Note:</strong> File renames preserve the original extension and maintain uniqueness within each folder context.
+                </div>
+            </section>
+
+            <section id="folder-management">
+                <h2><i class="fas fa-folder me-2"></i>Folder Management</h2>
+
+                <h3>Folder Operations</h3>
+                
+                <h4>Creating Folders</h4>
+                <div class="workflow-step">
+                    <span class="step-number">1</span>
+                    Click "New Folder" button from dashboard or within any existing folder
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">2</span>
+                    Enter folder name and choose visibility (public/private)
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">3</span>
+                    Folder is created in current location with unique name if duplicates exist
+                </div>
+
+                <h4>Folder Hierarchy</h4>
+                <p>ADMA supports unlimited nested folder structures:</p>
+                <div class="code-block">
+📁 Research Project 2024/
+  ├── 📁 Data Collection/
+  │   ├── 📁 Field Surveys/
+  │   │   ├── 📄 survey_data.csv
+  │   │   └── 📄 gps_coordinates.gpkg
+  │   └── 📁 Satellite Images/
+  │       ├── 📄 landsat_2024.tif
+  │       └── 📄 ndvi_analysis.tif
+  ├── 📁 Analysis Results/
+  │   ├── 📄 statistical_summary.pdf
+  │   └── 📄 yield_prediction.xlsx
+  └── 📁 Reports/
+      ├── 📄 final_report.docx
+      └── 📄 presentation.pptx
+                </div>
+
+                <h3>Navigation Features</h3>
+                <ul>
+                    <li><strong>Breadcrumb Navigation:</strong> Shows current location path with clickable links</li>
+                    <li><strong>Folder Statistics:</strong> Displays file count and subfolder count for each folder</li>
+                    <li><strong>View Modes:</strong> Toggle between list view and panel view for optimal browsing</li>
+                    <li><strong>Pagination:</strong> Large folders display 100 items per page with navigation controls</li>
+                </ul>
+
+                <h3>Duplicate Folder Handling</h3>
+                <p>When creating or uploading folders with existing names:</p>
+                <ul>
+                    <li>Entire folder structure is renamed (not merged)</li>
+                    <li>Original folder contents remain unchanged</li>
+                    <li>New folder gets incremental suffix: <code>MyFolder</code> → <code>MyFolder_1</code></li>
+                    <li>All files within renamed folders maintain their original names</li>
+                </ul>
+            </section>
+
+            <section id="gis-features">
+                <h2><i class="fas fa-globe me-2"></i>GIS Features</h2>
+
+                <h3>Automatic GIS Processing</h3>
+                <p>ADMA automatically detects and processes GIS files upon upload:</p>
+
+                <div class="workflow-step">
+                    <span class="step-number">1</span>
+                    <strong>File Detection:</strong> System identifies spatial file formats automatically
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">2</span>
+                    <strong>Background Processing:</strong> Celery workers process files asynchronously
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">3</span>
+                    <strong>GeoServer Integration:</strong> Processed files are published to GeoServer for visualization
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">4</span>
+                    <strong>Metadata Extraction:</strong> Coordinate system, extent, and properties are extracted
+                </div>
+
+                <h3>Supported Coordinate Systems</h3>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>EPSG Code</th>
+                                <th>Name</th>
+                                <th>Usage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>EPSG:4326</td>
+                                <td>WGS 84</td>
+                                <td>Global geographic coordinates (lat/lon)</td>
+                            </tr>
+                            <tr>
+                                <td>EPSG:3857</td>
+                                <td>Web Mercator</td>
+                                <td>Web mapping applications</td>
+                            </tr>
+                            <tr>
+                                <td>EPSG:32614</td>
+                                <td>UTM Zone 14N</td>
+                                <td>Nebraska region projections</td>
+                            </tr>
+                            <tr>
+                                <td>Custom</td>
+                                <td>Auto-detected</td>
+                                <td>System detects and handles various projections</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>GIS File Status</h3>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Description</th>
+                                <th>Actions Available</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge bg-warning">Pending</span></td>
+                                <td>File uploaded, queued for processing</td>
+                                <td>View details</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-info">Processing</span></td>
+                                <td>File being analyzed and prepared</td>
+                                <td>View details</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-secondary">Processed</span></td>
+                                <td>Analysis complete, ready for publishing</td>
+                                <td>View details, manual publish</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-success">Published</span></td>
+                                <td>Available in GeoServer for visualization</td>
+                                <td>View details, view on map</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-danger">Error</span></td>
+                                <td>Processing failed</td>
+                                <td>View error log, retry</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Shapefile Processing</h3>
+                <p>Shapefiles require multiple component files and receive special handling:</p>
+                <ul>
+                    <li><strong>Required Components:</strong> .shp, .shx, .dbf files must all be present</li>
+                    <li><strong>Optional Components:</strong> .prj (projection), .cpg (encoding), .sbn/.sbx (spatial index)</li>
+                    <li><strong>Automatic Bundling:</strong> System groups scattered components and creates proper shapefile packages</li>
+                    <li><strong>Layer Naming:</strong> Published layers use original shapefile name for consistency</li>
+                </ul>
+            </section>
+
+            <section id="map-visualization">
+                <h2><i class="fas fa-map-marked-alt me-2"></i>Map Visualization</h2>
+
+                <h3>Map Interface Features</h3>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Base Layers</h5>
+                        <ul>
+                            <li>OpenStreetMap (default)</li>
+                            <li>Satellite imagery</li>
+                            <li>Topographic maps</li>
+                            <li>Custom base layers</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Map Controls</h5>
+                        <ul>
+                            <li>Zoom in/out controls</li>
+                            <li>Pan and navigate</li>
+                            <li>Full screen mode</li>
+                            <li>Layer selector dropdown</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>Data Visualization</h3>
+                <p>ADMA uses OpenLayers for robust map visualization with the following capabilities:</p>
+                <ul>
+                    <li><strong>Vector Data:</strong> Points, lines, and polygons from shapefiles and GeoJSON</li>
+                    <li><strong>Raster Data:</strong> Satellite imagery, DEMs, and analytical rasters from GeoTIFF</li>
+                    <li><strong>Dynamic Extent:</strong> Map automatically zooms to data bounds</li>
+                    <li><strong>Coordinate Transformation:</strong> Automatic reprojection to web display coordinates</li>
+                    <li><strong>Attribution:</strong> Proper data source attribution displayed</li>
+                </ul>
+
+                <h3>Map Information Panel</h3>
+                <p>The right sidebar provides detailed information:</p>
+                <div class="workflow-step">
+                    <span class="step-number">1</span>
+                    <strong>File Information:</strong> Name, size, type, owner, creation date
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">2</span>
+                    <strong>Spatial Information:</strong> Coordinate system, spatial extent, layer details
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">3</span>
+                    <strong>Processing Status:</strong> Current status and processing log
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">4</span>
+                    <strong>Actions:</strong> Download, toggle visibility, file management
+                </div>
+
+                <div class="alert alert-tip">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Tip:</strong> Use the "Test WMS" button to verify that your GIS data is properly served by GeoServer and displaying correctly.
+                </div>
+            </section>
+
+            <section id="user-management">
+                <h2><i class="fas fa-users me-2"></i>User Management</h2>
+
+                <h3>User Roles & Permissions</h3>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Permission</th>
+                                <th>Owner</th>
+                                <th>Public User</th>
+                                <th>Anonymous User</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Upload files/folders</td>
+                                <td>✅</td>
+                                <td>✅ (own content)</td>
+                                <td>❌</td>
+                            </tr>
+                            <tr>
+                                <td>Create folders</td>
+                                <td>✅</td>
+                                <td>✅ (own content)</td>
+                                <td>❌</td>
+                            </tr>
+                            <tr>
+                                <td>Delete content</td>
+                                <td>✅ (own content)</td>
+                                <td>✅ (own content)</td>
+                                <td>❌</td>
+                            </tr>
+                            <tr>
+                                <td>View public content</td>
+                                <td>✅</td>
+                                <td>✅</td>
+                                <td>✅</td>
+                            </tr>
+                            <tr>
+                                <td>View private content</td>
+                                <td>✅ (own content)</td>
+                                <td>❌</td>
+                                <td>❌</td>
+                            </tr>
+                            <tr>
+                                <td>Toggle visibility</td>
+                                <td>✅ (own content)</td>
+                                <td>✅ (own content)</td>
+                                <td>❌</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>User Dashboard</h3>
+                <p>Each authenticated user has access to a personalized dashboard featuring:</p>
+                <ul>
+                    <li><strong>File Statistics:</strong> Total files, folders, storage used, public files count</li>
+                    <li><strong>Quick Actions:</strong> Create folder, upload folders, upload files</li>
+                    <li><strong>Recent Files:</strong> Latest uploaded or modified files</li>
+                    <li><strong>Folder Navigation:</strong> Browse personal folder hierarchy</li>
+                    <li><strong>View Toggle:</strong> Switch between list and panel view modes</li>
+                </ul>
+
+                <h3>Admin Features</h3>
+                <p>System administrators have additional capabilities through Django Admin:</p>
+                <ul>
+                    <li>User account management</li>
+                    <li>System-wide file and folder management</li>
+                    <li>GeoServer configuration</li>
+                    <li>Database maintenance and monitoring</li>
+                    <li>Celery task monitoring</li>
+                </ul>
+            </section>
+
+            <section id="public-sharing">
+                <h2><i class="fas fa-share-alt me-2"></i>Public Sharing</h2>
+
+                <h3>Visibility Settings</h3>
+                <p>All files and folders can be set as either public or private:</p>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="feature-card">
+                            <h5><i class="fas fa-lock me-2"></i>Private Content</h5>
+                            <ul>
+                                <li>Visible only to owner</li>
+                                <li>Requires authentication</li>
+                                <li>Not indexed in public listings</li>
+                                <li>Direct URLs return 404 for others</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="feature-card">
+                            <h5><i class="fas fa-globe me-2"></i>Public Content</h5>
+                            <ul>
+                                <li>Accessible to anyone</li>
+                                <li>Listed on public home page</li>
+                                <li>Shareable via direct links</li>
+                                <li>Viewable without authentication</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Sharing Workflows</h3>
+                
+                <h4>Making Content Public</h4>
+                <div class="workflow-step">
+                    <span class="step-number">1</span>
+                    Navigate to file or folder detail page
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">2</span>
+                    Click "Make Public" button in the actions panel
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">3</span>
+                    Content becomes visible on public home page and accessible via direct links
+                </div>
+
+                <h4>Public Home Page</h4>
+                <p>The public home page features:</p>
+                <ul>
+                    <li><strong>All Public Folders:</strong> Paginated list of publicly shared folders</li>
+                    <li><strong>All Public Files:</strong> Paginated list of publicly shared files with download links</li>
+                    <li><strong>Search & Filter:</strong> Find specific public content</li>
+                    <li><strong>Statistics:</strong> Total public content counts</li>
+                </ul>
+
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Important:</strong> Making content public means it can be accessed by anyone with the link. Consider data sensitivity before publishing.
+                </div>
+            </section>
+
+            <section id="search-filter">
+                <h2><i class="fas fa-search me-2"></i>Search & Filter</h2>
+
+                <h3>Pagination System</h3>
+                <p>ADMA implements comprehensive pagination for optimal performance:</p>
+                <ul>
+                    <li><strong>Items Per Page:</strong> Maximum 100 items (folders + files) per page</li>
+                    <li><strong>Smart Ordering:</strong> Folders displayed first (alphabetical), then files (newest first)</li>
+                    <li><strong>Page Navigation:</strong> First, Previous, page numbers, Next, Last controls</li>
+                    <li><strong>Page Information:</strong> "Showing X-Y of Z items" counter</li>
+                    <li><strong>Universal:</strong> Available on dashboard, all folder views, and public pages</li>
+                </ul>
+
+                <h3>View Modes</h3>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>List View</h5>
+                        <ul>
+                            <li>Tabular format with columns</li>
+                            <li>Shows name, type, size, date, status</li>
+                            <li>Compact display for many items</li>
+                            <li>Sortable columns</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Panel View</h5>
+                        <ul>
+                            <li>Card-based visual layout</li>
+                            <li>Large icons and previews</li>
+                            <li>More details per item</li>
+                            <li>Better for browsing</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>Filter Options</h3>
+                <p>Future enhancements may include:</p>
+                <ul>
+                    <li>Filter by file type (GIS, Document, Image, etc.)</li>
+                    <li>Filter by date range</li>
+                    <li>Filter by file size</li>
+                    <li>Filter by processing status (for GIS files)</li>
+                    <li>Search by filename or content</li>
+                    <li>Filter by coordinate system</li>
+                </ul>
+            </section>
+
+            <section id="api-endpoints">
+                <h2><i class="fas fa-code me-2"></i>API Endpoints</h2>
+
+                <h3>AJAX Endpoints</h3>
+                <p>ADMA provides RESTful API endpoints for frontend interactions:</p>
+
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Endpoint</th>
+                                <th>Method</th>
+                                <th>Purpose</th>
+                                <th>Authentication</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>/api/folder/create/</td>
+                                <td>POST</td>
+                                <td>Create new folder</td>
+                                <td>Required</td>
+                            </tr>
+                            <tr>
+                                <td>/api/files/upload/</td>
+                                <td>POST</td>
+                                <td>Upload individual files</td>
+                                <td>Required</td>
+                            </tr>
+                            <tr>
+                                <td>/api/folders/upload/</td>
+                                <td>POST</td>
+                                <td>Upload folder structures</td>
+                                <td>Required</td>
+                            </tr>
+                            <tr>
+                                <td>/api/item/delete/</td>
+                                <td>POST</td>
+                                <td>Delete files or folders</td>
+                                <td>Required</td>
+                            </tr>
+                            <tr>
+                                <td>/api/item/toggle-visibility/</td>
+                                <td>POST</td>
+                                <td>Change public/private status</td>
+                                <td>Required</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>GeoServer Integration</h3>
+                <p>GIS data is served through GeoServer REST API:</p>
+                <div class="code-block">
+WMS URL: http://localhost:8080/geoserver/wms
+Workspace: adma_geo
+Layer Format: {workspace}:{layer_name}
+GetCapabilities: ?service=WMS&request=GetCapabilities
+                </div>
+
+                <h3>File Download URLs</h3>
+                <div class="code-block">
+File Detail: /file/{file_id}/
+File Download: /file/{file_id}/download/
+Map Viewer: /file/{file_id}/map/
+Public File: /public/file/{file_id}/
+Public Map: /public/file/{file_id}/map/
+                </div>
+            </section>
+
+            <section id="system-architecture">
+                <h2><i class="fas fa-cogs me-2"></i>System Architecture</h2>
+
+                <h3>Technology Stack</h3>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Backend Technologies</h5>
+                        <ul>
+                            <li><strong>Django 4.2:</strong> Web framework and ORM</li>
+                            <li><strong>PostgreSQL:</strong> Primary database with PostGIS extension</li>
+                            <li><strong>Redis:</strong> Caching and Celery message broker</li>
+                            <li><strong>Celery:</strong> Asynchronous task processing</li>
+                            <li><strong>GeoServer:</strong> Spatial data server and WMS</li>
+                            <li><strong>GDAL/OGR:</strong> Geospatial data processing libraries</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Frontend Technologies</h5>
+                        <ul>
+                            <li><strong>Bootstrap 5:</strong> UI framework and responsive design</li>
+                            <li><strong>OpenLayers:</strong> Interactive mapping library</li>
+                            <li><strong>Font Awesome:</strong> Icons and visual elements</li>
+                            <li><strong>JavaScript ES6+:</strong> Modern client-side scripting</li>
+                            <li><strong>AJAX/Fetch:</strong> Asynchronous data operations</li>
+                            <li><strong>CSS3:</strong> Advanced styling and animations</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>Service Architecture</h3>
+                <div class="code-block">
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│     Nginx       │    │     Django      │    │   PostgreSQL    │
+│  Load Balancer  │◄──►│   Web Server    │◄──►│    Database     │
+│   Static Files  │    │   Application   │    │   + PostGIS     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │     Celery      │    │     Redis       │
+                       │  Task Workers   │◄──►│ Message Broker  │
+                       │   GIS Processor │    │     Cache       │
+                       └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │   GeoServer     │
+                       │   WMS Server    │
+                       │ Spatial Engine  │
+                       └─────────────────┘
+                </div>
+
+                <h3>Data Flow</h3>
+                <div class="workflow-step">
+                    <span class="step-number">1</span>
+                    <strong>File Upload:</strong> User uploads files through Django web interface
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">2</span>
+                    <strong>Storage:</strong> Files stored in filesystem, metadata in PostgreSQL
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">3</span>
+                    <strong>GIS Detection:</strong> Django detects spatial files and queues processing
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">4</span>
+                    <strong>Background Processing:</strong> Celery workers process GIS files
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">5</span>
+                    <strong>GeoServer Publishing:</strong> Processed files published to GeoServer
+                </div>
+                <div class="workflow-step">
+                    <span class="step-number">6</span>
+                    <strong>Map Visualization:</strong> OpenLayers displays data via WMS
+                </div>
+
+                <h3>Deployment</h3>
+                <p>ADMA is containerized using Docker Compose for easy deployment:</p>
+                <div class="code-block">
+services:
+  - django: Web application server
+  - postgres: Database with PostGIS
+  - redis: Cache and message broker
+  - celery: Background task processor
+  - nginx: Web server and reverse proxy
+  - geoserver: Spatial data server
+                </div>
+            </section>
+
+            <section id="troubleshooting">
+                <h2><i class="fas fa-tools me-2"></i>Troubleshooting</h2>
+
+                <h3>Common Issues</h3>
+
+                <h4>File Upload Problems</h4>
+                <div class="alert alert-warning">
+                    <strong>Issue:</strong> "Error uploading folders: Unexpected token"
+                    <br><strong>Solution:</strong> Reduce number of files per upload or check server file limits
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Issue:</strong> Upload button not working in folders
+                    <br><strong>Solution:</strong> Refresh page, check browser console for JavaScript errors
+                </div>
+
+                <h4>GIS File Processing</h4>
+                <div class="alert alert-warning">
+                    <strong>Issue:</strong> Shapefile stuck in "Pending" status
+                    <br><strong>Solution:</strong> Ensure all required components (.shp, .shx, .dbf) are uploaded
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Issue:</strong> Map not displaying data
+                    <br><strong>Solution:</strong> Verify file is in "Published" status and coordinate system is supported
+                </div>
+
+                <h4>Map Visualization Issues</h4>
+                <div class="alert alert-warning">
+                    <strong>Issue:</strong> Map tiles not loading
+                    <br><strong>Solution:</strong> Check internet connection and GeoServer availability
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Issue:</strong> Attribution text in wrong position
+                    <br><strong>Solution:</strong> Refresh page, browser may need time to position elements
+                </div>
+
+                <h3>Performance Optimization</h3>
+                <ul>
+                    <li><strong>Large Files:</strong> Upload large GIS files during off-peak hours</li>
+                    <li><strong>Batch Uploads:</strong> Use folder upload for multiple related files</li>
+                    <li><strong>Browser Cache:</strong> Clear browser cache if interface appears outdated</li>
+                    <li><strong>Pagination:</strong> Use page navigation for folders with many items</li>
+                </ul>
+
+                <h3>Getting Help</h3>
+                <ul>
+                    <li>Check browser console (F12) for JavaScript errors</li>
+                    <li>Verify file formats are supported</li>
+                    <li>Ensure adequate internet connection for uploads</li>
+                    <li>Contact system administrator for persistent issues</li>
+                </ul>
+            </section>
+
+            <section id="faq">
+                <h2><i class="fas fa-question-circle me-2"></i>Frequently Asked Questions</h2>
+
+                <h3>General Usage</h3>
+                
+                <div class="feature-card">
+                    <h5>Q: What's the maximum file size I can upload?</h5>
+                    <p>A: The system supports large file uploads, but practical limits depend on your internet connection and server configuration. For very large GIS files (>100MB), consider compressing or splitting the data.</p>
+                </div>
+
+                <div class="feature-card">
+                    <h5>Q: Can I upload folders with nested subfolders?</h5>
+                    <p>A: Yes, the folder upload feature supports unlimited nesting levels and preserves the complete directory structure.</p>
+                </div>
+
+                <div class="feature-card">
+                    <h5>Q: How do I share my data with others?</h5>
+                    <p>A: Set files or folders to "Public" in their detail pages. Public content appears on the home page and can be accessed via direct links without authentication.</p>
+                </div>
+
+                <h3>GIS and Mapping</h3>
+
+                <div class="feature-card">
+                    <h5>Q: Which coordinate systems are supported?</h5>
+                    <p>A: ADMA automatically handles most common coordinate systems including WGS84, Web Mercator, and UTM zones. The system detects and transforms coordinates as needed.</p>
+                </div>
+
+                <div class="feature-card">
+                    <h5>Q: Why is my shapefile not displaying on the map?</h5>
+                    <p>A: Ensure all required shapefile components are uploaded (.shp, .shx, .dbf minimum) and wait for processing to complete. Check that the file status shows "Published" before attempting map visualization.</p>
+                </div>
+
+                <div class="feature-card">
+                    <h5>Q: Can I view my data in other mapping applications?</h5>
+                    <p>A: Yes, published GIS data is served via standard WMS protocols and can be accessed by QGIS, ArcGIS, and other GIS software using the provided WMS URLs.</p>
+                </div>
+
+                <h3>Technical Questions</h3>
+
+                <div class="feature-card">
+                    <h5>Q: Is my data secure?</h5>
+                    <p>A: Private files are only accessible to their owners. The system uses Django's built-in authentication and authorization. Public files are intentionally accessible to anyone with the link.</p>
+                </div>
+
+                <div class="feature-card">
+                    <h5>Q: How long does GIS processing take?</h5>
+                    <p>A: Processing time depends on file size and complexity. Simple files process within seconds, while large or complex datasets may take several minutes. The system provides real-time status updates.</p>
+                </div>
+
+                <div class="feature-card">
+                    <h5>Q: Can I use the system on mobile devices?</h5>
+                    <p>A: Yes, ADMA features a responsive design that works on tablets and smartphones. Some features like folder uploads work best on desktop browsers.</p>
+                </div>
+            </section>
+
+            <!-- Back to Top Button -->
+            <button class="btn back-to-top" onclick="scrollToTop()">
+                <i class="fas fa-arrow-up"></i>
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Smooth scrolling for navigation links
+document.querySelectorAll('.doc-nav .nav-link').forEach(link => {
+    link.addEventListener('click', function(e) {
+        e.preventDefault();
+        const targetId = this.getAttribute('href').substring(1);
+        const targetElement = document.getElementById(targetId);
+        
+        if (targetElement) {
+            // Update active nav link
+            document.querySelectorAll('.doc-nav .nav-link').forEach(l => l.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Smooth scroll to target
+            targetElement.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    });
+});
+
+// Show/hide back to top button
+window.addEventListener('scroll', function() {
+    const backToTopBtn = document.querySelector('.back-to-top');
+    if (window.pageYOffset > 300) {
+        backToTopBtn.style.display = 'block';
+    } else {
+        backToTopBtn.style.display = 'none';
+    }
+});
+
+// Back to top functionality
+function scrollToTop() {
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+    });
+}
+
+// Update active nav link based on scroll position
+window.addEventListener('scroll', function() {
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.doc-nav .nav-link');
+    
+    let currentSection = '';
+    
+    sections.forEach(section => {
+        const rect = section.getBoundingClientRect();
+        if (rect.top <= 100 && rect.bottom >= 100) {
+            currentSection = section.id;
+        }
+    });
+    
+    navLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === `#${currentSection}`) {
+            link.classList.add('active');
+        }
+    });
+});
+</script>
+{% endblock %}

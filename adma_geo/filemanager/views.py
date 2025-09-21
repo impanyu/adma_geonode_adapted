@@ -123,14 +123,58 @@ def dashboard(request):
     """Main dashboard for authenticated users"""
     user = request.user
     
-    # Get user's root folders
-    folders = Folder.objects.filter(owner=user, parent=None).annotate(
+    # Get user's root folders with annotations
+    folders_queryset = Folder.objects.filter(owner=user, parent=None).annotate(
         file_count=Count('files'),
         subfolder_count=Count('subfolders')
-    )
+    ).order_by('name')
     
-    # Get recent files (only root-level files, not files inside folders)
-    recent_files = File.objects.filter(owner=user, folder=None).order_by('-created_at')[:6]
+    # Get root-level files (not files inside folders)
+    files_queryset = File.objects.filter(owner=user, folder=None).order_by('-created_at')
+    
+    # Combine folders and files for pagination
+    # We'll handle pagination by getting separate pages and combining
+    page = request.GET.get('page', 1)
+    items_per_page = 100
+    
+    # Calculate total items
+    total_folders = folders_queryset.count()
+    total_files = files_queryset.count()
+    total_items = total_folders + total_files
+    
+    # Set up pagination
+    paginator = Paginator(range(total_items), items_per_page)
+    
+    try:
+        page_obj = paginator.page(page)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+    
+    # Calculate which items to show on this page
+    start_index = (page_obj.number - 1) * items_per_page
+    end_index = start_index + items_per_page
+    
+    # Get the actual items for this page
+    if start_index < total_folders:
+        # Page starts with folders
+        if end_index <= total_folders:
+            # Page contains only folders
+            folders = folders_queryset[start_index:end_index]
+            recent_files = File.objects.none()
+        else:
+            # Page contains some folders and some files
+            folders = folders_queryset[start_index:]
+            files_start = 0
+            files_end = end_index - total_folders
+            recent_files = files_queryset[files_start:files_end]
+    else:
+        # Page starts with files
+        folders = Folder.objects.none()
+        files_start = start_index - total_folders
+        files_end = files_start + items_per_page
+        recent_files = files_queryset[files_start:files_end]
     
     # Statistics
     stats = {
@@ -145,6 +189,9 @@ def dashboard(request):
         'recent_files': recent_files,
         'stats': stats,
         'current_folder': None,
+        'page_obj': page_obj,
+        'total_items': total_items,
+        'can_edit': True  # User can always edit their own dashboard
     })
 
 @login_required
@@ -157,12 +204,55 @@ def folder_detail(request, folder_id):
         messages.error(request, "You don't have permission to view this folder.")
         return redirect('filemanager:dashboard')
     
-    # Get subfolders and files
-    subfolders = folder.subfolders.annotate(
+    # Get subfolders and files with pagination
+    subfolders_queryset = folder.subfolders.annotate(
         file_count=Count('files'),
         subfolder_count=Count('subfolders')
-    )
-    files = folder.files.all()
+    ).order_by('name')
+    files_queryset = folder.files.all().order_by('-created_at')
+    
+    # Combine subfolders and files for pagination
+    page = request.GET.get('page', 1)
+    items_per_page = 100
+    
+    # Calculate total items
+    total_subfolders = subfolders_queryset.count()
+    total_files = files_queryset.count()
+    total_items = total_subfolders + total_files
+    
+    # Set up pagination
+    paginator = Paginator(range(total_items), items_per_page)
+    
+    try:
+        page_obj = paginator.page(page)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+    
+    # Calculate which items to show on this page
+    start_index = (page_obj.number - 1) * items_per_page
+    end_index = start_index + items_per_page
+    
+    # Get the actual items for this page
+    if start_index < total_subfolders:
+        # Page starts with subfolders
+        if end_index <= total_subfolders:
+            # Page contains only subfolders
+            subfolders = subfolders_queryset[start_index:end_index]
+            files = File.objects.none()
+        else:
+            # Page contains some subfolders and some files
+            subfolders = subfolders_queryset[start_index:]
+            files_start = 0
+            files_end = end_index - total_subfolders
+            files = files_queryset[files_start:files_end]
+    else:
+        # Page starts with files
+        subfolders = Folder.objects.none()
+        files_start = start_index - total_subfolders
+        files_end = files_start + items_per_page
+        files = files_queryset[files_start:files_end]
     
     return render(request, 'filemanager/folder_detail.html', {
         'folder': folder,
@@ -170,6 +260,8 @@ def folder_detail(request, folder_id):
         'files': files,
         'breadcrumbs': folder.get_breadcrumbs(),
         'can_edit': folder.owner == request.user,
+        'page_obj': page_obj,
+        'total_items': total_items,
     })
 
 def public_folder_detail(request, folder_id):
@@ -453,9 +545,15 @@ def upload_folders(request):
             files = request.FILES.getlist('files')
             file_paths = request.POST.getlist('file_paths')
             is_public = request.POST.get('is_public') == 'true'
+            folder_id = request.POST.get('folder_id')  # Parent folder for uploads
             
             if not files or len(files) != len(file_paths):
                 return JsonResponse({'error': 'No files selected or paths mismatch'}, status=400)
+            
+            # Get parent folder if specified
+            parent_folder = None
+            if folder_id:
+                parent_folder = get_object_or_404(Folder, id=folder_id, owner=request.user)
             
             # First, identify unique root folders and their target names
             root_folders = {}  # original_name -> unique_name
@@ -471,7 +569,7 @@ def upload_folders(request):
                         unique_root_name = generate_unique_name(
                             root_folder_name,
                             request.user,
-                            folder=None,  # Root level
+                            folder=parent_folder,  # Use parent folder
                             is_folder=True
                         )
                         root_folders[root_folder_name] = unique_root_name
@@ -500,7 +598,7 @@ def upload_folders(request):
                 folder_path = path_parts[:-1]
                 
                 # Create folder hierarchy
-                current_folder = None
+                current_folder = parent_folder  # Start with parent folder
                 current_path = ""
                 
                 for folder_name in folder_path:
@@ -616,3 +714,12 @@ class RegisterView(CreateView):
         response = super().form_valid(form)
         messages.success(self.request, 'Account created successfully!')
         return response
+
+class DocumentationView(TemplateView):
+    """Documentation page view"""
+    template_name = 'filemanager/documentation.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_title'] = 'Documentation'
+        return context
