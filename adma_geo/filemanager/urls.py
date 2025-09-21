@@ -15,6 +15,10 @@ urlpatterns = [
     path('folder/<uuid:folder_id>/', views.folder_detail, name='folder_detail'),
     path('file/<uuid:file_id>/', views.file_detail, name='file_detail'),
     path('file/<uuid:file_id>/download/', views.download_file, name='download_file'),
+    path('file/<uuid:file_id>/map/', views.map_viewer, name='map_viewer'),
+    
+    # Public map viewer
+    path('public/file/<uuid:file_id>/map/', views.public_map_viewer, name='public_map_viewer'),
     
     # AJAX endpoints
     path('api/folder/create/', views.create_folder, name='create_folder'),

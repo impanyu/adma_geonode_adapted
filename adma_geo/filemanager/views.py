@@ -8,8 +8,10 @@ from django.views.generic import CreateView, TemplateView
 from django.http import JsonResponse, HttpResponse, Http404, FileResponse
 from django.db.models import Q, Count
 from django.urls import reverse_lazy
+from django.conf import settings
 from .models import Folder, File
 from .forms import RegistrationForm, FolderForm, FileUploadForm
+from .tasks import process_gis_file_task
 
 class HomeView(TemplateView):
     """Public home page"""
@@ -238,11 +240,17 @@ def upload_files(request):
                     is_public=is_public
                 )
                 
+                # Trigger GIS processing if it's a spatial file
+                if file_obj.is_spatial:
+                    process_gis_file_task.delay(str(file_obj.id))
+                
                 uploaded_files.append({
                     'id': str(file_obj.id),
                     'name': file_obj.name,
                     'size': file_obj.get_size_display(),
                     'url': file_obj.get_absolute_url(),
+                    'is_spatial': file_obj.is_spatial,
+                    'file_type': file_obj.file_type,
                 })
             
             return JsonResponse({
@@ -306,6 +314,57 @@ def delete_item(request):
             return JsonResponse({'error': str(e)}, status=500)
     
     return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+@login_required
+def map_viewer(request, file_id):
+    """View GIS file on a map"""
+    file_obj = get_object_or_404(File, id=file_id)
+    
+    # Check permissions
+    if file_obj.owner != request.user and not file_obj.is_public:
+        messages.error(request, "You don't have permission to view this file.")
+        return redirect('filemanager:dashboard')
+    
+    # Check if it's a spatial file
+    if not file_obj.is_spatial:
+        messages.error(request, "This file is not a spatial/GIS file.")
+        return redirect('filemanager:file_detail', file_id=file_id)
+    
+    # Get GeoServer layer info
+    geoserver_info = None
+    if file_obj.geoserver_layer_name and file_obj.gis_status in ['published', 'processed']:
+        geoserver_info = {
+            'workspace': file_obj.geoserver_workspace,
+            'layer_name': file_obj.geoserver_layer_name,
+            'wms_url': f"{settings.GEOSERVER_URL.replace('geoserver:8080', 'localhost:8080')}/wms",
+            'wfs_url': f"{settings.GEOSERVER_URL.replace('geoserver:8080', 'localhost:8080')}/wfs",
+            'is_published': file_obj.gis_status == 'published',
+        }
+    
+    return render(request, 'filemanager/map_viewer.html', {
+        'file': file_obj,
+        'geoserver_info': geoserver_info,
+    })
+
+def public_map_viewer(request, file_id):
+    """Public view of GIS file on a map"""
+    file_obj = get_object_or_404(File, id=file_id, is_public=True, is_spatial=True)
+    
+    # Get GeoServer layer info
+    geoserver_info = None
+    if file_obj.geoserver_layer_name and file_obj.gis_status in ['published', 'processed']:
+        geoserver_info = {
+            'workspace': file_obj.geoserver_workspace,
+            'layer_name': file_obj.geoserver_layer_name,
+            'wms_url': f"{settings.GEOSERVER_URL.replace('geoserver:8080', 'localhost:8080')}/wms",
+            'wfs_url': f"{settings.GEOSERVER_URL.replace('geoserver:8080', 'localhost:8080')}/wfs",
+            'is_published': file_obj.gis_status == 'published',
+        }
+    
+    return render(request, 'filemanager/public_map_viewer.html', {
+        'file': file_obj,
+        'geoserver_info': geoserver_info,
+    })
 
 class RegisterView(CreateView):
     form_class = RegistrationForm

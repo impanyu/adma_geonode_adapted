@@ -1,0 +1,463 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Map Viewer - {{ file.name }}{% endblock %}
+
+{% block extra_head %}
+<!-- OpenLayers CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v8.2.0/ol.css">
+
+<style>
+    #map {
+        height: 600px !important;
+        width: 100% !important;
+        border: 1px solid #ddd;
+        min-height: 600px;
+        position: relative;
+    }
+    .map-info {
+        background: #f8f9fa;
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            <a href="{% url 'filemanager:dashboard' %}">
+                <i class="fas fa-home me-1"></i>Dashboard
+            </a>
+        </li>
+        <li class="breadcrumb-item">
+            <a href="{% url 'filemanager:file_detail' file.id %}">{{ file.name }}</a>
+        </li>
+        <li class="breadcrumb-item active">Map View</li>
+    </ol>
+</nav>
+
+<div class="row">
+    <div class="col-lg-9">
+        <!-- Map Controls -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">
+                <i class="fas fa-map me-2"></i>{{ file.name }}
+            </h5>
+            <div>
+                <button id="zoomToExtent" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-expand-arrows-alt me-1"></i>Zoom to Data
+                </button>
+                <button id="toggleLayer" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-eye me-1"></i>Toggle Layer
+                </button>
+                <button id="testWMS" class="btn btn-sm btn-outline-info">
+                    <i class="fas fa-bug me-1"></i>Test WMS
+                </button>
+            </div>
+        </div>
+        
+        {% if file.gis_status == 'published' and geoserver_info or file.gis_status == 'processed' and geoserver_info %}
+            <!-- Direct map container with explicit inline height -->
+            <div id="map" style="height: 600px; width: 100%; border: 1px solid #ddd; background-color: #f0f0f0;"></div>
+            <div class="mt-2">
+                <small class="text-muted">
+                    <strong>Status:</strong> {{ file.get_gis_status_display }} | 
+                    <strong>CRS:</strong> {{ file.crs|default:"Unknown" }} |
+                    <strong>Layer:</strong> {{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}
+                </small>
+            </div>
+        {% else %}
+            <div class="text-center py-5 border">
+                <i class="fas fa-hourglass-half fa-3x text-info mb-3"></i>
+                <h4>Processing in Progress</h4>
+                <p class="text-muted">This spatial file is being processed. Please refresh the page.</p>
+                <button class="btn btn-outline-primary" onclick="location.reload()">
+                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                </button>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">File Information</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <td><strong>Name:</strong></td>
+                        <td>{{ file.name }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Type:</strong></td>
+                        <td>{{ file.file_type|capfirst }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Size:</strong></td>
+                        <td>{{ file.get_size_display }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Status:</strong></td>
+                        <td>
+                            {% if file.gis_status == 'published' %}
+                                <span class="badge bg-success">{{ file.get_gis_status_display }}</span>
+                            {% elif file.gis_status == 'processed' %}
+                                <span class="badge bg-info">{{ file.get_gis_status_display }}</span>
+                            {% elif file.gis_status == 'error' %}
+                                <span class="badge bg-danger">{{ file.get_gis_status_display }}</span>
+                            {% else %}
+                                <span class="badge bg-warning">{{ file.get_gis_status_display }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% if file.crs %}
+                    <tr>
+                        <td><strong>CRS:</strong></td>
+                        <td>{{ file.crs }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        {% if geoserver_info %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0">Layer Information</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <td><strong>Workspace:</strong></td>
+                        <td>{{ geoserver_info.workspace }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Layer:</strong></td>
+                        <td><small>{{ geoserver_info.layer_name }}</small></td>
+                    </tr>
+                    <tr>
+                        <td><strong>WMS URL:</strong></td>
+                        <td><small>{{ geoserver_info.wms_url }}</small></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mt-3">
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'filemanager:download_file' file.id %}" class="btn btn-primary">
+                        <i class="fas fa-download me-2"></i>Download File
+                    </a>
+                    <a href="{% url 'filemanager:file_detail' file.id %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-info-circle me-2"></i>View Details
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- OpenLayers JS -->
+<script src="https://cdn.jsdelivr.net/npm/ol@v8.2.0/dist/ol.js"></script>
+
+{% if file.gis_status == 'published' and geoserver_info or file.gis_status == 'processed' and geoserver_info %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Creating OpenLayers map...');
+    
+    // Check if map container exists and has dimensions
+    function checkMapContainer() {
+        const mapDiv = document.getElementById('map');
+        if (mapDiv) {
+            const rect = mapDiv.getBoundingClientRect();
+            console.log('Map container dimensions:', {
+                width: rect.width,
+                height: rect.height,
+                offsetWidth: mapDiv.offsetWidth,
+                offsetHeight: mapDiv.offsetHeight
+            });
+            return rect.width > 0 && rect.height > 0;
+        }
+        return false;
+    }
+    
+    // Wait longer for the DOM to fully render and check dimensions
+    setTimeout(function() {
+        if (!checkMapContainer()) {
+            console.log('Map container not ready, waiting longer...');
+            setTimeout(function() {
+                if (!checkMapContainer()) {
+                    console.log('Map container still not ready, forcing initialization...');
+                    // Force set height using JavaScript
+                    const mapDiv = document.getElementById('map');
+                    if (mapDiv) {
+                        mapDiv.style.height = '600px';
+                        mapDiv.style.width = '100%';
+                        mapDiv.style.display = 'block';
+                        console.log('Forced map container height, trying again...');
+                        setTimeout(function() {
+                            checkMapContainer();
+                            initializeMap();
+                        }, 100);
+                    }
+                } else {
+                    initializeMap();
+                }
+            }, 500);
+        } else {
+            initializeMap();
+        }
+    }, 200);
+    
+    function initializeMap() {
+        // Define UTM Zone 14N projection (EPSG:32614)
+        const utmProjection = new ol.proj.Projection({
+            code: 'EPSG:32614',
+            extent: [166021.44, 0.00, 833978.56, 9329005.18],
+            units: 'm'
+        });
+        ol.proj.addProjection(utmProjection);
+        
+        // Create OpenStreetMap base layer
+        const osmLayer = new ol.layer.Tile({
+            source: new ol.source.OSM(),
+            title: 'OpenStreetMap'
+        });
+        
+        // Create WMS layer from GeoServer
+        const wmsLayer = new ol.layer.Tile({
+            source: new ol.source.TileWMS({
+                url: '{{ geoserver_info.wms_url }}',
+                params: {
+                    'LAYERS': '{{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}',
+                    'TILED': true,
+                    'FORMAT': 'image/png',
+                    'TRANSPARENT': true
+                },
+                serverType: 'geoserver',
+                crossOrigin: 'anonymous'
+            }),
+            title: '{{ file.name }}',
+            opacity: 0.8
+        });
+        
+        // Create map with default Nebraska center first
+        const map = new ol.Map({
+            target: 'map',
+            layers: [osmLayer, wmsLayer],
+            view: new ol.View({
+                center: ol.proj.fromLonLat([-99.5, 41.0]),
+                zoom: 7,
+                projection: 'EPSG:3857'
+            })
+        });
+        
+        // Try to get the layer extent from GeoServer
+        function getLayerExtent() {
+            const layerName = '{{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}';
+            const url = '{{ geoserver_info.wms_url }}' + 
+                '?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities';
+            
+            console.log('Fetching layer capabilities from:', url);
+            
+            fetch(url)
+                .then(response => response.text())
+                .then(xmlText => {
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                    
+                    // Find the layer in the capabilities document
+                    const layers = xmlDoc.querySelectorAll('Layer > Name');
+                    let targetLayer = null;
+                    
+                    for (let layer of layers) {
+                        if (layer.textContent === layerName) {
+                            targetLayer = layer.parentElement;
+                            break;
+                        }
+                    }
+                    
+                    if (targetLayer) {
+                        // Look for BoundingBox or EX_GeographicBoundingBox
+                        const bboxElement = targetLayer.querySelector('BoundingBox[CRS="EPSG:4326"], BoundingBox[CRS="CRS:84"], EX_GeographicBoundingBox');
+                        
+                        if (bboxElement) {
+                            let minx, miny, maxx, maxy;
+                            
+                            if (bboxElement.tagName === 'EX_GeographicBoundingBox') {
+                                minx = parseFloat(bboxElement.querySelector('westBoundLongitude').textContent);
+                                miny = parseFloat(bboxElement.querySelector('southBoundLatitude').textContent);
+                                maxx = parseFloat(bboxElement.querySelector('eastBoundLongitude').textContent);
+                                maxy = parseFloat(bboxElement.querySelector('northBoundLatitude').textContent);
+                            } else {
+                                minx = parseFloat(bboxElement.getAttribute('minx'));
+                                miny = parseFloat(bboxElement.getAttribute('miny'));
+                                maxx = parseFloat(bboxElement.getAttribute('maxx'));
+                                maxy = parseFloat(bboxElement.getAttribute('maxy'));
+                            }
+                            
+                            console.log('Found layer extent (lat/lon):', [minx, miny, maxx, maxy]);
+                            
+                            // Update test WMS URL with actual extent
+                            testWMSUrl = '{{ geoserver_info.wms_url }}' + 
+                                '?SERVICE=WMS' +
+                                '&VERSION=1.1.1' +
+                                '&REQUEST=GetMap' +
+                                '&LAYERS={{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}' +
+                                '&STYLES=' +
+                                '&FORMAT=image/png' +
+                                '&TRANSPARENT=true' +
+                                '&SRS=EPSG:4326' +
+                                '&BBOX=' + [minx, miny, maxx, maxy].join(',') +
+                                '&WIDTH=512' +
+                                '&HEIGHT=512';
+                            
+                            console.log('Updated test WMS URL with actual extent:', testWMSUrl);
+                            
+                            // Transform to Web Mercator and zoom to it
+                            const extent = ol.proj.transformExtent(
+                                [minx, miny, maxx, maxy],
+                                'EPSG:4326',
+                                'EPSG:3857'
+                            );
+                            
+                            console.log('Transformed extent (Web Mercator):', extent);
+                            
+                            map.getView().fit(extent, {
+                                padding: [50, 50, 50, 50],
+                                size: map.getSize(),
+                                duration: 1000
+                            });
+                            
+                            console.log('Zoomed to layer extent from GetCapabilities');
+                        } else {
+                            console.log('No bounding box found in capabilities, using default view');
+                        }
+                    } else {
+                        console.log('Layer not found in capabilities document');
+                    }
+                })
+                .catch(error => {
+                    console.log('Failed to get capabilities:', error);
+                    console.log('Using default view');
+                });
+        }
+        
+        // Call the function to get and zoom to the layer extent
+        setTimeout(getLayerExtent, 1000); // Wait a bit for the map to initialize
+        
+        // Force map to update its size
+        setTimeout(function() {
+            map.updateSize();
+            console.log('Map size updated');
+        }, 100);
+        
+        // Add controls manually
+        map.addControl(new ol.control.ScaleLine());
+        map.addControl(new ol.control.FullScreen());
+        
+        console.log('Map created successfully');
+        console.log('Base layer: OpenStreetMap');
+        console.log('WMS layer: {{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}');
+        console.log('WMS URL: {{ geoserver_info.wms_url }}');
+        
+        // Add layer switcher functionality
+        let layerVisible = true;
+        document.getElementById('toggleLayer').addEventListener('click', function() {
+            layerVisible = !layerVisible;
+            wmsLayer.setVisible(layerVisible);
+            this.innerHTML = layerVisible ? 
+                '<i class="fas fa-eye me-1"></i>Hide Layer' : 
+                '<i class="fas fa-eye-slash me-1"></i>Show Layer';
+            console.log('Layer visibility toggled:', layerVisible);
+        });
+        
+        // Add WMS test functionality
+        document.getElementById('testWMS').addEventListener('click', function() {
+            console.log('=== WMS DEBUGGING INFO ===');
+            console.log('Layer visible:', wmsLayer.getVisible());
+            console.log('Layer opacity:', wmsLayer.getOpacity());
+            console.log('Layer extent:', wmsLayer.getExtent());
+            console.log('Map zoom:', map.getView().getZoom());
+            console.log('Map center:', ol.proj.toLonLat(map.getView().getCenter()));
+            
+            // Force refresh the layer
+            wmsLayer.getSource().refresh();
+            console.log('Layer refreshed');
+            
+            // Open test WMS URL in new tab
+            window.open(testWMSUrl, '_blank');
+        });
+        
+        // Zoom to layer extent functionality
+        document.getElementById('zoomToExtent').addEventListener('click', function() {
+            console.log('Zoom to Data button clicked - getting layer extent...');
+            getLayerExtent();
+        });
+        
+        // Add click handler to show coordinates
+        map.on('click', function(evt) {
+            const coordinate = evt.coordinate;
+            const lonLat = ol.proj.toLonLat(coordinate);
+            console.log('Clicked at:', lonLat[1].toFixed(6) + ', ' + lonLat[0].toFixed(6));
+        });
+        
+        // Add extensive WMS debugging
+        let loading = 0;
+        wmsLayer.getSource().on('tileloadstart', function(event) {
+            loading++;
+            if (loading === 1) {
+                console.log('Loading WMS tiles...');
+            }
+            console.log('WMS tile URL:', event.tile.src_);
+        });
+        
+        wmsLayer.getSource().on('tileloadend', function(event) {
+            loading--;
+            console.log('WMS tile loaded successfully:', event.tile.src_);
+            if (loading === 0) {
+                console.log('All WMS tiles loaded');
+            }
+        });
+        
+        wmsLayer.getSource().on('tileloaderror', function(event) {
+            loading--;
+            console.log('WMS tile load error:', event.tile.src_);
+            console.log('Error details:', event);
+        });
+        
+        // Test a direct WMS GetMap request - will be updated dynamically
+        let testWMSUrl = '{{ geoserver_info.wms_url }}' + 
+            '?SERVICE=WMS' +
+            '&VERSION=1.1.1' +
+            '&REQUEST=GetMap' +
+            '&LAYERS={{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}' +
+            '&STYLES=' +
+            '&FORMAT=image/png' +
+            '&TRANSPARENT=true' +
+            '&SRS=EPSG:4326' +
+            '&BBOX=-180,-90,180,90' + // Default world extent
+            '&WIDTH=512' +
+            '&HEIGHT=512';
+        
+        console.log('Test WMS URL (copy to browser to test):', testWMSUrl);
+        
+        // Check if layer is actually visible
+        console.log('WMS Layer visible:', wmsLayer.getVisible());
+        console.log('WMS Layer opacity:', wmsLayer.getOpacity());
+        console.log('WMS Layer source URL:', wmsLayer.getSource().getUrls());
+        
+        console.log('OpenLayers map initialization complete');
+    } // End of initializeMap function
+});
+</script>
+{% endif %}
+{% endblock %}

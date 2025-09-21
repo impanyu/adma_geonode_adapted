@@ -10,6 +10,14 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     build-essential \
     libmagic1 \
+    gdal-bin \
+    libgdal-dev \
+    python3-gdal \
+    libgeos-dev \
+    libproj-dev \
+    proj-data \
+    proj-bin \
+    libspatialindex-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set work directory

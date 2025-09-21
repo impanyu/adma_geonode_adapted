@@ -7,3 +7,9 @@ Pillow>=9.0.0
 python-magic>=0.4.0
 django-crispy-forms>=2.0
 crispy-bootstrap5>=0.7
+
+# Basic dependencies for spatial functionality
+requests>=2.28.0
+
+# Leaflet integration for Django
+django-leaflet>=0.29.0

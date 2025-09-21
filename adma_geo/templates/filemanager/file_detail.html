@@ -124,6 +124,58 @@
                         </table>
                     </div>
                 </div>
+                
+                {% if file.is_spatial %}
+                <!-- GIS Information -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h6>Spatial Data Information</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th width="30%">Processing Status:</th>
+                                <td>
+                                    {% if file.gis_status == 'pending' %}
+                                        <span class="badge bg-warning">Pending Processing</span>
+                                    {% elif file.gis_status == 'processing' %}
+                                        <span class="badge bg-info">Processing</span>
+                                    {% elif file.gis_status == 'processed' %}
+                                        <span class="badge bg-success">Processed</span>
+                                    {% elif file.gis_status == 'published' %}
+                                        <span class="badge bg-primary">Published to GeoServer</span>
+                                    {% elif file.gis_status == 'error' %}
+                                        <span class="badge bg-danger">Processing Error</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if file.crs %}
+                            <tr>
+                                <th>Coordinate System:</th>
+                                <td>{{ file.crs }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if file.geoserver_layer_name %}
+                            <tr>
+                                <th>GeoServer Layer:</th>
+                                <td><small>{{ file.geoserver_layer_name }}</small></td>
+                            </tr>
+                            {% endif %}
+                            {% if file.spatial_extent %}
+                            <tr>
+                                <th>Spatial Extent:</th>
+                                <td><small class="text-success">Available</small></td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                        
+                        {% if file.processing_log %}
+                        <details class="mt-2">
+                            <summary class="text-muted" style="cursor: pointer;">Processing Log</summary>
+                            <pre class="mt-2 small text-muted">{{ file.processing_log }}</pre>
+                        </details>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -136,9 +188,14 @@
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
-                    <a href="{% url 'filemanager:download_file' file.id %}" class="btn btn-primary">
-                        <i class="fas fa-download me-2"></i>Download File
-                    </a>
+                        <a href="{% url 'filemanager:download_file' file.id %}" class="btn btn-primary">
+                            <i class="fas fa-download me-2"></i>Download File
+                        </a>
+                        {% if file.is_spatial %}
+                        <a href="{% url 'filemanager:map_viewer' file.id %}" class="btn btn-success">
+                            <i class="fas fa-map-marked-alt me-2"></i>View on Map
+                        </a>
+                        {% endif %}
                     
                     {% if file.can_preview and file.file_type == 'image' %}
                     <button class="btn btn-outline-primary" onclick="openImageModal()">

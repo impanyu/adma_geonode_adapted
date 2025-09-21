@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ file.name }} - Public Map View{% endblock %}
+
+{% block extra_head %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #map {
+        height: 600px;
+        width: 100%;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2>
+                        <i class="fas fa-map-marked-alt text-primary me-2"></i>
+                        {{ file.name }}
+                    </h2>
+                    <p class="text-muted">Public Spatial Data</p>
+                </div>
+                <div>
+                    <a href="{% url 'filemanager:home' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Home
+                    </a>
+                </div>
+            </div>
+
+            <!-- Map Container -->
+            <div class="row">
+                <div class="col-lg-9">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-map me-2"></i>Map View
+                            </h5>
+                        </div>
+                        <div class="card-body p-0">
+                            {% if file.gis_status == 'published' and geoserver_info %}
+                                <div id="map"></div>
+                            {% else %}
+                                <div class="text-center py-5">
+                                    <i class="fas fa-map fa-3x text-muted mb-3"></i>
+                                    <h4>Map Not Available</h4>
+                                    <p class="text-muted">This spatial data is not currently available for viewing.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Side Panel -->
+                <div class="col-lg-3">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">File Information</h6>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Type:</strong></td>
+                                    <td>{{ file.file_type|capfirst }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Size:</strong></td>
+                                    <td>{{ file.get_size_display }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Owner:</strong></td>
+                                    <td>{{ file.owner.username }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Uploaded:</strong></td>
+                                    <td>{{ file.created_at|date:"M d, Y" }}</td>
+                                </tr>
+                            </table>
+                            
+                            <div class="alert alert-info alert-sm">
+                                <i class="fas fa-globe me-2"></i>
+                                <small>This is a public file</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+{% if file.gis_status == 'published' and geoserver_info %}
+<script>
+    // Initialize map
+    const map = L.map('map').setView([40.8136, -96.7026], 6); // Default to Nebraska
+    
+    // Add base map
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    
+    // Add GeoServer WMS layer
+    const wmsLayer = L.tileLayer.wms('{{ geoserver_info.wms_url }}', {
+        layers: '{{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}',
+        format: 'image/png',
+        transparent: true,
+        attribution: 'GeoServer'
+    }).addTo(map);
+    
+    // Add layer control
+    const baseMaps = {
+        'OpenStreetMap': map._layers[Object.keys(map._layers)[0]]
+    };
+    
+    const overlayMaps = {
+        '{{ file.name }}': wmsLayer
+    };
+    
+    L.control.layers(baseMaps, overlayMaps).addTo(map);
+</script>
+{% endif %}
+{% endblock %}

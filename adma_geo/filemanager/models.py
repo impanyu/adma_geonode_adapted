@@ -2,8 +2,11 @@ import os
 import uuid
 from pathlib import Path
 from django.db import models
+# from django.contrib.gis.db import models as gis_models  # Disabled for now
+# from django.contrib.gis.geos import Point
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.conf import settings
 
 User = get_user_model()
 
@@ -66,9 +69,28 @@ class File(models.Model):
     )
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='files')
     file_size = models.BigIntegerField(default=0)
-    file_type = models.CharField(max_length=50, blank=True)  # 'image', 'text', 'document', 'other'
+    file_type = models.CharField(max_length=50, blank=True)  # 'image', 'text', 'document', 'gis', 'other'
     mime_type = models.CharField(max_length=100, blank=True)
     is_public = models.BooleanField(default=False, help_text="Public files are visible to everyone")
+    
+    # GIS-specific fields
+    is_spatial = models.BooleanField(default=False, help_text="Whether this is a spatial/GIS file")
+    geoserver_layer_name = models.CharField(max_length=255, blank=True, null=True, help_text="Layer name in GeoServer")
+    geoserver_workspace = models.CharField(max_length=100, blank=True, null=True, help_text="GeoServer workspace")
+    spatial_extent = models.TextField(null=True, blank=True, help_text="Spatial extent of the data (JSON)")
+    crs = models.CharField(max_length=50, blank=True, null=True, help_text="Coordinate Reference System")
+    
+    # Processing status for GIS files
+    GIS_STATUS_CHOICES = [
+        ('pending', 'Pending Processing'),
+        ('processing', 'Processing'),
+        ('processed', 'Processed'),
+        ('published', 'Published to GeoServer'),
+        ('error', 'Processing Error'),
+    ]
+    gis_status = models.CharField(max_length=20, choices=GIS_STATUS_CHOICES, default='pending', blank=True)
+    processing_log = models.TextField(blank=True, help_text="Log of processing steps")
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -91,7 +113,14 @@ class File(models.Model):
             
             # Determine file type based on extension
             file_ext = Path(self.file.name).suffix.lower()
-            if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+            
+            # Check if it's a GIS file
+            if file_ext in getattr(settings, 'GIS_FILE_EXTENSIONS', []):
+                self.file_type = 'gis'
+                self.is_spatial = True
+                if not self.geoserver_workspace:
+                    self.geoserver_workspace = getattr(settings, 'GEOSERVER_WORKSPACE', 'adma_geo')
+            elif file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
                 self.file_type = 'image'
             elif file_ext in ['.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.xml']:
                 self.file_type = 'text'
@@ -119,12 +148,14 @@ class File(models.Model):
             return 'fas fa-file-code text-icon'
         elif self.file_type == 'document':
             return 'fas fa-file-alt document-icon'
+        elif self.file_type == 'gis':
+            return 'fas fa-map-marked-alt gis-icon'
         else:
             return 'fas fa-file file-icon'
 
     def can_preview(self):
         """Check if file can be previewed in browser"""
-        return self.file_type in ['image', 'text']
+        return self.file_type in ['image', 'text', 'gis']
 
     def get_absolute_url(self):
         return reverse('filemanager:file_detail', kwargs={'file_id': self.id})

@@ -146,12 +146,17 @@
                                             <i class="fas fa-ellipsis-v"></i>
                                         </button>
                                         <ul class="dropdown-menu">
-                                            <li><a class="dropdown-item" href="{% url 'filemanager:download_file' file.id %}">
-                                                <i class="fas fa-download me-2"></i>Download
-                                            </a></li>
-                                            <li><a class="dropdown-item" href="#" onclick="deleteItem('file', '{{ file.id }}', '{{ file.name }}')">
-                                                <i class="fas fa-trash me-2"></i>Delete
-                                            </a></li>
+                                           <li><a class="dropdown-item" href="{% url 'filemanager:download_file' file.id %}">
+                                               <i class="fas fa-download me-2"></i>Download
+                                           </a></li>
+                                           {% if file.is_spatial %}
+                                           <li><a class="dropdown-item" href="{% url 'filemanager:map_viewer' file.id %}">
+                                               <i class="fas fa-map-marked-alt me-2"></i>View on Map
+                                           </a></li>
+                                           {% endif %}
+                                           <li><a class="dropdown-item" href="#" onclick="deleteItem('file', '{{ file.id }}', '{{ file.name }}')">
+                                               <i class="fas fa-trash me-2"></i>Delete
+                                           </a></li>
                                         </ul>
                                     </div>
                                 </td>

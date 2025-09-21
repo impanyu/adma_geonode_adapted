@@ -20,11 +20,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+    # 'django.contrib.gis',  # GeoDjango support (disabled for now)
+
     # Third party apps
     'crispy_forms',
     'crispy_bootstrap5',
-    
+    'leaflet',
+
     # Local apps
     'filemanager',
 ]
@@ -62,7 +64,7 @@ WSGI_APPLICATION = 'adma_geo.wsgi.application'
 # Database
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'django.db.backends.postgresql',  # Regular PostgreSQL backend
         'NAME': os.environ.get('POSTGRES_DB', 'adma_geo'),
         'USER': os.environ.get('POSTGRES_USER', 'adma_geo'),
         'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'adma_geo123'),
@@ -127,3 +129,40 @@ CELERY_TIMEZONE = TIME_ZONE
 # File Upload Settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
+
+# GeoServer Configuration
+GEOSERVER_URL = os.environ.get('GEOSERVER_URL', 'http://geoserver:8080/geoserver')
+GEOSERVER_ADMIN_USER = os.environ.get('GEOSERVER_ADMIN_USER', 'admin')
+GEOSERVER_ADMIN_PASSWORD = os.environ.get('GEOSERVER_ADMIN_PASSWORD', 'geoserver')
+GEOSERVER_WORKSPACE = 'adma_geo'
+
+# Supported GIS file formats
+GIS_FILE_EXTENSIONS = [
+    '.gpkg', '.geojson', '.shp', '.kml', '.kmz',
+    '.csv', '.tiff', '.tif', '.geotiff', '.geotif', '.zip'
+]
+
+# Django-Leaflet configuration
+LEAFLET_CONFIG = {
+    'DEFAULT_CENTER': (41.0, -99.5),  # Nebraska center
+    'DEFAULT_ZOOM': 8,
+    'MIN_ZOOM': 3,
+    'MAX_ZOOM': 18,
+    'DEFAULT_PRECISION': 6,
+    'TILES': [
+        ('OpenStreetMap', 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            'attribution': '© OpenStreetMap contributors',
+            'maxZoom': 19,
+        }),
+        ('CartoDB Positron', 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+            'attribution': '© OpenStreetMap contributors, © CartoDB',
+            'maxZoom': 19,
+        }),
+    ],
+    'SRID': 3857,  # Web Mercator
+    'SPATIAL_EXTENT': (-180, -90, 180, 90),  # World extent
+    'SCALE': 'both',
+    'MINIMAP': False,
+    'RESET_VIEW': False,
+    'ATTRIBUTION_PREFIX': 'ADMA GeoFiles',
+}
