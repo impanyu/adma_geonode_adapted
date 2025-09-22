@@ -198,157 +198,17 @@ def delayed_shapefile_publish_task(self, file_id, max_retries=5):
             logger.error(f"Error in delayed_shapefile_publish_task: {str(e)}")
         raise  # Re-raise for Celery to handle retries
 
-@shared_task(bind=True)
-def generate_file_embedding_task(self, file_id):
-    """
-    Generate embedding for a file in the background
-    """
-    try:
-        file_obj = File.objects.get(id=file_id)
-        
-        from .embedding_service import embedding_service
-        success = embedding_service.add_file_embedding(file_obj)
-        
-        if success:
-            logger.info(f"Generated embedding for file: {file_obj.name}")
-            return f"Generated embedding for file: {file_obj.name}"
-        else:
-            logger.error(f"Failed to generate embedding for file: {file_obj.name}")
-            return f"Failed to generate embedding for file: {file_obj.name}"
-            
-    except File.DoesNotExist:
-        logger.error(f"File with ID {file_id} not found")
-        return f"File with ID {file_id} not found"
-    except Exception as e:
-        logger.error(f"Error generating file embedding: {str(e)}")
-        return f"Error generating file embedding: {str(e)}"
+# NOTE: File embedding generation task removed - no longer needed
+# Search now uses PostgreSQL text matching instead of embeddings
 
-@shared_task(bind=True)
-def generate_folder_embedding_task(self, folder_id):
-    """
-    Generate embedding for a folder in the background
-    """
-    try:
-        folder_obj = Folder.objects.get(id=folder_id)
-        
-        from .embedding_service import embedding_service
-        success = embedding_service.add_folder_embedding(folder_obj)
-        
-        if success:
-            logger.info(f"Generated embedding for folder: {folder_obj.name}")
-            return f"Generated embedding for folder: {folder_obj.name}"
-        else:
-            logger.error(f"Failed to generate embedding for folder: {folder_obj.name}")
-            return f"Failed to generate embedding for folder: {folder_obj.name}"
-            
-    except Folder.DoesNotExist:
-        logger.error(f"Folder with ID {folder_id} not found")
-        return f"Folder with ID {folder_id} not found"
-    except Exception as e:
-        logger.error(f"Error generating folder embedding: {str(e)}")
-        return f"Error generating folder embedding: {str(e)}"
+# NOTE: Folder embedding generation task removed - no longer needed
+# Search now uses PostgreSQL text matching instead of embeddings
 
-@shared_task(bind=True)
-def generate_recursive_embeddings_task(self, folder_id):
-    """
-    Generate embeddings for a folder and all its contents recursively
-    """
-    try:
-        folder_obj = Folder.objects.get(id=folder_id)
-        
-        from .embedding_service import embedding_service
-        
-        # Generate embedding for this folder
-        embedding_service.add_folder_embedding(folder_obj)
-        
-        # Generate embeddings for all files in this folder
-        for file_obj in folder_obj.files.all():
-            embedding_service.add_file_embedding(file_obj)
-        
-        # Recursively process subfolders
-        for subfolder in folder_obj.subfolders.all():
-            generate_recursive_embeddings_task.delay(str(subfolder.id))
-        
-        logger.info(f"Generated recursive embeddings for folder: {folder_obj.name}")
-        return f"Generated recursive embeddings for folder: {folder_obj.name}"
-        
-    except Folder.DoesNotExist:
-        logger.error(f"Folder with ID {folder_id} not found")
-        return f"Folder with ID {folder_id} not found"
-    except Exception as e:
-        logger.error(f"Error generating recursive embeddings: {str(e)}")
-        return f"Error generating recursive embeddings: {str(e)}"
+# NOTE: Recursive embedding generation task removed - no longer needed
+# Search now uses PostgreSQL text matching instead of embeddings
 
-@shared_task
-def update_all_embeddings_task():
-    """
-    Update embeddings for all files and folders in the system
-    """
-    try:
-        from .embedding_service import embedding_service
-        files_updated, folders_updated = embedding_service.update_all_embeddings()
-        
-        message = f"Updated embeddings: {files_updated} files, {folders_updated} folders"
-        logger.info(message)
-        return message
-        
-    except Exception as e:
-        logger.error(f"Error updating all embeddings: {str(e)}")
-        return f"Error updating all embeddings: {str(e)}"
-
-@shared_task
-def generate_map_embedding_task(map_id):
-    """
-    Generate embeddings for a specific map
-    """
-    try:
-        from .models import Map
-        from .embedding_service import embedding_service
-        
-        map_obj = Map.objects.get(id=map_id)
-        success = embedding_service.generate_map_embedding(map_obj)
-        
-        if success:
-            message = f"Successfully generated embeddings for map: {map_obj.name}"
-            logger.info(message)
-            return message
-        else:
-            message = f"Failed to generate embeddings for map: {map_obj.name}"
-            logger.error(message)
-            return message
-        
-    except Map.DoesNotExist:
-        logger.error(f"Map with ID {map_id} not found")
-        return f"Map with ID {map_id} not found"
-    except Exception as e:
-        logger.error(f"Error generating map embeddings: {str(e)}")
-        return f"Error generating map embeddings: {str(e)}"
-
-@shared_task
-def update_map_embeddings_task():
-    """
-    Update embeddings for all maps in the system
-    """
-    try:
-        from .models import Map
-        from .embedding_service import embedding_service
-        
-        maps_updated = 0
-        for map_obj in Map.objects.all():
-            try:
-                if embedding_service.generate_map_embedding(map_obj):
-                    maps_updated += 1
-            except Exception as e:
-                logger.error(f"Error updating embeddings for map {map_obj.name}: {str(e)}")
-                continue
-        
-        message = f"Updated embeddings for {maps_updated} maps"
-        logger.info(message)
-        return message
-        
-    except Exception as e:
-        logger.error(f"Error updating map embeddings: {str(e)}")
-        return f"Error updating map embeddings: {str(e)}"
+# NOTE: All embedding-related tasks removed - no longer needed
+# Search now uses PostgreSQL text matching instead of embeddings
 
 
 @shared_task(bind=True)

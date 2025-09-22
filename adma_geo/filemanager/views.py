@@ -1214,83 +1214,68 @@ class SearchView(TemplateView):
         
         # Get search parameters
         query = self.request.GET.get('q', '').strip()
-        # Also check for 'prompt' parameter for semantic search
         if not query:
             query = self.request.GET.get('prompt', '').strip()
-        content_type = self.request.GET.get('type', '')  # 'file', 'folder', or ''
+        
+        content_type = self.request.GET.get('type', '')  # 'file', 'folder', 'map', or ''
         file_type = self.request.GET.get('file_type', '')
-        is_spatial = self.request.GET.get('is_spatial', '')
-        is_public = self.request.GET.get('is_public', '')
-        owner_filter = self.request.GET.get('owner', '').strip()
+        is_public_str = self.request.GET.get('is_public', '')
         page = self.request.GET.get('page', 1)
+        
+        # Convert is_public to boolean or None
+        is_public = None
+        if is_public_str.lower() == 'true':
+            is_public = True
+        elif is_public_str.lower() == 'false':
+            is_public = False
         
         context.update({
             'query': query,
             'content_type': content_type,
             'file_type': file_type,
-            'is_spatial': is_spatial,
-            'is_public': is_public,
-            'owner_filter': owner_filter,
+            'is_public': is_public_str,
         })
         
         # Initialize results
         search_results = []
         total_results = 0
         
-        # Perform search if there's a query OR if there are filters applied
-        has_filters = any([content_type, file_type, is_spatial, is_public, owner_filter])
+        # Check if we should perform a search
+        has_query = bool(query)
+        has_filters = any([content_type, file_type, is_public_str])
         
-        
-        if query or has_filters:
-            # Use PostgreSQL search for all queries
-            from .postgres_search import postgres_search
-            
-            # Build filters for search
-            filters = {}
-            
-            if content_type:
-                filters['type'] = content_type
-            
-            if file_type:
-                filters['file_type'] = file_type
-                
-            if is_spatial:
-                filters['is_spatial'] = is_spatial.lower() == 'true'
-                
-            if is_public:
-                filters['is_public'] = is_public.lower() == 'true'
-                
-            if owner_filter:
-                filters['owner'] = owner_filter
-            
-            # Perform PostgreSQL search
-            user_id = str(self.request.user.id) if self.request.user.is_authenticated else ''
-            
+        if has_query or has_filters:
             try:
-                raw_results = postgres_search.search_all(
-                    query_text=query,
-                    user_id=user_id,
-                    filters=filters,
+                # Use the new search engine
+                from .search_engine import search_engine
+                
+                # Perform search
+                raw_results = search_engine.search(
+                    user=self.request.user,
+                    query=query if has_query else None,
+                    content_type=content_type if content_type else None,
+                    is_public=is_public,
+                    file_type=file_type if file_type else None,
                     limit=1000  # Get more results for pagination
                 )
                 
-                # Convert results to search format
+                # Convert results to template format
                 for result in raw_results:
                     search_results.append({
                         'object': result['object'],
                         'type': result['type'],
                         'relevance': result.get('relevance', 1.0),
-                        'metadata_text': result.get('name', '')
+                        'metadata_text': result['name']
                     })
                 
                 total_results = len(search_results)
                 
             except Exception as e:
-                # Handle any search errors
+                # Handle search errors
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.error(f"PostgreSQL search error: {e}")
-                context['search_error'] = f"Search temporarily unavailable due to technical issues."
+                logger.error(f"Search error: {e}")
+                context['search_error'] = "Search temporarily unavailable due to technical issues."
         
         # Pagination
         from django.core.paginator import Paginator
@@ -1308,13 +1293,14 @@ class SearchView(TemplateView):
             'page_obj': page_obj,
             'total_results': total_results,
             'has_results': bool(search_results),
+            'has_search': has_query or has_filters,  # Template expects this variable
         })
         
         return context
 
 @login_required
 def search_api(request):
-    """API endpoint for search suggestions and quick search"""
+    """API endpoint for search suggestions using the new search engine"""
     if request.method == 'GET':
         query = request.GET.get('q', '').strip()
         limit = min(int(request.GET.get('limit', 10)), 50)  # Max 50 suggestions
@@ -1323,73 +1309,58 @@ def search_api(request):
             return JsonResponse({'suggestions': []})
         
         try:
-            from .embedding_service import embedding_service
-            chromadb_available = True
-        except RuntimeError as e:
-            if "sqlite3" in str(e).lower():
-                return JsonResponse({'suggestions': [], 'error': 'ChromaDB requires SQLite 3.35+ to function'})
-            else:
-                raise e
-        
-        try:
-            # Get quick search results with error handling
-            try:
-                results = embedding_service.search_similar(
-                    query_text=query,
-                    user_id=str(request.user.id),
-                    filters=None,
-                    limit=limit
-                )
-            except Exception as chromadb_error:
-                # Log the ChromaDB error and return empty results
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"ChromaDB quick search error: {chromadb_error}")
-                return JsonResponse({'suggestions': [], 'error': 'Search temporarily unavailable due to technical issues'})
+            # Use the new search engine
+            from .search_engine import search_engine
+            
+            # Perform search (authenticated users only due to @login_required)
+            results = search_engine.search(
+                user=request.user,
+                query=query,
+                content_type=None,  # All types
+                is_public=None,     # All visibility
+                file_type=None,     # All file types
+                limit=limit
+            )
             
             # Format suggestions
             suggestions = []
             for result in results:
                 try:
-                    if result['type'] == 'file':
-                        obj = File.objects.get(id=result['id'])
-                        suggestions.append({
-                            'id': str(obj.id),
-                            'type': 'file',
-                            'name': obj.name,
-                            'icon': obj.get_icon_class(),
-                            'url': obj.get_absolute_url(),
-                            'is_public': obj.is_public,
-                            'similarity': round(result['similarity'], 3)
-                        })
-                    elif result['type'] == 'folder':
-                        obj = Folder.objects.get(id=result['id'])
-                        suggestions.append({
-                            'id': str(obj.id),
-                            'type': 'folder', 
-                            'name': obj.name,
-                            'icon': 'fas fa-folder',
-                            'url': obj.get_absolute_url(),
-                            'is_public': obj.is_public,
-                            'similarity': round(result['similarity'], 3)
-                        })
-                    elif result['type'] == 'map':
-                        obj = Map.objects.get(id=result['id'])
-                        suggestions.append({
-                            'id': str(obj.id),
-                            'type': 'map',
-                            'name': obj.name,
-                            'icon': 'fas fa-map',
-                            'url': obj.get_absolute_url(),
-                            'is_public': obj.is_public,
-                            'similarity': round(result['similarity'], 3)
-                        })
-                except (File.DoesNotExist, Folder.DoesNotExist, Map.DoesNotExist):
+                    obj = result['object']
+                    obj_type = result['type']
+                    
+                    # Get appropriate icon
+                    if obj_type == 'file':
+                        icon = getattr(obj, 'get_icon_class', lambda: 'fas fa-file')()
+                    elif obj_type == 'folder':
+                        icon = 'fas fa-folder'
+                    elif obj_type == 'map':
+                        icon = 'fas fa-map'
+                    else:
+                        icon = 'fas fa-file'
+                    
+                    suggestions.append({
+                        'id': result['id'],
+                        'type': obj_type,
+                        'name': obj.name,
+                        'icon': icon,
+                        'url': obj.get_absolute_url(),
+                        'is_public': getattr(obj, 'is_public', False),
+                        'relevance': result.get('relevance', 1.0)
+                    })
+                except Exception as e:
+                    # Log and skip problematic items
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Error processing search suggestion: {e}")
                     continue
             
             return JsonResponse({'suggestions': suggestions})
             
         except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Search API error: {e}")
+            return JsonResponse({'suggestions': [], 'error': 'Internal search error'})
     
     return JsonResponse({'error': 'Method not allowed'}, status=405)

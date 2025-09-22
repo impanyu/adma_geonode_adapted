@@ -46,11 +46,7 @@ class Folder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    # ChromaDB integration
-    chroma_id = models.CharField(max_length=255, null=True, blank=True, unique=True, 
-                                help_text="Reference ID in ChromaDB vector database")
-    embedding_updated_at = models.DateTimeField(null=True, blank=True,
-                                               help_text="Last time embedding was updated")
+    # NOTE: ChromaDB integration removed - search now uses PostgreSQL text matching
 
     class Meta:
         unique_together = ('name', 'parent', 'owner')
@@ -154,17 +150,7 @@ class Folder(models.Model):
         for file_obj in self.files.all():
             file_obj.delete()
         
-        # Clean up ChromaDB embedding for this folder
-        if self.chroma_id:
-            try:
-                from .embedding_service import EmbeddingService
-                embedding_service = EmbeddingService()
-                embedding_service.remove_embedding(self.chroma_id)
-            except Exception as e:
-                # Log error but don't prevent folder deletion
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Failed to delete ChromaDB embedding for folder {self.name}: {e}")
+        # NOTE: ChromaDB cleanup removed - no longer needed
         
         # Proceed with normal deletion (subfolders and files are already deleted)
         super().delete(*args, **kwargs)
@@ -209,11 +195,7 @@ class File(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    # ChromaDB integration
-    chroma_id = models.CharField(max_length=255, null=True, blank=True, unique=True, 
-                                help_text="Reference ID in ChromaDB vector database")
-    embedding_updated_at = models.DateTimeField(null=True, blank=True,
-                                               help_text="Last time embedding was updated")
+    # NOTE: ChromaDB integration removed - search now uses PostgreSQL text matching
 
     class Meta:
         unique_together = ('name', 'folder', 'owner')
@@ -236,17 +218,7 @@ class File(models.Model):
                 logger = logging.getLogger(__name__)
                 logger.error(f"Failed to delete GeoServer resources for {self.name}: {e}")
         
-        # Clean up ChromaDB embeddings if they exist
-        if self.chroma_id:
-            try:
-                from .embedding_service import EmbeddingService
-                embedding_service = EmbeddingService()
-                embedding_service.remove_embedding(self.chroma_id)
-            except Exception as e:
-                # Log error but don't prevent file deletion
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Failed to delete ChromaDB embedding for {self.name}: {e}")
+        # NOTE: ChromaDB cleanup removed - no longer needed
         
         # Proceed with normal deletion
         super().delete(*args, **kwargs)
@@ -403,9 +375,7 @@ class Map(models.Model):
     bbox_min_lng = models.FloatField(null=True, blank=True, help_text="Minimum longitude of all files")
     bbox_max_lng = models.FloatField(null=True, blank=True, help_text="Maximum longitude of all files")
     
-    # ChromaDB integration for search
-    chroma_id = models.CharField(max_length=255, blank=True, null=True, help_text="ChromaDB collection ID for search")
-    embedding_updated_at = models.DateTimeField(null=True, blank=True, help_text="Last time embeddings were updated")
+    # NOTE: ChromaDB integration removed - search now uses PostgreSQL text matching
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

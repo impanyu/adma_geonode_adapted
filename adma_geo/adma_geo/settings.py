@@ -149,18 +149,6 @@ ALL_SPATIAL_EXTENSIONS = [
 ]
 
 # ChromaDB and Embedding Settings
-CHROMADB_PATH = os.path.join(BASE_DIR, 'chromadb')
-CHROMADB_COLLECTION = 'adma_metadata'
-EMBEDDING_SIMILARITY_THRESHOLD = -0.5  # Minimum similarity for search results
-
-# Embedding Provider Configuration
-# Will automatically fallback to sentence_transformers if OpenAI API key is not set
-EMBEDDING_PROVIDER = 'openai' if os.getenv('OPENAI_API_KEY') else 'sentence_transformers'
-
-# OpenAI Settings (when using OpenAI embeddings)
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')  # Set this environment variable
-OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small'  # or 'text-embedding-3-large' for better quality
-
-# Sentence Transformers Settings (fallback)
-EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # Sentence transformer model
+# NOTE: ChromaDB and embedding settings removed
+# Search now uses PostgreSQL text matching instead of semantic embeddings
 
