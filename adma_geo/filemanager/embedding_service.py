@@ -9,9 +9,14 @@ from datetime import datetime
 
 import chromadb
 from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
 from django.conf import settings
 from django.utils import timezone
+
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 from .models import File, Folder, Map
 
@@ -21,39 +26,97 @@ class EmbeddingService:
     """Service for managing embeddings in ChromaDB"""
     
     def __init__(self):
-        # Initialize ChromaDB client
-        chroma_path = getattr(settings, 'CHROMADB_PATH', os.path.join(settings.BASE_DIR, 'chromadb'))
-        os.makedirs(chroma_path, exist_ok=True)
-        
-        self.client = chromadb.PersistentClient(
-            path=chroma_path,
-            settings=Settings(anonymized_telemetry=False)
-        )
-        
-        # Initialize embedding model
-        model_name = getattr(settings, 'EMBEDDING_MODEL', 'all-MiniLM-L6-v2')
-        self.embedding_model = SentenceTransformer(model_name)
-        
-        # Get or create collection
-        collection_name = getattr(settings, 'CHROMADB_COLLECTION', 'adma_metadata')
         try:
-            self.collection = self.client.get_collection(collection_name)
-        except Exception:
-            self.collection = self.client.create_collection(
-                name=collection_name,
-                metadata={"description": "ADMA file and folder metadata embeddings"}
+            # Initialize ChromaDB client
+            chroma_path = getattr(settings, 'CHROMADB_PATH', os.path.join(settings.BASE_DIR, 'chromadb'))
+            os.makedirs(chroma_path, exist_ok=True)
+            
+            self.client = chromadb.PersistentClient(
+                path=chroma_path,
+                settings=Settings(anonymized_telemetry=False)
             )
-        
-        # Similarity threshold for search results
-        self.similarity_threshold = getattr(settings, 'EMBEDDING_SIMILARITY_THRESHOLD', 0.7)
+            
+            # Initialize embedding model
+            self.embedding_provider = getattr(settings, 'EMBEDDING_PROVIDER', 'openai')  # 'openai' or 'sentence_transformers'
+            self.provider = self.embedding_provider  # Alias for backward compatibility
+            
+            if self.embedding_provider == 'openai':
+                if not OPENAI_AVAILABLE:
+                    raise RuntimeError("OpenAI library not installed. Please install with: pip install openai")
+                
+                # Configure OpenAI
+                self.openai_api_key = getattr(settings, 'OPENAI_API_KEY', os.getenv('OPENAI_API_KEY'))
+                if not self.openai_api_key:
+                    raise RuntimeError("OpenAI API key not found. Set OPENAI_API_KEY in settings or environment variables.")
+                
+                # Initialize OpenAI client
+                self.openai_client = openai.OpenAI(api_key=self.openai_api_key)
+                self.embedding_model_name = getattr(settings, 'OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small')
+                self.embedding_model = None  # Not needed for OpenAI
+                
+                logger.info(f"Initialized OpenAI embeddings with model: {self.embedding_model_name}")
+                
+            else:
+                # Fallback to Sentence Transformers
+                try:
+                    from sentence_transformers import SentenceTransformer
+                    model_name = getattr(settings, 'EMBEDDING_MODEL', 'all-MiniLM-L6-v2')
+                    self.embedding_model = SentenceTransformer(model_name)
+                    logger.info(f"Initialized Sentence Transformers with model: {model_name}")
+                except ImportError:
+                    raise RuntimeError("sentence-transformers library not installed. Please install with: pip install sentence-transformers")
+            
+            # Get or create collection
+            collection_name = getattr(settings, 'CHROMADB_COLLECTION', 'adma_metadata')
+            try:
+                self.collection = self.client.get_collection(collection_name)
+            except Exception:
+                self.collection = self.client.create_collection(
+                    name=collection_name,
+                    metadata={"description": "ADMA file and folder metadata embeddings"}
+                )
+            
+            # Similarity threshold for search results
+            self.similarity_threshold = getattr(settings, 'EMBEDDING_SIMILARITY_THRESHOLD', 0.7)
+            
+            logger.info("EmbeddingService initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize EmbeddingService: {e}")
+            # Set defaults for failed initialization
+            self.client = None
+            self.embedding_model = None
+            self.collection = None
+            self.similarity_threshold = 0.7
+            raise RuntimeError(f"ChromaDB initialization failed: {e}")
+    
+    def __del__(self):
+        """Cleanup method to properly close ChromaDB connections"""
+        try:
+            if hasattr(self, 'client') and self.client:
+                # ChromaDB doesn't have an explicit close method, but we can clear references
+                self.client = None
+                logger.debug("EmbeddingService cleanup completed")
+        except Exception as e:
+            logger.debug(f"Error during EmbeddingService cleanup: {e}")
     
     def generate_embedding(self, text: str) -> List[float]:
-        """Generate embedding for given text"""
+        """Generate embedding for given text using configured provider"""
         try:
-            embedding = self.embedding_model.encode(text)
-            return embedding.tolist()
+            if self.embedding_provider == 'openai':
+                # Use OpenAI API
+                response = self.openai_client.embeddings.create(
+                    model=self.embedding_model_name,
+                    input=text
+                )
+                embedding = response.data[0].embedding
+                return embedding
+            else:
+                # Use Sentence Transformers
+                embedding = self.embedding_model.encode(text)
+                return embedding.tolist()
         except Exception as e:
-            logger.error(f"Error generating embedding: {e}")
+            logger.error(f"Error generating embedding with {self.embedding_provider}: {e}")
             return []
     
     def add_file_embedding(self, file_obj: File) -> bool:
@@ -67,7 +130,7 @@ class EmbeddingService:
             
             # Generate ChromaDB ID if not exists
             if not file_obj.chroma_id:
-                file_obj.chroma_id = f"file_{file_obj.id}"
+                file_obj.chroma_id = str(file_obj.id)
             
             # Prepare metadata for ChromaDB
             metadata = {
@@ -125,7 +188,7 @@ class EmbeddingService:
             
             # Generate ChromaDB ID if not exists
             if not folder_obj.chroma_id:
-                folder_obj.chroma_id = f"folder_{folder_obj.id}"
+                folder_obj.chroma_id = str(folder_obj.id)
             
             # Prepare metadata for ChromaDB
             metadata = {
@@ -174,41 +237,47 @@ class EmbeddingService:
             
             # Generate ChromaDB ID if not exists
             if not map_obj.chroma_id:
-                map_obj.chroma_id = f"map_{map_obj.id}"
+                map_obj.chroma_id = str(map_obj.id)
             
             # Get layer information
             layer_count = map_obj.map_layers.count()
             layer_names = [layer.file.name for layer in map_obj.map_layers.all()]
             layer_types = list(set([layer.file.file_type for layer in map_obj.map_layers.all()]))
             
-            # Prepare metadata for ChromaDB
+            # Prepare metadata for ChromaDB (ensure no None values)
             metadata = {
                 "type": "map",
                 "id": str(map_obj.id),
-                "name": map_obj.name,
+                "name": map_obj.name or "",
                 "owner_id": str(map_obj.owner.id),
-                "owner_username": map_obj.owner.username,
-                "is_public": map_obj.is_public,
+                "owner_username": map_obj.owner.username or "",
+                "is_public": bool(map_obj.is_public),
                 "description": map_obj.description or "",
-                "layer_count": layer_count,
+                "layer_count": int(layer_count),
                 "layer_names": ", ".join(layer_names) if layer_names else "",
                 "layer_types": ", ".join(layer_types) if layer_types else "",
                 "file_type": "map",  # For search filtering
                 "spatial": True,     # Maps are always spatial
                 "created_at": map_obj.created_at.isoformat(),
                 "updated_at": map_obj.updated_at.isoformat(),
-                "center_lat": map_obj.center_lat,
-                "center_lng": map_obj.center_lng,
-                "zoom_level": map_obj.zoom_level,
+                "center_lat": float(map_obj.center_lat) if map_obj.center_lat is not None else 0.0,
+                "center_lng": float(map_obj.center_lng) if map_obj.center_lng is not None else 0.0,
+                "zoom_level": int(map_obj.zoom_level) if map_obj.zoom_level is not None else 5,
             }
             
-            # Add to ChromaDB
-            self.collection.upsert(
-                ids=[map_obj.chroma_id],
-                embeddings=[embedding],
-                documents=[metadata_text],
-                metadatas=[metadata]
-            )
+            # Add to ChromaDB with error handling
+            try:
+                self.collection.upsert(
+                    ids=[map_obj.chroma_id],
+                    embeddings=[embedding],
+                    documents=[metadata_text],
+                    metadatas=[metadata]
+                )
+                logger.info(f"Successfully upserted map embedding to ChromaDB: {map_obj.name}")
+            except Exception as chromadb_error:
+                logger.error(f"ChromaDB upsert failed for map {map_obj.name}: {chromadb_error}")
+                logger.error(f"Metadata that caused the error: {metadata}")
+                raise chromadb_error
             
             # Update timestamp
             map_obj.embedding_updated_at = timezone.now()
@@ -229,6 +298,63 @@ class EmbeddingService:
             return True
         except Exception as e:
             logger.error(f"Error removing embedding {chroma_id}: {e}")
+            return False
+    
+    def remove_file_embedding(self, file_obj) -> bool:
+        """Remove file embedding from ChromaDB"""
+        if not file_obj.chroma_id:
+            logger.warning(f"File {file_obj.name} has no chroma_id to remove")
+            return True
+            
+        try:
+            success = self.remove_embedding(file_obj.chroma_id)
+            if success:
+                # Clear the chroma_id from the database
+                file_obj.chroma_id = None
+                file_obj.embedding_updated_at = None
+                file_obj.save(update_fields=['chroma_id', 'embedding_updated_at'])
+                logger.info(f"Removed file embedding: {file_obj.name}")
+            return success
+        except Exception as e:
+            logger.error(f"Error removing file embedding for {file_obj.name}: {e}")
+            return False
+    
+    def remove_folder_embedding(self, folder_obj) -> bool:
+        """Remove folder embedding from ChromaDB"""
+        if not folder_obj.chroma_id:
+            logger.warning(f"Folder {folder_obj.name} has no chroma_id to remove")
+            return True
+            
+        try:
+            success = self.remove_embedding(folder_obj.chroma_id)
+            if success:
+                # Clear the chroma_id from the database
+                folder_obj.chroma_id = None
+                folder_obj.embedding_updated_at = None
+                folder_obj.save(update_fields=['chroma_id', 'embedding_updated_at'])
+                logger.info(f"Removed folder embedding: {folder_obj.name}")
+            return success
+        except Exception as e:
+            logger.error(f"Error removing folder embedding for {folder_obj.name}: {e}")
+            return False
+    
+    def remove_map_embedding(self, map_obj) -> bool:
+        """Remove map embedding from ChromaDB"""
+        if not map_obj.chroma_id:
+            logger.warning(f"Map {map_obj.name} has no chroma_id to remove")
+            return True
+            
+        try:
+            success = self.remove_embedding(map_obj.chroma_id)
+            if success:
+                # Clear the chroma_id from the database
+                map_obj.chroma_id = None
+                map_obj.embedding_updated_at = None
+                map_obj.save(update_fields=['chroma_id', 'embedding_updated_at'])
+                logger.info(f"Removed map embedding: {map_obj.name}")
+            return success
+        except Exception as e:
+            logger.error(f"Error removing map embedding for {map_obj.name}: {e}")
             return False
     
     def search_similar(self, 
@@ -354,14 +480,14 @@ class EmbeddingService:
                             'distance': distance
                         })
                 
-                # Apply new logic: top 10 OR similarity > -0.5, whichever is larger
+                # Apply new logic: top 10 OR similarity > threshold, whichever is larger
                 top_n = min(10, len(all_items))
-                threshold_filtered = [item for item in all_items if item['similarity'] > -0.5]
+                threshold_filtered = [item for item in all_items if item['similarity'] > self.similarity_threshold]
                 
                 if len(threshold_filtered) > top_n:
                     # Threshold filtering gives more results, use it
                     items = threshold_filtered[:limit]  # Still respect overall limit
-                    logger.info(f"Using threshold filtering: {len(threshold_filtered)} items > -0.5 similarity (larger than top {top_n})")
+                    logger.info(f"Using threshold filtering: {len(threshold_filtered)} items > {self.similarity_threshold} similarity (larger than top {top_n})")
                 else:
                     # Top N gives more results (or equal), use it
                     items = all_items[:top_n]
@@ -410,5 +536,20 @@ class EmbeddingService:
             logger.error(f"Error getting collection stats: {e}")
             return {}
 
-# Global instance
-embedding_service = EmbeddingService()
+# Global instance - use lazy initialization to avoid issues with Django auto-reload
+_embedding_service_instance = None
+
+def get_embedding_service():
+    """Get or create the embedding service instance (lazy initialization)"""
+    global _embedding_service_instance
+    if _embedding_service_instance is None:
+        _embedding_service_instance = EmbeddingService()
+    return _embedding_service_instance
+
+# For backward compatibility
+class EmbeddingServiceProxy:
+    """Proxy object that delegates to the lazily-initialized embedding service"""
+    def __getattr__(self, name):
+        return getattr(get_embedding_service(), name)
+
+embedding_service = EmbeddingServiceProxy()

@@ -502,6 +502,7 @@ async function toggleVisibility() {
                     alertDiv.remove();
                 }
             }, 5000);
+            }
         } else {
             alert(data.error || 'Error toggling visibility');
         }
@@ -516,7 +517,7 @@ async function toggleVisibility() {
 {% endif %}
 
 // CSV/Spreadsheet Visualization functionality
-{% if file.file_type == 'csv' or file.file_type == 'spreadsheet' and csv_data %}
+{% if csv_data and file.file_type == 'csv' or csv_data and file.file_type == 'spreadsheet' %}
 // Include Chart.js from CDN
 if (!window.Chart) {
     const chartScript = document.createElement('script');
@@ -525,8 +526,8 @@ if (!window.Chart) {
 }
 
 // CSV data for visualization
-const csvData = {{ csv_data|safe }};
-const csvHeaders = {{ csv_headers|safe }};
+const csvData = {{ csv_data|default:"null"|safe }};
+const csvHeaders = {{ csv_headers|default:"null"|safe }};
 
 // Populate CSV table
 function populateCSVTable() {

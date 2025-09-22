@@ -11,7 +11,7 @@ from django.db.models.signals import post_save, post_delete, pre_delete
 from django.dispatch import receiver
 import logging
 
-from .models import MapLayer, File
+from .models import MapLayer, File, Folder, Map
 
 logger = logging.getLogger(__name__)
 
@@ -113,3 +113,137 @@ def create_layer_group_on_map_create(sender, instance, created, **kwargs):
                 
         except Exception as e:
             logger.error(f"Error creating Layer Group for new map: {e}")
+
+
+# ==============================================================================
+# AUTOMATIC EMBEDDING GENERATION SIGNALS
+# ==============================================================================
+
+@receiver(post_save, sender=File)
+def generate_file_embedding_on_create(sender, instance, created, **kwargs):
+    """
+    Automatically generate embedding for newly created files.
+    This ensures all files have embeddings for search functionality.
+    """
+    if created:
+        try:
+            from .tasks import generate_file_embedding_task
+            
+            # Submit asynchronous task to generate embedding
+            generate_file_embedding_task.delay(str(instance.id))
+            
+            logger.info(f"Scheduled embedding generation for file: {instance.name} (ID: {instance.id})")
+            
+        except ImportError:
+            logger.warning(f"Embedding task not available - skipping embedding generation for file: {instance.name}")
+        except Exception as e:
+            logger.error(f"Failed to schedule embedding generation for file {instance.name}: {e}")
+
+
+@receiver(post_save, sender=Folder)
+def generate_folder_embedding_on_create(sender, instance, created, **kwargs):
+    """
+    Automatically generate embedding for newly created folders.
+    This ensures all folders have embeddings for search functionality.
+    """
+    if created:
+        try:
+            from .tasks import generate_folder_embedding_task
+            
+            # Submit asynchronous task to generate embedding
+            generate_folder_embedding_task.delay(str(instance.id))
+            
+            logger.info(f"Scheduled embedding generation for folder: {instance.name} (ID: {instance.id})")
+            
+        except ImportError:
+            logger.warning(f"Embedding task not available - skipping embedding generation for folder: {instance.name}")
+        except Exception as e:
+            logger.error(f"Failed to schedule embedding generation for folder {instance.name}: {e}")
+
+
+@receiver(post_save, sender=Map)
+def generate_map_embedding_on_create(sender, instance, created, **kwargs):
+    """
+    Map embedding generation DISABLED due to ChromaDB corruption issue.
+    
+    Maps are created without embeddings and must be manually indexed
+    using the management command: python manage.py generate_map_embeddings
+    
+    This prevents ChromaDB corruption that breaks search functionality.
+    """
+    if created:
+        logger.warning(f"Map created without embedding: {instance.name} (ID: {instance.id})")
+        logger.warning("Use 'python manage.py generate_map_embeddings' to add map to search index")
+        
+        # COMPLETELY DISABLED until ChromaDB corruption issue is resolved
+        # Automatic map embedding causes "Error finding id" in ChromaDB
+        pass
+
+
+@receiver(pre_delete, sender=File)
+def remove_file_embedding_on_delete(sender, instance, **kwargs):
+    """
+    Remove file embedding from ChromaDB when file is deleted.
+    This keeps the embedding database clean.
+    """
+    if instance.chroma_id:
+        try:
+            from .embedding_service import embedding_service
+            
+            success = embedding_service.remove_file_embedding(instance)
+            
+            if success:
+                logger.info(f"Removed embedding for deleted file: {instance.name} (ChromaDB ID: {instance.chroma_id})")
+            else:
+                logger.warning(f"Failed to remove embedding for deleted file: {instance.name}")
+                
+        except ImportError:
+            logger.warning(f"Embedding service not available - skipping embedding removal for file: {instance.name}")
+        except Exception as e:
+            logger.error(f"Error removing embedding for deleted file {instance.name}: {e}")
+
+
+@receiver(pre_delete, sender=Folder)
+def remove_folder_embedding_on_delete(sender, instance, **kwargs):
+    """
+    Remove folder embedding from ChromaDB when folder is deleted.
+    This keeps the embedding database clean.
+    """
+    if instance.chroma_id:
+        try:
+            from .embedding_service import embedding_service
+            
+            success = embedding_service.remove_folder_embedding(instance)
+            
+            if success:
+                logger.info(f"Removed embedding for deleted folder: {instance.name} (ChromaDB ID: {instance.chroma_id})")
+            else:
+                logger.warning(f"Failed to remove embedding for deleted folder: {instance.name}")
+                
+        except ImportError:
+            logger.warning(f"Embedding service not available - skipping embedding removal for folder: {instance.name}")
+        except Exception as e:
+            logger.error(f"Error removing embedding for deleted folder {instance.name}: {e}")
+
+
+@receiver(pre_delete, sender=Map)
+def remove_map_embedding_on_delete(sender, instance, **kwargs):
+    """
+    Remove map embedding from ChromaDB when map is deleted.
+    This keeps the embedding database clean.
+    """
+    if instance.chroma_id:
+        try:
+            from .embedding_service import embedding_service
+            
+            success = embedding_service.remove_map_embedding(instance)
+            
+            if success:
+                logger.info(f"Removed embedding for deleted map: {instance.name} (ChromaDB ID: {instance.chroma_id})")
+            else:
+                logger.warning(f"Failed to remove embedding for deleted map: {instance.name}")
+                
+        except ImportError:
+            logger.warning(f"Embedding service not available - skipping embedding removal for map: {instance.name}")
+        except Exception as e:
+            logger.error(f"Error removing embedding for deleted map {instance.name}: {e}")

@@ -592,13 +592,7 @@ def create_folder(request):
                 is_public=is_public
             )
             
-            # Generate embedding for the created folder (if ChromaDB is available)
-            try:
-                from .tasks import generate_folder_embedding_task
-                generate_folder_embedding_task.delay(str(folder.id))
-            except Exception:
-                # ChromaDB not available, skip embedding generation
-                pass
+            # Embedding generation handled automatically by post_save signal
             
             return JsonResponse({
                 'success': True,
@@ -656,13 +650,7 @@ def upload_files(request):
                 if file_obj.is_spatial:
                     process_gis_file_task.delay(str(file_obj.id))
                 
-                # Generate embedding for the uploaded file (if ChromaDB is available)
-                try:
-                    from .tasks import generate_file_embedding_task
-                    generate_file_embedding_task.delay(str(file_obj.id))
-                except Exception:
-                    # ChromaDB not available, skip embedding generation
-                    pass
+                # Embedding generation handled automatically by post_save signal
                 
                 uploaded_files.append({
                     'id': str(file_obj.id),
@@ -751,6 +739,9 @@ def delete_file_complete(file_obj):
                 print(f"Deleted ChromaDB embedding for {file_obj.name}")
         except Exception as e:
             print(f"Error deleting ChromaDB embedding for {file_obj.name}: {e}")
+            # Clear the chroma_id to prevent future issues and continue with deletion
+            file_obj.chroma_id = None
+            file_obj.save(update_fields=['chroma_id'])
         
         # 4. Remove physical file from disk
         try:
@@ -810,6 +801,9 @@ def delete_folder_complete(folder_obj):
                 print(f"Deleted ChromaDB embedding for folder {folder_obj.name}")
         except Exception as e:
             print(f"Error deleting ChromaDB embedding for folder {folder_obj.name}: {e}")
+            # Clear the chroma_id to prevent future issues and continue with deletion
+            folder_obj.chroma_id = None
+            folder_obj.save(update_fields=['chroma_id'])
         
         # 4. Remove from PostgreSQL database
         folder_obj.delete()
@@ -1034,9 +1028,7 @@ def upload_folders(request):
                         )
                         created_folders[current_path] = folder
                         
-                        # Generate embedding for the created folder
-                        from .tasks import generate_folder_embedding_task
-                        generate_folder_embedding_task.delay(str(folder.id))
+                        # Embedding generation handled automatically by post_save signal
                     
                     current_folder = created_folders[current_path]
                 
@@ -1061,13 +1053,7 @@ def upload_folders(request):
                 if file_obj.is_spatial:
                     process_gis_file_task.delay(str(file_obj.id))
                 
-                # Generate embedding for the uploaded file (if ChromaDB is available)
-                try:
-                    from .tasks import generate_file_embedding_task
-                    generate_file_embedding_task.delay(str(file_obj.id))
-                except Exception:
-                    # ChromaDB not available, skip embedding generation
-                    pass
+                # Embedding generation handled automatically by post_save signal
                 
                 uploaded_files.append({
                     'id': str(file_obj.id),
@@ -1184,7 +1170,7 @@ def toggle_visibility(request):
 
 @login_required
 def dashboard_stats(request):
-    """API endpoint to get updated dashboard statistics with robust calculation"""
+    """API endpoint to get updated dashboard statistics with robust calculation and error handling"""
     if request.method == 'GET':
         user = request.user
         
@@ -1228,6 +1214,9 @@ class SearchView(TemplateView):
         
         # Get search parameters
         query = self.request.GET.get('q', '').strip()
+        # Also check for 'prompt' parameter for semantic search
+        if not query:
+            query = self.request.GET.get('prompt', '').strip()
         content_type = self.request.GET.get('type', '')  # 'file', 'folder', or ''
         file_type = self.request.GET.get('file_type', '')
         is_spatial = self.request.GET.get('is_spatial', '')
@@ -1255,6 +1244,7 @@ class SearchView(TemplateView):
         if query or has_filters:
             if query:
                 # Use ChromaDB for semantic search with text queries
+                # Try to import embedding service (may fail if ChromaDB dependencies aren't available)
                 try:
                     from .embedding_service import embedding_service
                     chromadb_available = True
@@ -1285,15 +1275,26 @@ class SearchView(TemplateView):
                     if owner_filter:
                         filters['owner_username'] = owner_filter
                     
-                    # Perform semantic search
+                    # Perform semantic search with error handling
                     user_id = str(self.request.user.id) if self.request.user.is_authenticated else ''
                     
-                    raw_results = embedding_service.search_similar(
-                        query_text=query,
-                        user_id=user_id,
-                        filters=filters,
-                        limit=1000  # Get more results for pagination
-                    )
+                    try:
+                        raw_results = embedding_service.search_similar(
+                            query_text=query,
+                            user_id=user_id,
+                            filters=filters,
+                            limit=1000  # Get more results for pagination
+                        )
+                    except Exception as e:
+                        # Handle any ChromaDB or embedding service errors
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"ChromaDB search error: {e}")
+                        
+                        # Fall back to PostgreSQL search
+                        chromadb_available = False
+                        raw_results = []
+                        context['chromadb_error'] = f"Vector search temporarily unavailable due to technical issues. Falling back to database search."
                     
                     # Convert ChromaDB results to Django objects
                     for result in raw_results:
@@ -1453,13 +1454,20 @@ def search_api(request):
                 raise e
         
         try:
-            # Get quick search results
-            results = embedding_service.search_similar(
-                query_text=query,
-                user_id=str(request.user.id),
-                filters=None,
-                limit=limit
-            )
+            # Get quick search results with error handling
+            try:
+                results = embedding_service.search_similar(
+                    query_text=query,
+                    user_id=str(request.user.id),
+                    filters=None,
+                    limit=limit
+                )
+            except Exception as chromadb_error:
+                # Log the ChromaDB error and return empty results
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"ChromaDB quick search error: {chromadb_error}")
+                return JsonResponse({'suggestions': [], 'error': 'Search temporarily unavailable due to technical issues'})
             
             # Format suggestions
             suggestions = []
