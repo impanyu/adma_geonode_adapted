@@ -1,0 +1,143 @@
+services:
+  # PostgreSQL Database with PostGIS
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: adma_geo_db
+    environment:
+      POSTGRES_DB: adma_geo
+      POSTGRES_USER: adma_geo
+      POSTGRES_PASSWORD: adma_geo123
+    volumes:
+      - adma_geo_db:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adma_geo -d adma_geo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: adma_geo_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - adma_geo_redis:/data
+    ports:
+      - "6380:6379"
+
+  # Django Application
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: adma_geo_django
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+      - adma_geo_media:/app/media
+      - adma_geo_static:/app/staticfiles
+    ports:
+      - "8001:8000"
+    environment:
+      DEBUG: "True"
+      SECRET_KEY: "django-secret-key-for-development"
+      POSTGRES_DB: adma_geo
+      POSTGRES_USER: adma_geo
+      POSTGRES_PASSWORD: adma_geo123
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # Celery Worker
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: adma_geo_celery
+    command: celery -A adma_geo worker -l info
+    volumes:
+      - .:/app
+      - adma_geo_media:/app/media
+    environment:
+      DEBUG: "True"
+      SECRET_KEY: "django-secret-key-for-development"
+      POSTGRES_DB: adma_geo
+      POSTGRES_USER: adma_geo
+      POSTGRES_PASSWORD: adma_geo123
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      django:
+        condition: service_started
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: adma_geo_nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - adma_geo_static:/var/www/static
+      - adma_geo_media:/var/www/media
+    ports:
+      - "80:80"
+    depends_on:
+      - django
+
+  # GeoServer
+  geoserver:
+    image: kartoza/geoserver:2.25.2
+    container_name: adma_geo_geoserver
+    environment:
+      GEOSERVER_ADMIN_USER: admin
+      GEOSERVER_ADMIN_PASSWORD: geoserver123
+      GEOSERVER_DATA_DIR: /opt/geoserver/data_dir
+      ENABLE_JSONP: "true"
+      MAX_FILTER_RULES: 20
+      OPTIMIZE_LINE_WIDTH: "false"
+      FOOTPRINTS_DATA_DIR: /opt/footprints_dir
+      GEOWEBCACHE_CACHE_DIR: /opt/geoserver/data_dir/gwc
+      GEOSERVER_FILEBROWSER_HIDEFS: "false"
+      STABLE_EXTENSIONS: "wps,csw,inspire,control-flow,monitor,audit"
+      COMMUNITY_EXTENSIONS: ""
+    volumes:
+      - adma_geo_geoserver_data:/opt/geoserver/data_dir
+      - adma_geo_media:/app/media
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/geoserver/web/wicket/resource/org.geoserver.web.GeoServerBasePage/geoserver-logo.png || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  adma_geo_db:
+    driver: local
+  adma_geo_redis:
+    driver: local
+  adma_geo_media:
+    driver: local
+  adma_geo_static:
+    driver: local
+  adma_geo_geoserver_data:
+    driver: local
