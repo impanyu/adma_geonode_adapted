@@ -303,11 +303,13 @@
                 {% endif %}
             </div>
             <div class="text-end">
-                {% if map_obj.is_public %}
-                <span class="badge bg-success fs-6 mb-2"><i class="fas fa-globe me-1"></i>Public</span>
-                {% else %}
-                <span class="badge bg-secondary fs-6 mb-2"><i class="fas fa-lock me-1"></i>Private</span>
-                {% endif %}
+                <span id="mapHeaderBadge" class="badge {% if map_obj.is_public %}bg-success{% else %}bg-secondary{% endif %} fs-6 mb-2">
+                    {% if map_obj.is_public %}
+                    <i class="fas fa-globe me-1"></i>Public
+                    {% else %}
+                    <i class="fas fa-lock me-1"></i>Private
+                    {% endif %}
+                </span>
                 <br>
                 <small class="opacity-75">by {{ map_obj.owner.username }} • {{ map_obj.updated_at|date:"M d, Y" }}</small>
             </div>
@@ -521,7 +523,8 @@
                         <div class="form-check form-switch mt-2">
                             <input class="form-check-input" type="checkbox" id="mapVisibilityToggle" 
                                    {% if map_obj.is_public %}checked{% endif %}
-                                   onchange="toggleMapVisibility()">
+                                   onchange="toggleMapVisibility()"
+                                   onclick="console.log('Toggle clicked directly - before:', this.checked); setTimeout(() => console.log('Toggle clicked directly - after:', this.checked), 5);">
                             <label class="form-check-label" for="mapVisibilityToggle">
                                 <span id="visibilityLabel">
                                     {% if map_obj.is_public %}
@@ -912,64 +915,139 @@ function editMapSettings() {
     alert('Edit settings functionality coming soon!');
 }
 
-function toggleMapVisibility() {
-    const toggle = document.getElementById('mapVisibilityToggle');
-    const isPublic = toggle.checked;
-    
-    // Update the UI immediately
-    const label = document.getElementById('visibilityLabel');
-    if (isPublic) {
-        label.innerHTML = '<i class="fas fa-globe me-1 text-success"></i>Public';
-    } else {
-        label.innerHTML = '<i class="fas fa-lock me-1 text-secondary"></i>Private';
+// CSRF token helper function
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
     }
-    
-    // Send AJAX request to update visibility
-    fetch(`/api/maps/{{ map_obj.id }}/toggle-visibility/`, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            is_public: isPublic
-        })
-    })
+    return cookieValue;
+}
+
+function toggleMapVisibility() {
+    try {
+        const toggle = document.getElementById('mapVisibilityToggle');
+        const label = document.getElementById('visibilityLabel');
+        
+        console.log('=== MAP TOGGLE DEBUG ===');
+        console.log('Toggle element:', toggle);
+        console.log('Map ID:', '{{ map_obj.id }}');
+        
+        if (!toggle) {
+            console.error('Toggle element not found!');
+            return;
+        }
+        
+        if (!label) {
+            console.error('Label element not found!');
+            return;
+        }
+        
+        // Get current state from the backend data, not the checkbox
+        const currentlyPublic = label.innerHTML.includes('fa-globe');
+        const newIsPublic = !currentlyPublic; // Toggle to opposite
+        
+        console.log('Current state (from label):', currentlyPublic ? 'Public' : 'Private');
+        console.log('Target state:', newIsPublic ? 'Public' : 'Private');
+        console.log('Toggle checked before request:', toggle.checked);
+        
+        const csrfToken = getCookie('csrftoken');
+        console.log('CSRF Token:', csrfToken ? 'Found' : 'NOT FOUND');
+        
+        // Send AJAX request to update visibility
+        console.log('Sending request with is_public:', newIsPublic);
+            fetch(`/api/maps/{{ map_obj.id }}/toggle-visibility/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    is_public: newIsPublic
+                })
+            })
     .then(response => response.json())
     .then(data => {
+        console.log('Backend response:', data);
         if (data.success) {
+            // Update UI based on actual backend response
+            toggle.checked = data.is_public;
+            if (data.is_public) {
+                label.innerHTML = '<i class="fas fa-globe me-1 text-success"></i>Public';
+            } else {
+                label.innerHTML = '<i class="fas fa-lock me-1 text-secondary"></i>Private';
+            }
+            
+            // Update header badge
+            const headerBadge = document.getElementById('mapHeaderBadge');
+            if (headerBadge) {
+                if (data.is_public) {
+                    headerBadge.className = 'badge bg-success fs-6 mb-2';
+                    headerBadge.innerHTML = '<i class="fas fa-globe me-1"></i>Public';
+                } else {
+                    headerBadge.className = 'badge bg-secondary fs-6 mb-2';
+                    headerBadge.innerHTML = '<i class="fas fa-lock me-1"></i>Private';
+                }
+                console.log('Header badge updated to:', data.is_public ? 'Public' : 'Private');
+            }
+            
+            console.log('UI updated - toggle.checked:', toggle.checked, 'data.is_public:', data.is_public);
+            
             // Show success message
-            const message = isPublic ? 'Map is now public' : 'Map is now private';
-            showToast(message, 'success');
+            const message = data.is_public ? 'Map is now public' : 'Map is now private';
+            showToast('success', message);
         } else {
             // Revert the toggle on error
-            toggle.checked = !isPublic;
-            label.innerHTML = isPublic ? '<i class="fas fa-lock me-1 text-secondary"></i>Private' : '<i class="fas fa-globe me-1 text-success"></i>Public';
-            showToast('Error updating map visibility: ' + data.error, 'error');
+            toggle.checked = currentlyPublic;
+            label.innerHTML = currentlyPublic ? '<i class="fas fa-globe me-1 text-success"></i>Public' : '<i class="fas fa-lock me-1 text-secondary"></i>Private';
+            
+            // Revert header badge on error
+            const headerBadge = document.getElementById('mapHeaderBadge');
+            if (headerBadge) {
+                if (currentlyPublic) {
+                    headerBadge.className = 'badge bg-success fs-6 mb-2';
+                    headerBadge.innerHTML = '<i class="fas fa-globe me-1"></i>Public';
+                } else {
+                    headerBadge.className = 'badge bg-secondary fs-6 mb-2';
+                    headerBadge.innerHTML = '<i class="fas fa-lock me-1"></i>Private';
+                }
+            }
+            
+            showToast('error', 'Error updating map visibility: ' + data.error);
         }
     })
     .catch(error => {
         console.error('Error:', error);
         // Revert the toggle on error
-        toggle.checked = !isPublic;
-        label.innerHTML = isPublic ? '<i class="fas fa-lock me-1 text-secondary"></i>Private' : '<i class="fas fa-globe me-1 text-success"></i>Public';
-        showToast('Error updating map visibility', 'error');
+        toggle.checked = currentlyPublic;
+        label.innerHTML = currentlyPublic ? '<i class="fas fa-globe me-1 text-success"></i>Public' : '<i class="fas fa-lock me-1 text-secondary"></i>Private';
+        
+        // Revert header badge on error
+        const headerBadge = document.getElementById('mapHeaderBadge');
+        if (headerBadge) {
+            if (currentlyPublic) {
+                headerBadge.className = 'badge bg-success fs-6 mb-2';
+                headerBadge.innerHTML = '<i class="fas fa-globe me-1"></i>Public';
+            } else {
+                headerBadge.className = 'badge bg-secondary fs-6 mb-2';
+                headerBadge.innerHTML = '<i class="fas fa-lock me-1"></i>Private';
+            }
+        }
+        showToast('error', 'Error updating map visibility');
     });
+    } catch (error) {
+        console.error('JavaScript error in toggleMapVisibility:', error);
+        showToast('error', 'JavaScript error: ' + error.message);
+    }
 }
 
-function showToast(message, type) {
-    // Simple toast notification
-    const toast = document.createElement('div');
-    toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed`;
-    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-    toast.innerHTML = message;
-    document.body.appendChild(toast);
-    
-    // Remove after 3 seconds
-    setTimeout(() => {
-        toast.remove();
-    }, 3000);
-}
 
 function deleteMap() {
     if (confirm('Are you sure you want to delete this map? This action cannot be undone.')) {
@@ -1293,6 +1371,49 @@ function changeBasemap() {
     }
     
     basemapLayer.setSource(newSource);
+}
+
+// Toast notification function
+function showToast(type, message) {
+    // Create toast container if it doesn't exist
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 350px;
+        `;
+        document.body.appendChild(toastContainer);
+    }
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    const bgClass = type === 'success' ? 'bg-success' : 'bg-danger';
+    toast.className = `alert ${bgClass} text-white alert-dismissible fade show mb-2`;
+    toast.style.cssText = `
+        border: none;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    `;
+    
+    toast.innerHTML = `
+        <strong>${type === 'success' ? '✅' : '❌'}</strong> ${message}
+        <button type="button" class="btn-close btn-close-white" onclick="this.parentElement.remove()"></button>
+    `;
+    
+    // Add to container
+    toastContainer.appendChild(toast);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 5000);
 }
 
 // Initialize map when page loads

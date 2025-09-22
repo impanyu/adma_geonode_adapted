@@ -13,8 +13,22 @@ User = get_user_model()
 def get_upload_path(instance, filename):
     """Generate upload path based on folder structure"""
     if instance.folder:
-        return f"uploads/{instance.folder.get_full_path()}/{filename}"
-    return f"uploads/{filename}"
+        full_path = f"uploads/{instance.folder.get_full_path()}/{filename}"
+    else:
+        full_path = f"uploads/{filename}"
+    
+    # Ensure path doesn't exceed FileField max_length (500 chars)
+    if len(full_path) > 490:  # Leave some margin
+        # Truncate the folder path but keep the filename
+        available_length = 490 - len(f"uploads/.../{filename}")
+        if instance.folder:
+            folder_path = instance.folder.get_full_path()
+            if len(folder_path) > available_length:
+                # Truncate from the beginning and add ellipsis
+                truncated_folder = "..." + folder_path[-(available_length-3):]
+                full_path = f"uploads/{truncated_folder}/{filename}"
+    
+    return full_path
 
 class Folder(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -28,6 +42,7 @@ class Folder(models.Model):
     )
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='folders')
     is_public = models.BooleanField(default=False, help_text="Public folders are visible to everyone")
+    deletion_in_progress = models.BooleanField(default=False, help_text="True when folder is being deleted asynchronously")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -157,7 +172,7 @@ class Folder(models.Model):
 class File(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
-    file = models.FileField(upload_to=get_upload_path)
+    file = models.FileField(upload_to=get_upload_path, max_length=500)
     folder = models.ForeignKey(
         Folder, 
         on_delete=models.CASCADE, 
@@ -170,6 +185,7 @@ class File(models.Model):
     file_type = models.CharField(max_length=50, blank=True)  # 'image', 'text', 'document', 'gis', 'other'
     mime_type = models.CharField(max_length=100, blank=True)
     is_public = models.BooleanField(default=False, help_text="Public files are visible to everyone")
+    deletion_in_progress = models.BooleanField(default=False, help_text="True when file is being deleted asynchronously")
     
     # GIS-specific fields
     is_spatial = models.BooleanField(default=False, help_text="Whether this is a spatial/GIS file")
@@ -362,6 +378,7 @@ class Map(models.Model):
     description = models.TextField(blank=True, null=True, help_text="Description of the map")
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='maps')
     is_public = models.BooleanField(default=False, help_text="Whether this map is visible to everyone")
+    deletion_in_progress = models.BooleanField(default=False, help_text="True when map is being deleted asynchronously")
     
     # GeoServer integration
     geoserver_layer_group_name = models.CharField(

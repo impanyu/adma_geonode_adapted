@@ -16,6 +16,72 @@ from .models import Folder, File, Map
 from .forms import RegistrationForm, FolderForm, FileUploadForm
 from .tasks import process_gis_file_task
 
+def get_robust_user_statistics(user):
+    """
+    Calculate robust user statistics with automatic recovery of stale deletion flags.
+    
+    This function:
+    1. Detects items marked for deletion longer than 5 minutes (likely failed deletions)
+    2. Resets their deletion_in_progress flag to make them visible again
+    3. Calculates accurate statistics based on what actually exists
+    
+    Returns: dict with statistics and debug info
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Find items that have been "in deletion" for more than 5 minutes (likely failed deletions)
+    stale_threshold = timezone.now() - timedelta(minutes=5)
+    
+    # Find stale deletion items and reset their deletion_in_progress flag
+    stale_files = File.objects.filter(
+        owner=user, 
+        deletion_in_progress=True,
+        updated_at__lt=stale_threshold
+    )
+    stale_folders = Folder.objects.filter(
+        owner=user,
+        deletion_in_progress=True, 
+        updated_at__lt=stale_threshold
+    )
+    
+    stale_files_count = stale_files.count()
+    stale_folders_count = stale_folders.count()
+    
+    if stale_files_count > 0 or stale_folders_count > 0:
+        logger.warning(f"Found {stale_files_count} stale files and {stale_folders_count} stale folders marked for deletion - resetting flags")
+        
+        # Reset stale deletion flags
+        stale_files.update(deletion_in_progress=False)
+        stale_folders.update(deletion_in_progress=False)
+    
+    # Calculate accurate statistics based on what actually exists
+    active_files = File.objects.filter(owner=user, deletion_in_progress=False)
+    active_folders = Folder.objects.filter(owner=user, deletion_in_progress=False)
+    
+    stats = {
+        'total_files': active_files.count(),
+        'total_folders': active_folders.count(),
+        'total_size': sum(f.file_size for f in active_files),
+        'public_files': active_files.filter(is_public=True).count(),
+    }
+    
+    # Add debug information
+    if stale_files_count > 0 or stale_folders_count > 0:
+        stats['debug_info'] = {
+            'stale_files_recovered': stale_files_count,
+            'stale_folders_recovered': stale_folders_count,
+            'calculation_method': 'robust_with_cleanup'
+        }
+    else:
+        stats['debug_info'] = {
+            'calculation_method': 'standard'
+        }
+    
+    return stats
+
 def generate_unique_name(name, owner, folder=None, is_folder=False):
     """
     Generate a unique name by adding _1, _2, etc. to avoid duplicates
@@ -80,7 +146,8 @@ class HomeView(TemplateView):
         # 1. Have no parent (truly top-level), OR
         # 2. Have a private parent (making them the highest public level)
         public_folders_queryset = Folder.objects.filter(
-            is_public=True
+            is_public=True,
+            deletion_in_progress=False
         ).filter(
             Q(parent=None) |  # No parent (truly top-level)
             Q(parent__is_public=False)  # Parent is private (so this is top public level)
@@ -95,7 +162,8 @@ class HomeView(TemplateView):
         # 1. Have no folder (orphaned files), OR  
         # 2. Have a private folder (making them the highest public level)
         public_files_queryset = File.objects.filter(
-            is_public=True
+            is_public=True,
+            deletion_in_progress=False
         ).filter(
             Q(folder=None) |  # No folder (orphaned)
             Q(folder__is_public=False)  # Folder is private (so this file is top public level)
@@ -103,7 +171,8 @@ class HomeView(TemplateView):
         
         # Get public maps
         public_maps_queryset = Map.objects.filter(
-            is_public=True
+            is_public=True,
+            deletion_in_progress=False
         ).order_by('-created_at')
         
         # Combine folders, files, and maps for unified pagination (100 items per page)
@@ -190,11 +259,11 @@ def dashboard(request):
     """Main dashboard for authenticated users"""
     user = request.user
     
-    # Get user's root folders
-    folders_queryset = Folder.objects.filter(owner=user, parent=None).order_by('name')
+    # Get user's root folders (exclude items being deleted)
+    folders_queryset = Folder.objects.filter(owner=user, parent=None, deletion_in_progress=False).order_by('name')
     
-    # Get root-level files (not files inside folders)
-    files_queryset = File.objects.filter(owner=user, folder=None).order_by('-created_at')
+    # Get root-level files (not files inside folders, exclude items being deleted)
+    files_queryset = File.objects.filter(owner=user, folder=None, deletion_in_progress=False).order_by('-created_at')
     
     # Combine folders and files for pagination
     # We'll handle pagination by getting separate pages and combining
@@ -240,13 +309,8 @@ def dashboard(request):
         files_end = files_start + items_per_page
         recent_files = files_queryset[files_start:files_end]
     
-    # Statistics
-    stats = {
-        'total_files': File.objects.filter(owner=user).count(),
-        'total_folders': Folder.objects.filter(owner=user).count(),
-        'total_size': sum(f.file_size for f in File.objects.filter(owner=user)),
-        'public_files': File.objects.filter(owner=user, is_public=True).count(),
-    }
+    # Robust statistics with automatic stale deletion recovery
+    stats = get_robust_user_statistics(user)
     
     return render(request, 'filemanager/dashboard.html', {
         'folders': folders,
@@ -268,9 +332,9 @@ def folder_detail(request, folder_id):
         messages.error(request, "You don't have permission to view this folder.")
         return redirect('filemanager:dashboard')
     
-    # Get subfolders and files with pagination
-    subfolders_queryset = folder.subfolders.order_by('name')
-    files_queryset = folder.files.all().order_by('-created_at')
+    # Get subfolders and files with pagination (exclude items being deleted)
+    subfolders_queryset = folder.subfolders.filter(deletion_in_progress=False).order_by('name')
+    files_queryset = folder.files.filter(deletion_in_progress=False).order_by('-created_at')
     
     # Combine subfolders and files for pagination
     page = request.GET.get('page', 1)
@@ -639,9 +703,126 @@ def download_file(request, file_id):
     except FileNotFoundError:
         raise Http404("File not found on disk")
 
+def delete_file_complete(file_obj):
+    """
+    Complete deletion of a file including all dependencies:
+    1. Remove from GeoServer (layer and datastore) if it's a spatial file
+    2. Remove from all maps that contain this file
+    3. Remove ChromaDB embeddings
+    4. Remove physical file from disk
+    5. Remove from PostgreSQL database
+    """
+    try:
+        # 1. Remove from GeoServer if it's a spatial file
+        if file_obj.is_spatial and file_obj.geoserver_layer_name:
+            try:
+                from .geoserver_manager import GeoServerManager
+                geoserver = GeoServerManager()
+                
+                # Delete layer
+                if file_obj.geoserver_layer_name:
+                    workspace = file_obj.geoserver_workspace or 'adma_geo'
+                    geoserver.delete_layer(workspace, file_obj.geoserver_layer_name)
+                
+                # Delete datastore/coverage store
+                if file_obj.geoserver_datastore_name:
+                    if file_obj.file_type in ['tif', 'tiff', 'geotiff', 'geotif']:
+                        # For raster files, delete coverage store
+                        geoserver.delete_coverage_store(workspace, file_obj.geoserver_datastore_name)
+                    else:
+                        # For vector files, delete datastore
+                        geoserver.delete_datastore(workspace, file_obj.geoserver_datastore_name)
+                        
+                print(f"Deleted GeoServer resources for {file_obj.name}")
+            except Exception as e:
+                print(f"Error deleting GeoServer resources for {file_obj.name}: {e}")
+        
+        # 2. Remove from all maps (this will trigger MapLayer deletion due to CASCADE)
+        # Update affected maps to remove this layer from their Layer Groups
+        affected_maps = []
+        for map_layer in file_obj.map_memberships.all():
+            affected_maps.append(map_layer.map)
+        
+        # 3. Remove ChromaDB embeddings
+        try:
+            from .embedding_service import embedding_service
+            if file_obj.chroma_id:
+                embedding_service.remove_embedding(file_obj.chroma_id)
+                print(f"Deleted ChromaDB embedding for {file_obj.name}")
+        except Exception as e:
+            print(f"Error deleting ChromaDB embedding for {file_obj.name}: {e}")
+        
+        # 4. Remove physical file from disk
+        try:
+            if file_obj.file and file_obj.file.path:
+                import os
+                if os.path.exists(file_obj.file.path):
+                    os.remove(file_obj.file.path)
+                    print(f"Deleted physical file: {file_obj.file.path}")
+        except Exception as e:
+            print(f"Error deleting physical file for {file_obj.name}: {e}")
+        
+        # 5. Remove from PostgreSQL database (this will cascade to MapLayers)
+        file_obj.delete()
+        print(f"Deleted file {file_obj.name} from database")
+        
+        # 6. Update affected maps' Layer Groups in GeoServer
+        for map_obj in affected_maps:
+            try:
+                from .geoserver_manager import LayerGroupManager
+                layer_group_manager = LayerGroupManager()
+                layer_group_manager.update_layer_group(map_obj)
+                print(f"Updated Layer Group for map {map_obj.name}")
+            except Exception as e:
+                print(f"Error updating Layer Group for map {map_obj.name}: {e}")
+                
+    except Exception as e:
+        print(f"Error in delete_file_complete for {file_obj.name}: {e}")
+        raise
+
+
+def delete_folder_complete(folder_obj):
+    """
+    Complete recursive deletion of a folder including all dependencies:
+    1. Recursively delete all files in the folder (with complete deletion)
+    2. Recursively delete all subfolders
+    3. Remove ChromaDB embeddings for the folder
+    4. Remove from PostgreSQL database
+    """
+    try:
+        print(f"Starting complete deletion of folder: {folder_obj.name}")
+        
+        # 1. Recursively delete all files in this folder
+        for file_obj in folder_obj.files.all():
+            print(f"Deleting file {file_obj.name} in folder {folder_obj.name}")
+            delete_file_complete(file_obj)
+        
+        # 2. Recursively delete all subfolders
+        for subfolder in folder_obj.subfolders.all():
+            print(f"Deleting subfolder {subfolder.name} in folder {folder_obj.name}")
+            delete_folder_complete(subfolder)
+        
+        # 3. Remove ChromaDB embeddings for the folder
+        try:
+            from .embedding_service import embedding_service
+            if folder_obj.chroma_id:
+                embedding_service.remove_embedding(folder_obj.chroma_id)
+                print(f"Deleted ChromaDB embedding for folder {folder_obj.name}")
+        except Exception as e:
+            print(f"Error deleting ChromaDB embedding for folder {folder_obj.name}: {e}")
+        
+        # 4. Remove from PostgreSQL database
+        folder_obj.delete()
+        print(f"Deleted folder {folder_obj.name} from database")
+        
+    except Exception as e:
+        print(f"Error in delete_folder_complete for {folder_obj.name}: {e}")
+        raise
+
+
 @login_required
 def delete_item(request):
-    """Delete file or folder via AJAX"""
+    """Delete file or folder via AJAX - async with immediate response"""
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -651,18 +832,44 @@ def delete_item(request):
             if item_type == 'file':
                 item = get_object_or_404(File, id=item_id, owner=request.user)
                 item_name = item.name
-                item.delete()
+                
+                # Mark as deletion in progress to hide from queries
+                item.deletion_in_progress = True
+                item.save(update_fields=['deletion_in_progress'])
+                
+                # Submit async deletion task
+                from .tasks import delete_file_async_task
+                task = delete_file_async_task.delay(str(item.id), item_name)
+                
+                # Return immediately for immediate UI feedback
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Deletion of {item_name} has been initiated',
+                    'task_id': task.id,
+                    'async': True
+                })
+                
             elif item_type == 'folder':
                 item = get_object_or_404(Folder, id=item_id, owner=request.user)
                 item_name = item.name
-                item.delete()
+                
+                # Mark as deletion in progress to hide from queries
+                item.deletion_in_progress = True
+                item.save(update_fields=['deletion_in_progress'])
+                
+                # Submit async deletion task
+                from .tasks import delete_folder_async_task
+                task = delete_folder_async_task.delay(str(item.id), item_name)
+                
+                # Return immediately for immediate UI feedback
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Deletion of {item_name} has been initiated',
+                    'task_id': task.id,
+                    'async': True
+                })
             else:
                 return JsonResponse({'error': 'Invalid item type'}, status=400)
-            
-            return JsonResponse({
-                'success': True,
-                'message': f'Successfully deleted {item_name}'
-            })
             
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON data'}, status=400)
@@ -670,6 +877,27 @@ def delete_item(request):
             return JsonResponse({'error': str(e)}, status=500)
     
     return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+@login_required
+def check_deletion_status(request, task_id):
+    """Check the status of an async deletion task"""
+    try:
+        from celery.result import AsyncResult
+        
+        task_result = AsyncResult(task_id)
+        
+        return JsonResponse({
+            'task_id': task_id,
+            'status': task_result.status,
+            'result': task_result.result if task_result.ready() else None,
+            'ready': task_result.ready(),
+            'successful': task_result.successful() if task_result.ready() else None,
+            'failed': task_result.failed() if task_result.ready() else None
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
 
 @login_required
 def map_viewer(request, file_id):
@@ -888,6 +1116,7 @@ def upload_folders(request):
 
 @login_required
 def toggle_visibility(request):
+    """Toggle visibility - async for folders (recursive), immediate for files"""
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -896,21 +1125,52 @@ def toggle_visibility(request):
             
             if item_type == 'folder':
                 folder = get_object_or_404(Folder, id=item_id, owner=request.user)
-                folder.is_public = not folder.is_public
-                folder.save()
+                new_visibility = not folder.is_public
+                
+                # Update the main folder immediately for UI feedback
+                folder.is_public = new_visibility
+                folder.save(update_fields=['is_public'])
+                
+                # Submit async task for recursive update of subfolders/files
+                from .tasks import toggle_folder_visibility_recursive_task
+                task = toggle_folder_visibility_recursive_task.delay(
+                    str(folder.id), 
+                    new_visibility, 
+                    folder.name
+                )
+                
                 return JsonResponse({
                     'success': True, 
                     'is_public': folder.is_public,
-                    'status': 'Public' if folder.is_public else 'Private'
+                    'status': 'Public' if folder.is_public else 'Private',
+                    'task_id': task.id,
+                    'async': True,
+                    'message': f'Visibility change for "{folder.name}" and all contents started in background'
                 })
+                
             elif item_type == 'file':
                 file_obj = get_object_or_404(File, id=item_id, owner=request.user)
-                file_obj.is_public = not file_obj.is_public
-                file_obj.save()
+                new_visibility = not file_obj.is_public
+                
+                # Update the file immediately for UI feedback
+                file_obj.is_public = new_visibility
+                file_obj.save(update_fields=['is_public'])
+                
+                # Submit async task for embedding update
+                from .tasks import toggle_file_visibility_task
+                task = toggle_file_visibility_task.delay(
+                    str(file_obj.id), 
+                    new_visibility, 
+                    file_obj.name
+                )
+                
                 return JsonResponse({
                     'success': True, 
                     'is_public': file_obj.is_public,
-                    'status': 'Public' if file_obj.is_public else 'Private'
+                    'status': 'Public' if file_obj.is_public else 'Private',
+                    'task_id': task.id,
+                    'async': True,
+                    'message': f'Visibility change for "{file_obj.name}" completed'
                 })
             else:
                 return JsonResponse({'success': False, 'error': 'Invalid item type'})
@@ -919,6 +1179,23 @@ def toggle_visibility(request):
             return JsonResponse({'success': False, 'error': 'Invalid JSON'})
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Method not allowed'})
+
+@login_required
+def dashboard_stats(request):
+    """API endpoint to get updated dashboard statistics with robust calculation"""
+    if request.method == 'GET':
+        user = request.user
+        
+        # Use the robust statistics helper function
+        stats = get_robust_user_statistics(user)
+        
+        # Format storage size for display
+        from django.template.defaultfilters import filesizeformat
+        stats['total_size_formatted'] = filesizeformat(stats['total_size'])
+        
+        return JsonResponse({'success': True, 'stats': stats})
     
     return JsonResponse({'success': False, 'error': 'Method not allowed'})
 
@@ -1022,7 +1299,7 @@ class SearchView(TemplateView):
                     for result in raw_results:
                         try:
                             if result['type'] == 'file':
-                                obj = File.objects.get(id=result['id'])
+                                obj = File.objects.get(id=result['id'], deletion_in_progress=False)
                                 search_results.append({
                                     'object': obj,
                                     'type': 'file',
@@ -1030,7 +1307,7 @@ class SearchView(TemplateView):
                                     'metadata_text': result['document']
                                 })
                             elif result['type'] == 'folder':
-                                obj = Folder.objects.get(id=result['id'])
+                                obj = Folder.objects.get(id=result['id'], deletion_in_progress=False)
                                 search_results.append({
                                     'object': obj,
                                     'type': 'folder',
@@ -1038,7 +1315,7 @@ class SearchView(TemplateView):
                                     'metadata_text': result['document']
                                 })
                             elif result['type'] == 'map':
-                                obj = Map.objects.get(id=result['id'])
+                                obj = Map.objects.get(id=result['id'], deletion_in_progress=False)
                                 search_results.append({
                                     'object': obj,
                                     'type': 'map',
@@ -1046,7 +1323,7 @@ class SearchView(TemplateView):
                                     'metadata_text': result['document']
                                 })
                         except (File.DoesNotExist, Folder.DoesNotExist, Map.DoesNotExist):
-                            # Object might have been deleted, skip
+                            # Object might have been deleted or is being deleted, skip
                             continue
                     
                     total_results = len(search_results)
@@ -1067,8 +1344,8 @@ class SearchView(TemplateView):
                 
                 # Search in different content types based on filters
                 if not content_type or content_type == 'file':
-                    # Search files
-                    file_query = File.objects.filter(base_filter)
+                    # Search files (exclude items being deleted)
+                    file_query = File.objects.filter(base_filter, deletion_in_progress=False)
                     
                     if file_type:
                         file_query = file_query.filter(file_type__icontains=file_type)
@@ -1095,8 +1372,8 @@ class SearchView(TemplateView):
                         })
                 
                 if not content_type or content_type == 'folder':
-                    # Search folders
-                    folder_query = Folder.objects.filter(base_filter)
+                    # Search folders (exclude items being deleted)
+                    folder_query = Folder.objects.filter(base_filter, deletion_in_progress=False)
                     
                     if is_public == 'true':
                         folder_query = folder_query.filter(is_public=True)
@@ -1115,8 +1392,8 @@ class SearchView(TemplateView):
                         })
                 
                 if not content_type or content_type == 'map':
-                    # Search maps
-                    map_query = Map.objects.filter(base_filter)
+                    # Search maps (exclude items being deleted)
+                    map_query = Map.objects.filter(base_filter, deletion_in_progress=False)
                     
                     if is_public == 'true':
                         map_query = map_query.filter(is_public=True)

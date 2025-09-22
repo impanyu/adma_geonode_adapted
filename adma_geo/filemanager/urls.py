@@ -35,6 +35,8 @@ urlpatterns = [
     path('api/folders/upload/', views.upload_folders, name='upload_folders'),
     path('api/item/delete/', views.delete_item, name='delete_item'),
     path('api/item/toggle-visibility/', views.toggle_visibility, name='toggle_visibility'),
+    path('api/task/<str:task_id>/status/', views.check_deletion_status, name='check_deletion_status'),
+    path('api/dashboard/stats/', views.dashboard_stats, name='dashboard_stats'),
     path('api/search/', views.search_api, name='search_api'),
     
     # Map AJAX endpoints

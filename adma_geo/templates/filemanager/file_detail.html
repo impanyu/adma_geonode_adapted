@@ -404,6 +404,49 @@ async function deleteFile() {
     }
 }
 
+// Toast notification function
+function showToast(type, message) {
+    // Create toast container if it doesn't exist
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 350px;
+        `;
+        document.body.appendChild(toastContainer);
+    }
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    const bgClass = type === 'success' ? 'bg-success' : 'bg-danger';
+    toast.className = `alert ${bgClass} text-white alert-dismissible fade show mb-2`;
+    toast.style.cssText = `
+        border: none;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    `;
+    
+    toast.innerHTML = `
+        <strong>${type === 'success' ? '✅' : '❌'}</strong> ${message}
+        <button type="button" class="btn-close btn-close-white" onclick="this.parentElement.remove()"></button>
+    `;
+    
+    // Add to container
+    toastContainer.appendChild(toast);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 5000);
+}
+
 async function toggleVisibility() {
     const button = document.getElementById('toggle-visibility-btn');
     const badge = document.getElementById('visibility-badge');
@@ -428,20 +471,28 @@ async function toggleVisibility() {
         const data = await response.json();
         
         if (data.success) {
-            // Update badge
+            // Update badge immediately
             badge.className = `badge ${data.is_public ? 'bg-success' : 'bg-secondary'}`;
             badge.textContent = data.status;
             
-            // Show success message
-            const alertDiv = document.createElement('div');
-            alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
-            alertDiv.innerHTML = `
-                <i class="fas fa-check-circle me-2"></i>
-                File visibility changed to <strong>${data.status.toLowerCase()}</strong>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
+            // Refresh dashboard statistics since visibility affects public file count
+            setTimeout(() => refreshStats(), 1000);
             
-            // Insert alert after breadcrumb
+            // Show appropriate message based on whether it's async
+            if (data.async) {
+                // Show toast for async operation (file embedding update)
+                showToast('success', data.message || `File visibility changed to ${data.status.toLowerCase()}`);
+            } else {
+                // Show success message for immediate operation
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+                alertDiv.innerHTML = `
+                    <i class="fas fa-check-circle me-2"></i>
+                    File visibility changed to <strong>${data.status.toLowerCase()}</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                
+                // Insert alert after breadcrumb
             const breadcrumb = document.querySelector('nav[aria-label="breadcrumb"]');
             breadcrumb.insertAdjacentElement('afterend', alertDiv);
             
@@ -671,5 +722,32 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeChart();
 });
 {% endif %}
+
+// Function to refresh dashboard statistics
+function refreshStats() {
+    fetch('/api/dashboard/stats/')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update statistics if elements exist (they won't exist on file detail pages, but that's ok)
+                const totalFilesEl = document.getElementById('stat-total-files');
+                const totalFoldersEl = document.getElementById('stat-total-folders');
+                const publicFilesEl = document.getElementById('stat-public-files');
+                const storageUsedEl = document.getElementById('stat-storage-used');
+                
+                if (totalFilesEl) totalFilesEl.textContent = data.stats.total_files;
+                if (totalFoldersEl) totalFoldersEl.textContent = data.stats.total_folders;
+                if (publicFilesEl) publicFilesEl.textContent = data.stats.public_files;
+                if (storageUsedEl) storageUsedEl.textContent = data.stats.total_size_formatted;
+                
+                console.log('Dashboard stats refreshed from file detail:', data.stats);
+            } else {
+                console.error('Failed to refresh stats:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing stats:', error);
+        });
+}
 </script>
 {% endblock %}

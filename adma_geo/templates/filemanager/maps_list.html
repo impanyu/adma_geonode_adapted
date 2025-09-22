@@ -188,8 +188,12 @@
                                 <p class="mb-1 text-muted">{{ map_obj.description|truncatewords:20 }}</p>
                                 {% endif %}
                                 <small class="text-muted">
-                                    {{ map_obj.layer_count }} layers • {{ map_obj.updated_at|date:"M d, Y" }}
-                                    {% if map_obj.is_public %} • Public{% endif %}
+                                    {{ map_obj.layer_count }} layers • {{ map_obj.updated_at|date:"M d, Y" }} • 
+                                    {% if map_obj.is_public %}
+                                    <span class="text-success">Public</span>
+                                    {% else %}
+                                    <span class="text-secondary">Private</span>
+                                    {% endif %}
                                 </small>
                             </div>
                             <div class="d-flex gap-2">

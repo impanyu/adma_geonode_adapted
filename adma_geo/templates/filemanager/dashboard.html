@@ -104,25 +104,25 @@
 <div class="row mb-4">
     <div class="col-md-3 col-sm-6">
         <div class="stats-card">
-            <h3>{{ stats.total_files }}</h3>
+            <h3 id="stat-total-files">{{ stats.total_files }}</h3>
             <p><i class="fas fa-file me-2"></i>Total Files</p>
         </div>
     </div>
     <div class="col-md-3 col-sm-6">
         <div class="stats-card">
-            <h3>{{ stats.total_folders }}</h3>
+            <h3 id="stat-total-folders">{{ stats.total_folders }}</h3>
             <p><i class="fas fa-folder me-2"></i>Total Folders</p>
         </div>
     </div>
     <div class="col-md-3 col-sm-6">
         <div class="stats-card">
-            <h3>{{ stats.public_files }}</h3>
+            <h3 id="stat-public-files">{{ stats.public_files }}</h3>
             <p><i class="fas fa-globe me-2"></i>Public Files</p>
         </div>
     </div>
     <div class="col-md-3 col-sm-6">
         <div class="stats-card">
-            <h3>{{ stats.total_size|filesizeformat }}</h3>
+            <h3 id="stat-storage-used">{{ stats.total_size|filesizeformat }}</h3>
             <p><i class="fas fa-hdd me-2"></i>Storage Used</p>
         </div>
     </div>
@@ -254,7 +254,7 @@
                         <div class="row">
                             {% for folder in folders %}
                             <div class="col-md-4 col-sm-6 mb-3">
-                                <div class="folder-item" onclick="window.location.href='{% url 'filemanager:folder_detail' folder.id %}'">
+                                <div class="folder-item" data-folder-id="{{ folder.id }}" onclick="window.location.href='{% url 'filemanager:folder_detail' folder.id %}'">
                                     <div class="d-flex align-items-center">
                                         <i class="fas fa-folder folder-icon"></i>
                                         <div class="flex-grow-1">
@@ -847,6 +847,49 @@ document.getElementById('uploadFoldersForm').addEventListener('submit', async fu
     }
 });
 
+// Toast notification function
+function showToast(type, message) {
+    // Create toast container if it doesn't exist
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 350px;
+        `;
+        document.body.appendChild(toastContainer);
+    }
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    const bgClass = type === 'success' ? 'bg-success' : 'bg-danger';
+    toast.className = `alert ${bgClass} text-white alert-dismissible fade show mb-2`;
+    toast.style.cssText = `
+        border: none;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    `;
+    
+    toast.innerHTML = `
+        <strong>${type === 'success' ? '✅' : '❌'}</strong> ${message}
+        <button type="button" class="btn-close btn-close-white" onclick="this.parentElement.remove()"></button>
+    `;
+    
+    // Add to container
+    toastContainer.appendChild(toast);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 5000);
+}
+
 // Delete item function
 async function deleteItem(type, id, name) {
     if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
@@ -867,13 +910,68 @@ async function deleteItem(type, id, name) {
         const data = await response.json();
         
         if (data.success) {
-            // Remove item from DOM
-            document.querySelector(`[data-${type}-id="${id}"]`).remove();
+            // Remove item from DOM immediately for better UX
+            // Try to find all elements with the matching ID (in case there are multiple views)
+            const selector = `[data-${type}-id="${id}"]`;
+            console.log(`Looking for elements with selector: ${selector}`);
+            const elements = document.querySelectorAll(selector);
+            
+            if (elements.length > 0) {
+                console.log(`Found ${elements.length} element(s):`, elements);
+                
+                // Apply visual feedback to all matching elements
+                elements.forEach(element => {
+                    // Add visual feedback that deletion is in progress
+                    element.style.opacity = '0.5';
+                    element.style.pointerEvents = 'none';
+                    
+                    // Add a "deleting" indicator
+                    const indicator = document.createElement('div');
+                    indicator.innerHTML = '<small class="text-warning"><i class="fas fa-spinner fa-spin me-1"></i>Deleting...</small>';
+                    indicator.style.position = 'absolute';
+                    indicator.style.top = '50%';
+                    indicator.style.left = '50%';
+                    indicator.style.transform = 'translate(-50%, -50%)';
+                    indicator.style.zIndex = '1000';
+                    indicator.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+                    indicator.style.padding = '5px 10px';
+                    indicator.style.borderRadius = '4px';
+                    element.style.position = 'relative';
+                    element.appendChild(indicator);
+                });
+                
+                // Remove all matching elements after a short delay
+                setTimeout(() => {
+                    console.log(`Removing ${elements.length} element(s)`);
+                    elements.forEach(element => {
+                        if (element.parentNode) {
+                            element.remove();
+                        }
+                    });
+                }, 2000);
+                
+                // Show success message
+                if (data.async) {
+                    showToast('success', `${name} deletion started in background`);
+                } else {
+                    showToast('success', `${name} deleted successfully`);
+                }
+                
+                // Refresh dashboard statistics
+                setTimeout(() => refreshStats(), 1000); // Small delay to ensure backend processing
+            } else {
+                console.error(`No elements found with selector: ${selector}`);
+                console.log(`Available elements with data-*-id:`, document.querySelectorAll('[data-file-id], [data-folder-id]'));
+                // Fallback: reload the page if element not found
+                showToast('warning', `${name} deleted but page will reload for updates`);
+                setTimeout(() => location.reload(), 1000);
+            }
         } else {
-            alert(data.error || 'Error deleting item');
+            showToast('error', data.error || 'Error deleting item');
         }
     } catch (error) {
-        alert('Error deleting item: ' + error.message);
+        console.error('Delete error:', error);
+        showToast('error', 'Error deleting item: ' + error.message);
     }
 }
 
@@ -897,6 +995,26 @@ function toggleView(viewType) {
         panelBtn.classList.add('active');
         localStorage.setItem('fileViewType', 'panel');
     }
+}
+
+// Function to refresh dashboard statistics
+function refreshStats() {
+    fetch('/api/dashboard/stats/')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('stat-total-files').textContent = data.stats.total_files;
+                document.getElementById('stat-total-folders').textContent = data.stats.total_folders;
+                document.getElementById('stat-public-files').textContent = data.stats.public_files;
+                document.getElementById('stat-storage-used').textContent = data.stats.total_size_formatted;
+                console.log('Dashboard stats refreshed:', data.stats);
+            } else {
+                console.error('Failed to refresh stats:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing stats:', error);
+        });
 }
 
 // Load saved view preference on page load

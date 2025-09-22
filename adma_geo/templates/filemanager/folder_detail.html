@@ -260,7 +260,7 @@
                     <div class="row">
                         {% for subfolder in subfolders %}
                         <div class="col-md-4 col-sm-6 mb-3">
-                            <div class="folder-item" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_folder_detail' subfolder.id %}{% else %}{% url 'filemanager:folder_detail' subfolder.id %}{% endif %}'">
+                            <div class="folder-item" data-folder-id="{{ subfolder.id }}" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_folder_detail' subfolder.id %}{% else %}{% url 'filemanager:folder_detail' subfolder.id %}{% endif %}'">
                                 <div class="d-flex align-items-center">
                                     <i class="fas fa-folder folder-icon"></i>
                                     <div class="flex-grow-1">
@@ -303,7 +303,7 @@
                     <div class="row">
                         {% for file in files %}
                         <div class="col-md-4 col-sm-6 mb-3">
-                            <div class="file-item" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_file_detail' file.id %}{% else %}{% url 'filemanager:file_detail' file.id %}{% endif %}'">
+                            <div class="file-item" data-file-id="{{ file.id }}" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_file_detail' file.id %}{% else %}{% url 'filemanager:file_detail' file.id %}{% endif %}'">
                                 <div class="d-flex align-items-center">
                                     <i class="{{ file.get_icon_class }} file-icon"></i>
                                     <div class="flex-grow-1">
@@ -360,7 +360,7 @@
                             <tbody>
                                 <!-- Folders in List View -->
                                 {% for subfolder in subfolders %}
-                                <tr style="cursor: pointer;" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_folder_detail' subfolder.id %}{% else %}{% url 'filemanager:folder_detail' subfolder.id %}{% endif %}'">
+                                <tr data-folder-id="{{ subfolder.id }}" style="cursor: pointer;" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_folder_detail' subfolder.id %}{% else %}{% url 'filemanager:folder_detail' subfolder.id %}{% endif %}'">
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <i class="fas fa-folder me-3"></i>
@@ -395,7 +395,7 @@
 
                                 <!-- Files in List View -->
                                 {% for file in files %}
-                                <tr style="cursor: pointer;" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_file_detail' file.id %}{% else %}{% url 'filemanager:file_detail' file.id %}{% endif %}'">
+                                <tr data-file-id="{{ file.id }}" style="cursor: pointer;" onclick="window.location.href='{% if is_public_view %}{% url 'filemanager:public_file_detail' file.id %}{% else %}{% url 'filemanager:file_detail' file.id %}{% endif %}'">
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <i class="{{ file.get_icon_class }} me-3"></i>
@@ -737,6 +737,49 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
 });
 
 // Delete item function
+// Toast notification function
+function showToast(type, message) {
+    // Create toast container if it doesn't exist
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 350px;
+        `;
+        document.body.appendChild(toastContainer);
+    }
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    const bgClass = type === 'success' ? 'bg-success' : 'bg-danger';
+    toast.className = `alert ${bgClass} text-white alert-dismissible fade show mb-2`;
+    toast.style.cssText = `
+        border: none;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    `;
+    
+    toast.innerHTML = `
+        <strong>${type === 'success' ? '✅' : '❌'}</strong> ${message}
+        <button type="button" class="btn-close btn-close-white" onclick="this.parentElement.remove()"></button>
+    `;
+    
+    // Add to container
+    toastContainer.appendChild(toast);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 5000);
+}
+
 async function deleteItem(type, id, name) {
     if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
     
@@ -756,12 +799,68 @@ async function deleteItem(type, id, name) {
         const data = await response.json();
         
         if (data.success) {
-            location.reload(); // Reload to show updated contents
+            // Remove item from DOM immediately for better UX
+            // Try to find all elements with the matching ID (in case there are multiple views)
+            const selector = `[data-${type}-id="${id}"]`;
+            console.log(`Looking for elements with selector: ${selector}`);
+            const elements = document.querySelectorAll(selector);
+            
+            if (elements.length > 0) {
+                console.log(`Found ${elements.length} element(s):`, elements);
+                
+                // Apply visual feedback to all matching elements
+                elements.forEach(element => {
+                    // Add visual feedback that deletion is in progress
+                    element.style.opacity = '0.5';
+                    element.style.pointerEvents = 'none';
+                    
+                    // Add a "deleting" indicator
+                    const indicator = document.createElement('div');
+                    indicator.innerHTML = '<small class="text-warning"><i class="fas fa-spinner fa-spin me-1"></i>Deleting...</small>';
+                    indicator.style.position = 'absolute';
+                    indicator.style.top = '50%';
+                    indicator.style.left = '50%';
+                    indicator.style.transform = 'translate(-50%, -50%)';
+                    indicator.style.zIndex = '1000';
+                    indicator.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+                    indicator.style.padding = '5px 10px';
+                    indicator.style.borderRadius = '4px';
+                    element.style.position = 'relative';
+                    element.appendChild(indicator);
+                });
+                
+                // Remove all matching elements after a short delay
+                setTimeout(() => {
+                    console.log(`Removing ${elements.length} element(s)`);
+                    elements.forEach(element => {
+                        if (element.parentNode) {
+                            element.remove();
+                        }
+                    });
+                }, 2000);
+                
+                // Show success message
+                if (data.async) {
+                    showToast('success', `${name} deletion started in background`);
+                } else {
+                    showToast('success', `${name} deleted successfully`);
+                }
+                
+                // Refresh dashboard statistics
+                setTimeout(() => refreshStats(), 1000); // Small delay to ensure backend processing
+            } else {
+                console.error(`No elements found with selector: ${selector}`);
+                console.log(`Available elements with data-*-id:`, document.querySelectorAll('[data-file-id], [data-folder-id]'));
+                // Fallback: reload the page if element not found
+                showToast('warning', `${name} deleted but page will reload for updates`);
+                setTimeout(() => location.reload(), 1000);
+            }
         } else {
-            alert(data.error || 'Error deleting item');
+            showToast('error', data.error || 'Error deleting item');
         }
     } catch (error) {
-        alert('Error deleting item: ' + error.message);
+        console.error('Delete error:', error);
+        showToast('error', 'Error deleting item: ' + error.message);
     }
 }
 
@@ -987,29 +1086,38 @@ async function toggleVisibility() {
         const data = await response.json();
         
         if (data.success) {
-            // Update badge
+            // Update badge immediately
             badge.className = `badge ${data.is_public ? 'bg-success' : 'bg-secondary'}`;
             badge.textContent = data.status;
             
-            // Show success message
-            const alertDiv = document.createElement('div');
-            alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
-            alertDiv.innerHTML = `
-                <i class="fas fa-check-circle me-2"></i>
-                Folder visibility changed to <strong>${data.status.toLowerCase()}</strong>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
+            // Refresh dashboard statistics since visibility affects public file count
+            setTimeout(() => refreshStats(), 1000);
             
-            // Insert alert after breadcrumb
-            const breadcrumb = document.querySelector('nav[aria-label="breadcrumb"]');
-            breadcrumb.insertAdjacentElement('afterend', alertDiv);
-            
-            // Auto-hide alert after 5 seconds
-            setTimeout(() => {
-                if (alertDiv.parentNode) {
-                    alertDiv.remove();
-                }
-            }, 5000);
+            // Show appropriate message based on whether it's async
+            if (data.async) {
+                // Show toast for async operation
+                showToast('success', data.message || `Folder visibility changing to ${data.status.toLowerCase()} in background`);
+            } else {
+                // Show success message for immediate operation
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+                alertDiv.innerHTML = `
+                    <i class="fas fa-check-circle me-2"></i>
+                    Folder visibility changed to <strong>${data.status.toLowerCase()}</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                
+                // Insert alert after breadcrumb
+                const breadcrumb = document.querySelector('nav[aria-label="breadcrumb"]');
+                breadcrumb.insertAdjacentElement('afterend', alertDiv);
+                
+                // Auto-hide alert after 5 seconds
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.remove();
+                    }
+                }, 5000);
+            }
         } else {
             alert(data.error || 'Error toggling visibility');
         }
@@ -1036,6 +1144,33 @@ function getCookie(name) {
         }
     }
     return cookieValue;
+}
+
+// Function to refresh dashboard statistics
+function refreshStats() {
+    fetch('/api/dashboard/stats/')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update statistics if elements exist (they won't exist on folder pages, but that's ok)
+                const totalFilesEl = document.getElementById('stat-total-files');
+                const totalFoldersEl = document.getElementById('stat-total-folders');
+                const publicFilesEl = document.getElementById('stat-public-files');
+                const storageUsedEl = document.getElementById('stat-storage-used');
+                
+                if (totalFilesEl) totalFilesEl.textContent = data.stats.total_files;
+                if (totalFoldersEl) totalFoldersEl.textContent = data.stats.total_folders;
+                if (publicFilesEl) publicFilesEl.textContent = data.stats.public_files;
+                if (storageUsedEl) storageUsedEl.textContent = data.stats.total_size_formatted;
+                
+                console.log('Dashboard stats refreshed:', data.stats);
+            } else {
+                console.error('Failed to refresh stats:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing stats:', error);
+        });
 }
 </script>
 {% endif %}

@@ -186,6 +186,21 @@
                                         {% endfor %}
                                     </div>
                                 </div>
+                                {% else %}
+                                <div class="mb-4">
+                                    <h6 class="mb-3">
+                                        <i class="fas fa-user text-secondary me-2"></i>Your Spatial Files 
+                                        <span class="badge bg-secondary">0</span>
+                                    </h6>
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>No spatial files found.</strong> 
+                                        <p class="mb-0">Upload spatial files (GeoJSON, Shapefile, TIFF, etc.) to your dashboard first. They will automatically be processed and made available here.</p>
+                                        <a href="{% url 'filemanager:dashboard' %}" class="btn btn-sm btn-primary mt-2">
+                                            <i class="fas fa-upload me-1"></i>Upload Files
+                                        </a>
+                                    </div>
+                                </div>
                                 {% endif %}
 
                                 <!-- Public Files -->
@@ -226,6 +241,17 @@
                                             <input type="checkbox" name="selected_files" value="{{ file.id }}" style="display: none;">
                                         </div>
                                         {% endfor %}
+                                    </div>
+                                </div>
+                                {% else %}
+                                <div class="mb-4">
+                                    <h6 class="mb-3">
+                                        <i class="fas fa-globe text-success me-2"></i>Public Spatial Files 
+                                        <span class="badge bg-success">0</span>
+                                    </h6>
+                                    <div class="alert alert-light border">
+                                        <i class="fas fa-globe me-2 text-muted"></i>
+                                        <span class="text-muted">No public spatial files available from other users.</span>
                                     </div>
                                 </div>
                                 {% endif %}

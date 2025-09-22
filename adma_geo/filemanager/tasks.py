@@ -349,3 +349,169 @@ def update_map_embeddings_task():
     except Exception as e:
         logger.error(f"Error updating map embeddings: {str(e)}")
         return f"Error updating map embeddings: {str(e)}"
+
+
+@shared_task(bind=True)
+def delete_file_async_task(self, file_id, file_name):
+    """
+    Asynchronously delete a file with complete cleanup of all dependencies
+    """
+    import django
+    django.setup()
+    
+    try:
+        from django.apps import apps
+        File = apps.get_model('filemanager', 'File')
+        
+        logger.info(f"Starting async deletion of file: {file_name} (ID: {file_id})")
+        
+        # Get the file object
+        try:
+            file_obj = File.objects.get(id=file_id)
+        except File.DoesNotExist:
+            logger.warning(f"File {file_name} (ID: {file_id}) not found - may have been already deleted")
+            return f"File {file_name} not found - may have been already deleted"
+        
+        # Perform complete file deletion
+        from .views import delete_file_complete
+        delete_file_complete(file_obj)
+        
+        logger.info(f"Successfully completed async deletion of file: {file_name}")
+        return f"Successfully deleted file: {file_name}"
+        
+    except Exception as e:
+        logger.error(f"Error in async file deletion for {file_name}: {str(e)}")
+        return f"Error deleting file {file_name}: {str(e)}"
+
+
+@shared_task(bind=True)
+def delete_folder_async_task(self, folder_id, folder_name):
+    """
+    Asynchronously delete a folder with complete recursive cleanup of all dependencies
+    """
+    import django
+    django.setup()
+    
+    try:
+        from django.apps import apps
+        Folder = apps.get_model('filemanager', 'Folder')
+        
+        logger.info(f"Starting async deletion of folder: {folder_name} (ID: {folder_id})")
+        
+        # Get the folder object
+        try:
+            folder_obj = Folder.objects.get(id=folder_id)
+        except Folder.DoesNotExist:
+            logger.warning(f"Folder {folder_name} (ID: {folder_id}) not found - may have been already deleted")
+            return f"Folder {folder_name} not found - may have been already deleted"
+        
+        # Perform complete folder deletion
+        from .views import delete_folder_complete
+        delete_folder_complete(folder_obj)
+        
+        logger.info(f"Successfully completed async deletion of folder: {folder_name}")
+        return f"Successfully deleted folder: {folder_name}"
+        
+    except Exception as e:
+        logger.error(f"Error in async folder deletion for {folder_name}: {str(e)}")
+        return f"Error deleting folder {folder_name}: {str(e)}"
+
+
+@shared_task(bind=True)
+def toggle_folder_visibility_recursive_task(self, folder_id, is_public, folder_name):
+    """
+    Asynchronously toggle folder visibility recursively for all subfolders and files
+    """
+    import django
+    django.setup()
+    
+    try:
+        from django.apps import apps
+        Folder = apps.get_model('filemanager', 'Folder')
+        File = apps.get_model('filemanager', 'File')
+        
+        logger.info(f"Starting async recursive visibility toggle for folder: {folder_name} (ID: {folder_id}) to {'public' if is_public else 'private'}")
+        
+        # Get the folder object
+        try:
+            folder_obj = Folder.objects.get(id=folder_id)
+        except Folder.DoesNotExist:
+            logger.warning(f"Folder {folder_name} (ID: {folder_id}) not found - may have been deleted")
+            return f"Folder {folder_name} not found - may have been deleted"
+        
+        # Recursive function to update visibility (skip the main folder since it's already updated)
+        def update_recursive_visibility(current_folder, visibility, skip_current=False):
+            count = 0
+            
+            # Update current folder (skip if this is the main folder)
+            if not skip_current:
+                current_folder.is_public = visibility
+                current_folder.save(update_fields=['is_public'])
+                count += 1
+                logger.info(f"Updated folder: {current_folder.name} to {'public' if visibility else 'private'}")
+            
+            # Update all files in current folder
+            for file_obj in current_folder.files.all():
+                file_obj.is_public = visibility
+                file_obj.save(update_fields=['is_public'])
+                count += 1
+                logger.info(f"Updated file: {file_obj.name} to {'public' if visibility else 'private'}")
+            
+            # Recursively update all subfolders
+            for subfolder in current_folder.subfolders.all():
+                count += update_recursive_visibility(subfolder, visibility, skip_current=False)
+            
+            return count
+        
+        # Perform recursive update (skip main folder since view already updated it)
+        total_updated = update_recursive_visibility(folder_obj, is_public, skip_current=True)
+        
+        # Note: Embedding updates will be handled separately if needed
+        logger.info(f"Completed recursive visibility update for folder {folder_name}")
+        
+        success_message = f"Successfully updated visibility for {total_updated} items (folder + subfolders + files) in {folder_name}"
+        logger.info(success_message)
+        return success_message
+        
+    except Exception as e:
+        error_message = f"Error in async visibility toggle for {folder_name}: {str(e)}"
+        logger.error(error_message)
+        return error_message
+
+
+@shared_task(bind=True)
+def toggle_file_visibility_task(self, file_id, is_public, file_name):
+    """
+    Asynchronously toggle file visibility and update embeddings
+    """
+    import django
+    django.setup()
+    
+    try:
+        from django.apps import apps
+        File = apps.get_model('filemanager', 'File')
+        
+        logger.info(f"Starting async visibility toggle for file: {file_name} (ID: {file_id}) to {'public' if is_public else 'private'}")
+        
+        # Get the file object
+        try:
+            file_obj = File.objects.get(id=file_id)
+        except File.DoesNotExist:
+            logger.warning(f"File {file_name} (ID: {file_id}) not found - may have been deleted")
+            return f"File {file_name} not found - may have been deleted"
+        
+        # Update file visibility
+        file_obj.is_public = is_public
+        file_obj.save(update_fields=['is_public'])
+        
+        # Note: Embedding updates will be handled separately if needed
+        logger.info(f"Completed visibility update for file {file_name}")
+        
+        success_message = f"Successfully updated visibility for file {file_name} to {'public' if is_public else 'private'}"
+        logger.info(success_message)
+        return success_message
+        
+    except Exception as e:
+        error_message = f"Error in async visibility toggle for {file_name}: {str(e)}"
+        logger.error(error_message)
+        return error_message

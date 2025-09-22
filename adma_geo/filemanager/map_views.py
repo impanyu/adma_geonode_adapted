@@ -37,9 +37,11 @@ class MapsListView(LoginRequiredMixin, ListView):
         """Filter maps by user and public/private scope"""
         user = self.request.user
         
-        # Get user's own maps + public maps from others
+        # Get user's own maps + public maps from others (exclude items being deleted)
         return Map.objects.filter(
             models.Q(owner=user) | models.Q(is_public=True)
+        ).filter(
+            deletion_in_progress=False
         ).distinct().order_by('-updated_at')
 
     def get_context_data(self, **kwargs):
@@ -553,6 +555,10 @@ def delete_map(request, map_id):
         map_obj = get_object_or_404(Map, id=map_id, owner=request.user)
         map_name = map_obj.name
         
+        # Mark as deletion in progress to hide from queries
+        map_obj.deletion_in_progress = True
+        map_obj.save(update_fields=['deletion_in_progress'])
+        
         # Delete the map (this will trigger GeoServer cleanup via model.delete())
         map_obj.delete()
         
@@ -560,3 +566,38 @@ def delete_map(request, map_id):
         
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def toggle_map_visibility(request, map_id):
+    """Toggle map visibility between public and private"""
+    if request.method == 'POST':
+        try:
+            import json
+            map_obj = get_object_or_404(Map, id=map_id, owner=request.user)
+            
+            # Get the desired visibility from the request body
+            try:
+                data = json.loads(request.body)
+                desired_visibility = data.get('is_public')
+                if desired_visibility is not None:
+                    map_obj.is_public = desired_visibility
+                else:
+                    # Fallback to toggle if no specific value provided
+                    map_obj.is_public = not map_obj.is_public
+            except (json.JSONDecodeError, KeyError):
+                # Fallback to toggle if request body is invalid
+                map_obj.is_public = not map_obj.is_public
+            
+            map_obj.save(update_fields=['is_public'])
+            
+            return JsonResponse({
+                'success': True,
+                'is_public': map_obj.is_public,
+                'status': 'Public' if map_obj.is_public else 'Private'
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Method not allowed'})
