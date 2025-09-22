@@ -732,16 +732,9 @@ def delete_file_complete(file_obj):
             affected_maps.append(map_layer.map)
         
         # 3. Remove ChromaDB embeddings
-        try:
-            from .embedding_service import embedding_service
-            if file_obj.chroma_id:
-                embedding_service.remove_embedding(file_obj.chroma_id)
-                print(f"Deleted ChromaDB embedding for {file_obj.name}")
-        except Exception as e:
-            print(f"Error deleting ChromaDB embedding for {file_obj.name}: {e}")
-            # Clear the chroma_id to prevent future issues and continue with deletion
-            file_obj.chroma_id = None
-            file_obj.save(update_fields=['chroma_id'])
+        # ChromaDB embeddings removal - DISABLED (no longer using ChromaDB)
+        # NOTE: ChromaDB and embedding service removed in favor of PostgreSQL search
+        print(f"Skipping ChromaDB embedding cleanup for {file_obj.name} (no longer using ChromaDB)")
         
         # 4. Remove physical file from disk
         try:
@@ -793,17 +786,9 @@ def delete_folder_complete(folder_obj):
             print(f"Deleting subfolder {subfolder.name} in folder {folder_obj.name}")
             delete_folder_complete(subfolder)
         
-        # 3. Remove ChromaDB embeddings for the folder
-        try:
-            from .embedding_service import embedding_service
-            if folder_obj.chroma_id:
-                embedding_service.remove_embedding(folder_obj.chroma_id)
-                print(f"Deleted ChromaDB embedding for folder {folder_obj.name}")
-        except Exception as e:
-            print(f"Error deleting ChromaDB embedding for folder {folder_obj.name}: {e}")
-            # Clear the chroma_id to prevent future issues and continue with deletion
-            folder_obj.chroma_id = None
-            folder_obj.save(update_fields=['chroma_id'])
+        # 3. ChromaDB embeddings removal - DISABLED (no longer using ChromaDB)
+        # NOTE: ChromaDB and embedding service removed in favor of PostgreSQL search
+        print(f"Skipping ChromaDB embedding cleanup for folder {folder_obj.name} (no longer using ChromaDB)")
         
         # 4. Remove from PostgreSQL database
         folder_obj.delete()
