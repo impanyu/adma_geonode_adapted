@@ -10,7 +10,19 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-this-in-produc
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '*']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', 'adma.unl.edu', '*']
+
+# CSRF and CORS settings for production
+CSRF_TRUSTED_ORIGINS = [
+    'https://adma.unl.edu',
+    'http://adma.unl.edu',
+    'http://localhost',
+    'https://localhost',
+]
+
+# Proxy settings for HTTPS detection
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Application definition
 INSTALLED_APPS = [
