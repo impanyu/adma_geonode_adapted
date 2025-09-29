@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database with PostGIS
+  db:
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-adma_geo}
+      POSTGRES_USER: ${POSTGRES_USER:-adma_geo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adma_geo123}
+
+  # Django Application
+  django:
+    environment:
+      DEBUG: ${DEBUG:-False}
+      SECRET_KEY: ${SECRET_KEY:-django-secret-key-change-this}
+      POSTGRES_DB: ${POSTGRES_DB:-adma_geo}
+      POSTGRES_USER: ${POSTGRES_USER:-adma_geo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adma_geo123}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn adma_geo.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+    restart: unless-stopped
+
+  # Celery Worker
+  celery:
+    environment:
+      DEBUG: ${DEBUG:-False}
+      SECRET_KEY: ${SECRET_KEY:-django-secret-key-change-this}
+      POSTGRES_DB: ${POSTGRES_DB:-adma_geo}
+      POSTGRES_USER: ${POSTGRES_USER:-adma_geo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adma_geo123}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    restart: unless-stopped
+
+  # Add restart policies to other services
+  redis:
+    restart: unless-stopped
+
+  nginx:
+    restart: unless-stopped
+
+  geoserver:
+    restart: unless-stopped
