@@ -42,7 +42,7 @@ services:
       - adma_geo_media:/app/media
       - adma_geo_static:/app/staticfiles
     ports:
-      - "8001:8000"
+      - "8000:8000"
     environment:
       DEBUG: "True"
       SECRET_KEY: "django-secret-key-for-development"
