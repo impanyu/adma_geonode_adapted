@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import RedirectView
 from . import views
 from . import map_views
 
@@ -7,6 +8,7 @@ app_name = 'filemanager'
 urlpatterns = [
     # Public URLs
     path('', views.HomeView.as_view(), name='home'),
+    path('index.html', RedirectView.as_view(url='/', permanent=True), name='index_redirect'),
     path('register/', views.RegisterView.as_view(), name='register'),
     path('search/', views.SearchView.as_view(), name='search'),
     path('documentation/', views.DocumentationView.as_view(), name='documentation'),
