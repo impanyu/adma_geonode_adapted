@@ -94,7 +94,7 @@ services:
     image: nginx:alpine
     container_name: adma_geo_nginx
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx-adma.conf:/etc/nginx/nginx.conf
       - adma_geo_static:/var/www/static
       - adma_geo_media:/var/www/media
     ports:
