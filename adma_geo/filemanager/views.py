@@ -903,12 +903,31 @@ def map_viewer(request, file_id):
         # Use /geoserver/ proxy path for external access
         geoserver_base_url = f"{scheme}://{host}/geoserver"
         
+        # Parse spatial extent if available
+        spatial_extent = None
+        if file_obj.spatial_extent:
+            try:
+                import json
+                extent_data = json.loads(file_obj.spatial_extent)
+                if extent_data.get('type') == 'envelope' and extent_data.get('coordinates'):
+                    coords = extent_data['coordinates']
+                    if len(coords) == 2 and len(coords[0]) == 2 and len(coords[1]) == 2:
+                        spatial_extent = {
+                            'minx': coords[0][0],
+                            'miny': coords[0][1], 
+                            'maxx': coords[1][0],
+                            'maxy': coords[1][1]
+                        }
+            except (json.JSONDecodeError, KeyError, IndexError):
+                pass
+        
         geoserver_info = {
             'workspace': file_obj.geoserver_workspace,
             'layer_name': file_obj.geoserver_layer_name,
             'wms_url': f"{geoserver_base_url}/wms",
             'wfs_url': f"{geoserver_base_url}/wfs",
             'is_published': file_obj.gis_status == 'published',
+            'spatial_extent': spatial_extent,
         }
     
     return render(request, 'filemanager/map_viewer.html', {
@@ -934,12 +953,31 @@ def public_map_viewer(request, file_id):
         # Use /geoserver/ proxy path for external access
         geoserver_base_url = f"{scheme}://{host}/geoserver"
         
+        # Parse spatial extent if available
+        spatial_extent = None
+        if file_obj.spatial_extent:
+            try:
+                import json
+                extent_data = json.loads(file_obj.spatial_extent)
+                if extent_data.get('type') == 'envelope' and extent_data.get('coordinates'):
+                    coords = extent_data['coordinates']
+                    if len(coords) == 2 and len(coords[0]) == 2 and len(coords[1]) == 2:
+                        spatial_extent = {
+                            'minx': coords[0][0],
+                            'miny': coords[0][1], 
+                            'maxx': coords[1][0],
+                            'maxy': coords[1][1]
+                        }
+            except (json.JSONDecodeError, KeyError, IndexError):
+                pass
+        
         geoserver_info = {
             'workspace': file_obj.geoserver_workspace,
             'layer_name': file_obj.geoserver_layer_name,
             'wms_url': f"{geoserver_base_url}/wms",
             'wfs_url': f"{geoserver_base_url}/wfs",
             'is_published': file_obj.gis_status == 'published',
+            'spatial_extent': spatial_extent,
         }
     
     # Reuse the same template as private map viewer, but with public view context
