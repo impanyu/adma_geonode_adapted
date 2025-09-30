@@ -145,7 +145,7 @@ DATA_UPLOAD_MAX_NUMBER_FILES = 1000  # Allow up to 1000 files per upload for fol
 # GeoServer Configuration
 GEOSERVER_URL = os.environ.get('GEOSERVER_URL', 'http://geoserver:8080/geoserver')
 GEOSERVER_ADMIN_USER = os.environ.get('GEOSERVER_ADMIN_USER', 'admin')
-GEOSERVER_ADMIN_PASSWORD = os.environ.get('GEOSERVER_ADMIN_PASSWORD', 'geoserver')
+GEOSERVER_ADMIN_PASSWORD = os.environ.get('GEOSERVER_ADMIN_PASSWORD', 'geoserver123')
 GEOSERVER_WORKSPACE = 'adma_geo'
 
 # Supported GIS file formats
