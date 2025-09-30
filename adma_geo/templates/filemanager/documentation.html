@@ -881,7 +881,7 @@ Duplicate 3: document_3.pdf
                 <h3>GeoServer Integration</h3>
                 <p>GIS data is served through GeoServer REST API:</p>
                 <div class="code-block">
-WMS URL: http://localhost:8080/geoserver/wms
+WMS URL: {{ request.scheme }}://{{ request.get_host }}/geoserver/wms
 Workspace: adma_geo
 Layer Format: {workspace}:{layer_name}
 GetCapabilities: ?service=WMS&request=GetCapabilities

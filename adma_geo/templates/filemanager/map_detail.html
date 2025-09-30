@@ -1154,7 +1154,7 @@ function initializeMap() {
 function addWMSLayer(layerId, workspace, layerName, displayName, opacity, visible) {
     const wmsLayer = new ol.layer.Tile({
         source: new ol.source.TileWMS({
-            url: 'http://localhost:8080/geoserver/wms',
+            url: '{{ request.scheme }}://{{ request.get_host }}/geoserver/wms',
             params: {
                 'LAYERS': workspace + ':' + layerName,
                 'FORMAT': 'image/png',

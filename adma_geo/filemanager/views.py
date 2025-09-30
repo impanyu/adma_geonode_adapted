@@ -896,11 +896,18 @@ def map_viewer(request, file_id):
     # Get GeoServer layer info
     geoserver_info = None
     if file_obj.geoserver_layer_name and file_obj.gis_status in ['published', 'processed']:
+        # Generate public-facing GeoServer URLs
+        host = request.get_host()
+        scheme = 'https' if request.is_secure() else 'http'
+        
+        # Use /geoserver/ proxy path for external access
+        geoserver_base_url = f"{scheme}://{host}/geoserver"
+        
         geoserver_info = {
             'workspace': file_obj.geoserver_workspace,
             'layer_name': file_obj.geoserver_layer_name,
-            'wms_url': f"{settings.GEOSERVER_URL.replace('geoserver:8080', 'localhost:8080')}/wms",
-            'wfs_url': f"{settings.GEOSERVER_URL.replace('geoserver:8080', 'localhost:8080')}/wfs",
+            'wms_url': f"{geoserver_base_url}/wms",
+            'wfs_url': f"{geoserver_base_url}/wfs",
             'is_published': file_obj.gis_status == 'published',
         }
     
@@ -920,11 +927,18 @@ def public_map_viewer(request, file_id):
     # Get GeoServer layer info
     geoserver_info = None
     if file_obj.geoserver_layer_name and file_obj.gis_status in ['published', 'processed']:
+        # Generate public-facing GeoServer URLs
+        host = request.get_host()
+        scheme = 'https' if request.is_secure() else 'http'
+        
+        # Use /geoserver/ proxy path for external access
+        geoserver_base_url = f"{scheme}://{host}/geoserver"
+        
         geoserver_info = {
             'workspace': file_obj.geoserver_workspace,
             'layer_name': file_obj.geoserver_layer_name,
-            'wms_url': f"{settings.GEOSERVER_URL.replace('geoserver:8080', 'localhost:8080')}/wms",
-            'wfs_url': f"{settings.GEOSERVER_URL.replace('geoserver:8080', 'localhost:8080')}/wfs",
+            'wms_url': f"{geoserver_base_url}/wms",
+            'wfs_url': f"{geoserver_base_url}/wfs",
             'is_published': file_obj.gis_status == 'published',
         }
     
