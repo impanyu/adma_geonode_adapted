@@ -90,6 +90,24 @@ class MapDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
+def public_map_detail(request, map_id):
+    """Public view of map details"""
+    map_obj = get_object_or_404(Map, id=map_id, is_public=True)
+    
+    # If user is authenticated and owns this map, redirect to private view
+    if request.user.is_authenticated and map_obj.owner == request.user:
+        return redirect('filemanager:map_detail', map_id=map_id)
+    
+    # Get map layers with their files
+    map_layers = map_obj.map_layers.select_related('file').order_by('layer_order')
+    
+    # Reuse the same template as private map detail, but with public view context
+    return render(request, 'filemanager/map_detail.html', {
+        'map_obj': map_obj,
+        'map_layers': map_layers,
+        'can_edit': False,  # Public users can't edit
+        'is_public_view': True,  # Flag to adjust breadcrumbs and navigation
+    })
 
 
 @login_required

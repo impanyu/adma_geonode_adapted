@@ -247,7 +247,7 @@
                                 {% for map in public_maps %}
                                 <tr>
                                     <td>
-                                        <a href="{% url 'filemanager:map_detail' map.id %}" class="text-decoration-none d-flex align-items-center">
+                                        <a href="{% url 'filemanager:public_map_detail' map.id %}" class="text-decoration-none d-flex align-items-center">
                                             <i class="fas fa-map file-icon"></i>
                                             <div>
                                                 <div class="fw-bold">{{ map.name }}</div>
@@ -316,7 +316,7 @@
                         <!-- Maps third -->
                         {% for map in public_maps %}
                         <div class="col-md-4 col-sm-6 mb-3">
-                            <a href="{% url 'filemanager:map_detail' map.id %}" class="text-decoration-none">
+                            <a href="{% url 'filemanager:public_map_detail' map.id %}" class="text-decoration-none">
                                 <div class="file-item map-item">
                                     <i class="fas fa-map file-icon"></i>
                                     <div class="flex-grow-1">

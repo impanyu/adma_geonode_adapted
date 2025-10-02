@@ -864,33 +864,6 @@ async function deleteItem(type, id, name) {
     }
 }
 
-// View Toggle Functions
-function toggleView(viewType) {
-    const listView = document.getElementById('listView');
-    const panelView = document.getElementById('panelView');
-    const listBtn = document.getElementById('listViewBtn');
-    const panelBtn = document.getElementById('panelViewBtn');
-    
-    if (viewType === 'list') {
-        listView.style.display = 'block';
-        panelView.style.display = 'none';
-        listBtn.classList.add('active');
-        panelBtn.classList.remove('active');
-        localStorage.setItem('fileViewType', 'list');
-    } else {
-        listView.style.display = 'none';
-        panelView.style.display = 'block';
-        listBtn.classList.remove('active');
-        panelBtn.classList.add('active');
-        localStorage.setItem('fileViewType', 'panel');
-    }
-}
-
-// Load saved view preference on page load
-document.addEventListener('DOMContentLoaded', function() {
-    const savedView = localStorage.getItem('fileViewType') || 'panel';
-    toggleView(savedView);
-});
 
 // Upload Folders Modal Functions
 function showUploadFoldersModal() {
@@ -1174,6 +1147,37 @@ function refreshStats() {
 }
 </script>
 {% endif %}
+
+<!-- View Toggle Script - Always Available -->
+<script>
+// View Toggle Functions
+function toggleView(viewType) {
+    const listView = document.getElementById('listView');
+    const panelView = document.getElementById('panelView');
+    const listBtn = document.getElementById('listViewBtn');
+    const panelBtn = document.getElementById('panelViewBtn');
+    
+    if (viewType === 'list') {
+        listView.style.display = 'block';
+        panelView.style.display = 'none';
+        listBtn.classList.add('active');
+        panelBtn.classList.remove('active');
+        localStorage.setItem('fileViewType', 'list');
+    } else {
+        listView.style.display = 'none';
+        panelView.style.display = 'block';
+        listBtn.classList.remove('active');
+        panelBtn.classList.add('active');
+        localStorage.setItem('fileViewType', 'panel');
+    }
+}
+
+// Load saved view preference on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const savedView = localStorage.getItem('fileViewType') || 'panel';
+    toggleView(savedView);
+});
+</script>
 
 <!-- Upload Folders Modal -->
 <div class="modal fade" id="uploadFoldersModal" tabindex="-1">

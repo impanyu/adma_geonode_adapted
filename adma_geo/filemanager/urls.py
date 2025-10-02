@@ -24,6 +24,7 @@ urlpatterns = [
     
     # Public map viewer
     path('public/file/<uuid:file_id>/map/', views.public_map_viewer, name='public_map_viewer'),
+    path('public/map/<uuid:map_id>/', map_views.public_map_detail, name='public_map_detail'),
     
     # Maps functionality
     path('maps/', map_views.MapsListView.as_view(), name='maps_list'),
