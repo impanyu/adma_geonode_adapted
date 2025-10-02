@@ -27,7 +27,7 @@ class LayerGroupManager:
     def __init__(self):
         self.geoserver_url = settings.GEOSERVER_URL
         self.workspace = getattr(settings, 'GEOSERVER_WORKSPACE', 'adma_geo')
-        self.auth = ('admin', 'geoserver')
+        self.auth = (settings.GEOSERVER_ADMIN_USER, settings.GEOSERVER_ADMIN_PASSWORD)
         self.headers = {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
