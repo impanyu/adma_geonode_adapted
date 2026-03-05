@@ -1860,3 +1860,229 @@ def sync_johndeere_scheduled():
     """
     logger.info("Running scheduled John Deere sync...")
     return sync_johndeere_task.delay()
+
+
+@shared_task(bind=True)
+def run_yield_summary_tool_task(
+    self,
+    treatment_file_id,
+    yield_file_id,
+    total_n_values,
+    output_dir_id=None,
+    buffer_distance=-30.0,
+    corn_price=4.35,
+    n_price=0.50
+):
+    """
+    Run the Yield Summary Tool on treatment and yield shapefiles.
+    
+    This task:
+    1. Reads treatment sector and yield shapefiles
+    2. Creates buffered treatment polygons
+    3. Performs spatial join and statistical analysis
+    4. Generates summary shapefiles and Excel reports
+    5. Creates File records for the output files in Django
+    
+    Args:
+        treatment_file_id: ID of the treatment sector shapefile File object
+        yield_file_id: ID of the yield shapefile File object
+        total_n_values: Comma-separated Total N values for active sectors
+        output_dir_id: Optional ID of the Folder object for output
+        buffer_distance: Buffer distance in meters (default -30)
+        corn_price: Corn price per bushel ($/bu, default 4.35)
+        n_price: Nitrogen price per lb N ($/lb N, default 0.50)
+    """
+    from django.conf import settings
+    import os
+    
+    try:
+        logger.info(f"Starting Yield Summary Tool task for treatment file ID: {treatment_file_id}, yield file ID: {yield_file_id}")
+        
+        # Get the treatment file object
+        try:
+            treatment_file = File.objects.get(id=treatment_file_id)
+        except File.DoesNotExist:
+            logger.error(f"Treatment file with ID {treatment_file_id} not found")
+            return {"success": False, "error": f"Treatment file with ID {treatment_file_id} not found"}
+        
+        # Get the yield file object
+        try:
+            yield_file = File.objects.get(id=yield_file_id)
+        except File.DoesNotExist:
+            logger.error(f"Yield file with ID {yield_file_id} not found")
+            return {"success": False, "error": f"Yield file with ID {yield_file_id} not found"}
+        
+        # Validate file types
+        treatment_ext = os.path.splitext(treatment_file.name)[1].lower()
+        yield_ext = os.path.splitext(yield_file.name)[1].lower()
+        
+        if treatment_ext != '.shp':
+            error_msg = f"Treatment file must be a .shp file, got: {treatment_ext}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+        
+        if yield_ext != '.shp':
+            error_msg = f"Yield file must be a .shp file, got: {yield_ext}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+        
+        # Get the input file paths
+        treatment_path = treatment_file.file.path
+        yield_path = yield_file.file.path
+        
+        # Determine output directory and folder
+        from .models import Folder
+        output_folder_obj = None
+        
+        if output_dir_id:
+            try:
+                output_folder_obj = Folder.objects.get(id=output_dir_id)
+            except Folder.DoesNotExist:
+                logger.error(f"Output folder with ID {output_dir_id} not found")
+                return {"success": False, "error": f"Output folder with ID {output_dir_id} not found"}
+        else:
+            # Auto-create 'yield_summary_output' folder under the treatment file's parent folder
+            parent_folder = treatment_file.folder
+            
+            existing_folder = Folder.objects.filter(
+                name="yield_summary_output",
+                parent=parent_folder,
+                owner=treatment_file.owner
+            ).first()
+            
+            if existing_folder:
+                output_folder_obj = existing_folder
+                logger.info(f"Using existing 'yield_summary_output' folder: {output_folder_obj.id}")
+            else:
+                output_folder_obj = Folder.objects.create(
+                    name="yield_summary_output",
+                    parent=parent_folder,
+                    owner=treatment_file.owner,
+                    is_public=treatment_file.is_public
+                )
+                logger.info(f"Created new 'yield_summary_output' folder: {output_folder_obj.id}")
+        
+        # Build the full output directory path under MEDIA_ROOT/uploads
+        relative_output_dir = output_folder_obj.get_full_path()
+        output_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', relative_output_dir)
+        
+        os.makedirs(output_dir, exist_ok=True)
+        
+        logger.info(f"Processing treatment file: {treatment_path}")
+        logger.info(f"Processing yield file: {yield_path}")
+        logger.info(f"Output directory: {output_dir}")
+        
+        # Import and run the yield summary tool
+        from .yield_summary_tool_single_V4 import process_yield_summary
+        
+        success, message, output_files = process_yield_summary(
+            treatment_path=treatment_path,
+            yield_path=yield_path,
+            output_dir=output_dir,
+            total_n_values=total_n_values,
+            buffer_distance=float(buffer_distance),
+            corn_price=float(corn_price),
+            n_price=float(n_price)
+        )
+        
+        if not success:
+            logger.error(f"Yield Summary Tool failed: {message}")
+            treatment_file.processing_log = (treatment_file.processing_log or "") + f"\n✗ Yield Summary Tool failed: {message}"
+            treatment_file.save(update_fields=['processing_log'])
+            return {"success": False, "error": message}
+        
+        logger.info(f"Yield Summary Tool completed: {message}")
+        
+        # Create File records for the output files
+        created_files = []
+        
+        def create_file_record(file_path):
+            if not os.path.exists(file_path):
+                return None
+            try:
+                media_root = settings.MEDIA_ROOT
+                if file_path.startswith(str(media_root)):
+                    relative_path = os.path.relpath(file_path, media_root)
+                else:
+                    relative_path = file_path
+                
+                file_name = os.path.basename(file_path)
+                file_size = os.path.getsize(file_path)
+                
+                existing_file = File.objects.filter(
+                    name=file_name,
+                    folder=output_folder_obj,
+                    owner=treatment_file.owner
+                ).first()
+                
+                if existing_file:
+                    existing_file.file_size = file_size
+                    existing_file.save(update_fields=['file_size', 'updated_at'])
+                    logger.info(f"Updated existing file: {file_name}")
+                    return {
+                        'name': file_name,
+                        'id': str(existing_file.id),
+                        'updated': True
+                    }
+                else:
+                    new_file = File(
+                        name=file_name,
+                        folder=output_folder_obj,
+                        owner=treatment_file.owner,
+                        file_size=file_size,
+                        is_public=treatment_file.is_public,
+                    )
+                    new_file.file.name = relative_path
+                    new_file.save()
+                    
+                    logger.info(f"Created new file record: {file_name}")
+                    return {
+                        'name': file_name,
+                        'id': str(new_file.id),
+                        'updated': False
+                    }
+                    
+            except Exception as e:
+                logger.error(f"Error creating file record for {file_path}: {e}")
+                return None
+        
+        # Process shapefile components
+        for component_key in ['buffer_components', 'summary_shp_components']:
+            if component_key in output_files:
+                for file_path in output_files[component_key]:
+                    result = create_file_record(file_path)
+                    if result:
+                        created_files.append(result)
+        
+        # Process Excel files
+        for excel_key in ['summary_xlsx', 'stat_xlsx']:
+            if excel_key in output_files:
+                result = create_file_record(output_files[excel_key])
+                if result:
+                    created_files.append(result)
+        
+        # Update source file processing log
+        treatment_file.processing_log = (treatment_file.processing_log or "") + f"\n✓ Yield Summary Tool completed: {message}"
+        treatment_file.save(update_fields=['processing_log'])
+        
+        # Build output_files dict with just basenames for the result
+        output_files_result = {}
+        for k, v in output_files.items():
+            if isinstance(v, str):
+                output_files_result[k] = os.path.basename(v)
+            elif isinstance(v, list):
+                output_files_result[k] = [os.path.basename(f) for f in v]
+        
+        result = {
+            "success": True,
+            "message": message,
+            "created_files": created_files,
+            "output_files": output_files_result
+        }
+        
+        logger.info(f"Yield Summary Tool task completed successfully: {result}")
+        return result
+        
+    except Exception as e:
+        logger.exception(f"Error in Yield Summary Tool task")
+        return {"success": False, "error": str(e)}

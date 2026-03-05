@@ -971,6 +971,28 @@ class Tool(models.Model):
                     'generates': ['shapefile_with_si'],
                 },
             },
+            {
+                'slug': 'yield-summary',
+                'name': 'Yield Summary',
+                'short_description': 'Analyze treatment sectors and yield data with ANOVA statistics and economic metrics.',
+                'description': 'The Yield Summary Tool processes treatment sector and yield shapefiles to perform '
+                              'comprehensive statistical analysis including ANOVA. Calculates economic metrics like '
+                              'NUE (Nitrogen Use Efficiency), PFP (Partial Factor Productivity), and MNR (Marginal Net Return). '
+                              'Outputs include buffered shapefiles, summary Excel, and statistics reports.',
+                'category': 'analysis',
+                'icon': 'fa-chart-bar',
+                'icon_color': 'info',
+                'url_name': 'filemanager:yield_summary_tool',
+                'celery_task_name': 'filemanager.tasks.run_yield_summary_tool_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.shp'],
+                    'required_inputs': ['treatment_sector_shp', 'yield_shp', 'total_n_values'],
+                },
+                'output_config': {
+                    'generates': ['buffer_shp', 'summary_shp', 'summary_xlsx', 'statistics_xlsx'],
+                },
+            },
         ]
         
         created_tools = []

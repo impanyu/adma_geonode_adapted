@@ -1967,6 +1967,115 @@ class SeedingToolView(LoginRequiredMixin, TemplateView):
         return tree_data
 
 
+class YieldSummaryToolView(LoginRequiredMixin, TemplateView):
+    """Yield Summary Tool page - allows users to select treatment and yield files"""
+    template_name = 'filemanager/yield_summary_tool.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+        
+        # Build hierarchical tree data structure for the file browser
+        tree_data = self._build_tree_data(user)
+        
+        context['tree_data'] = json.dumps(tree_data)
+        context['page_title'] = 'Yield Summary Tool'
+        
+        # Default parameter values
+        context['default_buffer_distance'] = -30.0
+        context['default_corn_price'] = 4.35
+        context['default_n_price'] = 0.50
+        
+        return context
+    
+    def _build_tree_data(self, user):
+        """Build hierarchical folder/file tree for the browser UI"""
+        
+        def folder_to_dict(folder, include_files=True):
+            """Convert a folder to a dictionary with its contents"""
+            data = {
+                'id': str(folder.id),
+                'name': folder.name,
+                'file_count': folder.files.filter(deletion_in_progress=False).count(),
+                'subfolders': [],
+                'files': []
+            }
+            
+            # Get subfolders
+            subfolders = Folder.objects.filter(
+                parent=folder,
+                deletion_in_progress=False
+            ).order_by('name')
+            
+            for subfolder in subfolders:
+                data['subfolders'].append(folder_to_dict(subfolder, include_files))
+            
+            # Get files (only shapefiles for input selection)
+            if include_files:
+                files = File.objects.filter(
+                    folder=folder,
+                    deletion_in_progress=False,
+                    name__iendswith='.shp'
+                ).order_by('name')
+                
+                for file in files:
+                    data['files'].append({
+                        'id': str(file.id),
+                        'name': file.name,
+                        'size_display': file.get_size_display()
+                    })
+            
+            return data
+        
+        # Get user's root-level folders (no parent)
+        my_root_folders = Folder.objects.filter(
+            owner=user,
+            parent__isnull=True,
+            deletion_in_progress=False
+        ).order_by('name')
+        
+        # Get user's root-level files (no folder)
+        my_root_files = File.objects.filter(
+            owner=user,
+            folder__isnull=True,
+            deletion_in_progress=False,
+            name__iendswith='.shp'
+        ).order_by('name')
+        
+        # Get public root-level folders (from other users)
+        public_root_folders = Folder.objects.filter(
+            is_public=True,
+            parent__isnull=True,
+            deletion_in_progress=False
+        ).exclude(owner=user).order_by('name')
+        
+        # Get public root-level files (from other users)
+        public_root_files = File.objects.filter(
+            is_public=True,
+            folder__isnull=True,
+            deletion_in_progress=False,
+            name__iendswith='.shp'
+        ).exclude(owner=user).order_by('name')
+        
+        # Build tree structure
+        tree_data = {
+            'my_folders': [folder_to_dict(f) for f in my_root_folders],
+            'my_root_files': [{
+                'id': str(f.id),
+                'name': f.name,
+                'size_display': f.get_size_display()
+            } for f in my_root_files],
+            'public_folders': [folder_to_dict(f) for f in public_root_folders],
+            'public_root_files': [{
+                'id': str(f.id),
+                'name': f.name,
+                'size_display': f.get_size_display()
+            } for f in public_root_files]
+        }
+        
+        return tree_data
+
+
 class ToolsListView(LoginRequiredMixin, TemplateView):
     """List view for available tools with panel/list view toggle"""
     template_name = 'filemanager/tools_list.html'
@@ -2058,19 +2167,19 @@ class ToolsListView(LoginRequiredMixin, TemplateView):
                     'status': 'available',
                     'category': 'Analysis',
                 },
-            ]
-            coming_soon_tools = [
                 {
-                    'id': 'yield_analysis',
-                    'slug': 'yield-analysis',
-                    'name': 'Yield Analysis',
-                    'description': 'Analyze yield data and generate comprehensive reports.',
+                    'id': 'yield_summary_tool',
+                    'slug': 'yield-summary',
+                    'name': 'Yield Summary',
+                    'description': 'Analyze treatment sectors and yield data with ANOVA statistics and economic metrics.',
                     'icon': 'fa-chart-bar',
-                    'color': 'secondary',
-                    'url_name': None,
-                    'status': 'coming_soon',
+                    'color': 'info',
+                    'url_name': 'filemanager:yield_summary_tool',
+                    'status': 'available',
                     'category': 'Analysis',
                 },
+            ]
+            coming_soon_tools = [
                 {
                     'id': 'layer_merge',
                     'slug': 'layer-merge',
@@ -2897,6 +3006,157 @@ def check_si_tool_status(request, task_id):
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error checking SI Tool status: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def run_yield_summary_tool(request):
+    """
+    API endpoint to trigger the Yield Summary Tool on treatment and yield shapefiles.
+    
+    POST request with JSON body:
+    {
+        "treatment_file_id": "uuid-of-treatment-file",
+        "yield_file_id": "uuid-of-yield-file",
+        "total_n_values": "122,99.5,122,98.5,105.5,122,122,65.5",
+        "output_folder_id": "uuid-of-folder" (optional),
+        "buffer_distance": -30.0 (optional, default -30),
+        "corn_price": 4.35 (optional, default 4.35),
+        "n_price": 0.50 (optional, default 0.50)
+    }
+    
+    Returns:
+    {
+        "success": true/false,
+        "message": "...",
+        "task_id": "celery-task-id" (if async)
+    }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        treatment_file_id = data.get('treatment_file_id')
+        yield_file_id = data.get('yield_file_id')
+        total_n_values = data.get('total_n_values', '').strip()
+        output_folder_id = data.get('output_folder_id')
+        buffer_distance = data.get('buffer_distance', -30.0)
+        corn_price = data.get('corn_price', 4.35)
+        n_price = data.get('n_price', 0.50)
+        
+        if not treatment_file_id:
+            return JsonResponse({'success': False, 'error': 'treatment_file_id is required'}, status=400)
+        
+        if not yield_file_id:
+            return JsonResponse({'success': False, 'error': 'yield_file_id is required'}, status=400)
+        
+        if not total_n_values:
+            return JsonResponse({'success': False, 'error': 'total_n_values is required'}, status=400)
+        
+        # Get the treatment file object
+        try:
+            treatment_file = File.objects.get(id=treatment_file_id)
+        except File.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Treatment file not found'}, status=404)
+        
+        # Get the yield file object
+        try:
+            yield_file = File.objects.get(id=yield_file_id)
+        except File.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Yield file not found'}, status=404)
+        
+        # Check permissions
+        if treatment_file.owner != request.user and not treatment_file.is_public:
+            return JsonResponse({'success': False, 'error': 'Permission denied for treatment file'}, status=403)
+        
+        if yield_file.owner != request.user and not yield_file.is_public:
+            return JsonResponse({'success': False, 'error': 'Permission denied for yield file'}, status=403)
+        
+        # Validate output folder if provided
+        if output_folder_id:
+            try:
+                output_folder = Folder.objects.get(id=output_folder_id, owner=request.user)
+            except Folder.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Output folder not found'}, status=404)
+        
+        # Validate file types
+        treatment_ext = os.path.splitext(treatment_file.name)[1].lower()
+        yield_ext = os.path.splitext(yield_file.name)[1].lower()
+        
+        if treatment_ext != '.shp':
+            return JsonResponse({
+                'success': False, 
+                'error': f'Treatment file must be a .shp file. Got: {treatment_ext}'
+            }, status=400)
+        
+        if yield_ext != '.shp':
+            return JsonResponse({
+                'success': False, 
+                'error': f'Yield file must be a .shp file. Got: {yield_ext}'
+            }, status=400)
+        
+        # Trigger the Celery task
+        from .tasks import run_yield_summary_tool_task
+        task = run_yield_summary_tool_task.delay(
+            str(treatment_file_id),
+            str(yield_file_id),
+            total_n_values,
+            output_folder_id,
+            buffer_distance,
+            corn_price,
+            n_price
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Yield Summary Tool started for {treatment_file.name} and {yield_file.name}',
+            'task_id': task.id
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error running Yield Summary Tool: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def check_yield_summary_tool_status(request, task_id):
+    """
+    Check the status of a Yield Summary Tool task.
+    
+    GET request returns:
+    {
+        "success": true,
+        "status": "PENDING" | "STARTED" | "SUCCESS" | "FAILURE",
+        "result": {...} (if completed)
+    }
+    """
+    try:
+        from celery.result import AsyncResult
+        
+        result = AsyncResult(task_id)
+        
+        response = {
+            'success': True,
+            'status': result.status,
+        }
+        
+        if result.ready():
+            if result.successful():
+                response['result'] = result.result
+            else:
+                response['error'] = str(result.result)
+        
+        return JsonResponse(response)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error checking Yield Summary Tool status: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 

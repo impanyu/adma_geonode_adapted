@@ -21,6 +21,7 @@ urlpatterns = [
     path('tools/seeding/', views.SeedingToolView.as_view(), name='seeding_tool'),
     path('tools/shape-to-json/', views.ShapeToJsonToolView.as_view(), name='shape_to_json_tool'),
     path('tools/si/', views.SIToolView.as_view(), name='si_tool'),
+    path('tools/yield-summary/', views.YieldSummaryToolView.as_view(), name='yield_summary_tool'),
     path('folder/<uuid:folder_id>/', views.folder_detail, name='folder_detail'),
     path('file/<uuid:file_id>/', views.file_detail, name='file_detail'),
     path('file/<uuid:file_id>/download/', views.download_file, name='download_file'),
@@ -56,6 +57,10 @@ urlpatterns = [
     # SI Tool endpoints
     path('api/si-tool/run/', views.run_si_tool, name='run_si_tool'),
     path('api/si-tool/status/<str:task_id>/', views.check_si_tool_status, name='check_si_tool_status'),
+    
+    # Yield Summary Tool endpoints
+    path('api/yield-summary-tool/run/', views.run_yield_summary_tool, name='run_yield_summary_tool'),
+    path('api/yield-summary-tool/status/<str:task_id>/', views.check_yield_summary_tool_status, name='check_yield_summary_tool_status'),
     
     # File management endpoints
     path('api/file/rename/', views.rename_file, name='rename_file'),
