@@ -1,0 +1,912 @@
+{% extends "base.html" %}
+
+{% block title %}Agent - ADMA{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+    /* Override base template — full width, no frames */
+    main.container { max-width: 100%; padding: 0; margin: 0; }
+    main.container.mt-4 { margin-top: 0 !important; }
+    footer.footer { display: none; }
+    body { background: #fff; }
+
+    .agent-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 24px;
+        padding-bottom: 80px; /* space for fixed input */
+    }
+
+    .agent-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+    }
+
+    .agent-status {
+        font-size: 0.85rem;
+        color: var(--adma-dark-grey);
+    }
+    .agent-status .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+    }
+    .status-dot.running { background-color: var(--adma-green); }
+    .status-dot.stopped { background-color: #ccc; }
+    .status-dot.starting { background-color: #ffc107; animation: pulse 1s infinite; }
+    .status-dot.error { background-color: var(--adma-red); }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
+    .chat-messages {
+        padding: 16px 0;
+        min-height: calc(100vh - 200px);
+    }
+
+    .message {
+        display: flex;
+        margin-bottom: 16px;
+        gap: 10px;
+    }
+
+    .message.user-message {
+        flex-direction: row-reverse;
+    }
+
+    .message-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 0.85rem;
+        color: #fff;
+    }
+
+    .user-message .message-avatar {
+        background: linear-gradient(135deg, var(--adma-red), var(--adma-red-dark));
+    }
+
+    .assistant-message .message-avatar {
+        background: linear-gradient(135deg, var(--adma-primary), var(--adma-secondary));
+    }
+
+    .message-content {
+        max-width: 85%;
+        padding: 10px 16px;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+
+    .user-message .message-content {
+        background-color: var(--adma-red);
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+
+    .assistant-message .message-content {
+        background-color: #f0f2f5;
+        color: #1a1a1a;
+        border-bottom-left-radius: 4px;
+    }
+
+    /* Markdown rendering in assistant messages */
+    .assistant-message .message-content p { margin-bottom: 0.5em; }
+    .assistant-message .message-content p:last-child { margin-bottom: 0; }
+    .assistant-message .message-content ul,
+    .assistant-message .message-content ol { margin-bottom: 0.5em; padding-left: 1.5em; }
+    .assistant-message .message-content h1,
+    .assistant-message .message-content h2,
+    .assistant-message .message-content h3 { font-size: 1.1em; font-weight: 600; margin: 0.8em 0 0.4em; }
+
+    .assistant-message .message-content pre {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        border-radius: 8px;
+        padding: 12px;
+        overflow-x: auto;
+        margin: 8px 0;
+        position: relative;
+    }
+    .assistant-message .message-content code {
+        font-family: 'Fira Code', 'Cascadia Code', monospace;
+        font-size: 0.85em;
+    }
+    .assistant-message .message-content p code {
+        background: #e8e8e8;
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: #c7254e;
+    }
+    .assistant-message .message-content pre code {
+        background: none;
+        padding: 0;
+        color: inherit;
+    }
+
+    /* Copy button for code blocks */
+    .code-copy-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #aaa;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        cursor: pointer;
+    }
+    .code-copy-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+    /* ADMA resource cards */
+    .adma-resource-card {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 8px 14px;
+        margin: 4px 0;
+        text-decoration: none;
+        color: inherit;
+        transition: box-shadow 0.2s;
+        cursor: pointer;
+    }
+    .adma-resource-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        text-decoration: none;
+        color: inherit;
+    }
+    .adma-resource-card i { color: var(--adma-red); }
+
+    /* Embedded map iframe */
+    .adma-map-embed {
+        width: 100%;
+        height: 300px;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin: 8px 0;
+    }
+
+    /* Embedded HTML visualization iframe — break out of message bubble to full chat width */
+    .adma-html-embed {
+        width: calc(100vw - 150px);
+        max-width: 1100px;
+        height: 500px;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin: 12px 0;
+        margin-left: calc(-50px);
+        background: #fff;
+    }
+
+    /* Typing indicator */
+    .typing-indicator {
+        display: none;
+        margin-bottom: 16px;
+    }
+    .typing-indicator.visible { display: flex; }
+    .typing-dots {
+        display: flex;
+        gap: 4px;
+        padding: 12px 16px;
+        background: #f0f2f5;
+        border-radius: 12px;
+        border-bottom-left-radius: 4px;
+    }
+    .typing-dots span {
+        width: 8px;
+        height: 8px;
+        background: #aaa;
+        border-radius: 50%;
+        animation: typingBounce 1.4s infinite ease-in-out;
+    }
+    .typing-dots span:nth-child(1) { animation-delay: 0s; }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typingBounce {
+        0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+        40% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Chat input area */
+    .chat-input-area {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 12px 24px;
+        background: #fff;
+        z-index: 50;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .chat-input-wrapper {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+    }
+
+    .chat-input-wrapper textarea {
+        flex: 1;
+        resize: none;
+        border: none;
+        border-bottom: 1px solid #eee;
+        border-radius: 0;
+        padding: 10px 16px;
+        font-size: 0.95rem;
+        max-height: 150px;
+        outline: none;
+        transition: border-color 0.2s;
+        background: transparent;
+    }
+    .chat-input-wrapper textarea:focus {
+        border-bottom-color: var(--adma-red);
+    }
+
+    .send-btn {
+        width: 44px;
+        height: 44px;
+        border: none;
+        border-radius: 50%;
+        background: var(--adma-red);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.2s;
+        flex-shrink: 0;
+    }
+    .send-btn:hover { background: var(--adma-red-dark); }
+    .send-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+    /* Welcome screen */
+    .welcome-screen {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        text-align: center;
+        color: var(--adma-dark-grey);
+    }
+    .welcome-screen i { font-size: 3rem; color: var(--adma-red); margin-bottom: 16px; }
+    .welcome-screen h3 { color: var(--adma-primary); margin-bottom: 8px; }
+    .welcome-suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        margin-top: 16px;
+        max-width: 600px;
+    }
+    .suggestion-chip {
+        padding: 8px 16px;
+        border: 1px solid #dee2e6;
+        border-radius: 20px;
+        background: #fff;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+    .suggestion-chip:hover {
+        border-color: var(--adma-red);
+        background: #fff5f5;
+    }
+
+    /* Table in assistant messages */
+    .assistant-message .message-content table {
+        border-collapse: collapse;
+        margin: 8px 0;
+        font-size: 0.85em;
+        width: 100%;
+    }
+    .assistant-message .message-content th,
+    .assistant-message .message-content td {
+        border: 1px solid #ccc;
+        padding: 4px 8px;
+        text-align: left;
+    }
+    .assistant-message .message-content th { background: #e9ecef; }
+
+    /* Session tabs */
+    .session-tabs {
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .session-tabs::-webkit-scrollbar { display: none; }
+    .session-tab {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        background: #fff;
+        cursor: pointer;
+        font-size: 0.82rem;
+        white-space: nowrap;
+        transition: all 0.15s;
+        max-width: 160px;
+    }
+    .session-tab:hover { border-color: var(--adma-red); }
+    .session-tab.active {
+        background: var(--adma-red);
+        color: #fff;
+        border-color: var(--adma-red);
+    }
+    .session-tab .tab-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .session-tab .tab-close {
+        opacity: 0.5;
+        font-size: 0.7rem;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .session-tab .tab-close:hover { opacity: 1; }
+    .session-tab.active .tab-close { color: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="agent-container">
+    <!-- Header with session tabs -->
+    <div class="agent-header">
+        <div class="d-flex align-items-center gap-2" style="flex:1; overflow-x:auto;">
+            <div class="session-tabs" id="sessionTabs">
+                <!-- Tabs populated by JS -->
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" id="newSessionBtn" title="New chat" style="flex-shrink:0;">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>
+        <div class="d-flex align-items-center gap-2 ms-3" style="flex-shrink:0;">
+            <span class="agent-status" id="agentStatus">
+                <span class="status-dot stopped" id="statusDot"></span>
+                <span id="statusText">Idle</span>
+            </span>
+            <button class="btn btn-sm btn-outline-danger" id="stopAgentBtn" title="Stop agent" style="display:none;">
+                <i class="fas fa-stop"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Chat Messages -->
+    <div class="chat-messages" id="chatMessages">
+        <div class="welcome-screen" id="welcomeScreen">
+            <i class="fas fa-robot"></i>
+            <h3>ADMA Agent</h3>
+            <p>Your AI assistant for agricultural data management.<br>Ask me to manage files, run tools, analyze data, or write code.</p>
+            <div class="welcome-suggestions">
+                <div class="suggestion-chip" onclick="sendSuggestion(this)">List my files</div>
+                <div class="suggestion-chip" onclick="sendSuggestion(this)">Show my storage stats</div>
+                <div class="suggestion-chip" onclick="sendSuggestion(this)">What tools are available?</div>
+                <div class="suggestion-chip" onclick="sendSuggestion(this)">Create a new folder</div>
+                <div class="suggestion-chip" onclick="sendSuggestion(this)">Help me analyze yield data</div>
+            </div>
+        </div>
+
+        <div class="message assistant-message typing-indicator" id="typingIndicator">
+            <div class="message-avatar"><i class="fas fa-robot"></i></div>
+            <div class="typing-dots">
+                <span></span><span></span><span></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="chat-input-area">
+        <div class="chat-input-wrapper">
+            <textarea id="chatInput" placeholder="Ask your ADMA agent anything..." rows="1"
+                      onkeydown="handleKeyDown(event)"></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const typingIndicator = document.getElementById('typingIndicator');
+    const welcomeScreen = document.getElementById('welcomeScreen');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const stopAgentBtn = document.getElementById('stopAgentBtn');
+    const sessionTabsEl = document.getElementById('sessionTabs');
+    const newSessionBtn = document.getElementById('newSessionBtn');
+
+    let isStreaming = false;
+    let currentStreamEl = null;
+    let currentStreamText = '';
+    let activeChatSessionId = null;
+    let chatSessions = [];
+    // Track which sessions are waiting for a response: { sessionId: { pollTimer, afterMsgId } }
+    let pendingSessions = {};
+
+    // Configure marked for safe rendering
+    marked.setOptions({
+        highlight: function(code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, { language: lang }).value;
+            }
+            return hljs.highlightAuto(code).value;
+        },
+        breaks: true,
+        gfm: true,
+    });
+
+    // CSRF token
+    function getCookie(name) {
+        let val = null;
+        document.cookie.split(';').forEach(c => {
+            c = c.trim();
+            if (c.startsWith(name + '=')) val = decodeURIComponent(c.substring(name.length + 1));
+        });
+        return val;
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    // ---- Session Management ----
+    async function loadSessions() {
+        try {
+            const res = await fetch('/api/agent/sessions/');
+            if (!res.ok) return;
+            const data = await res.json();
+            chatSessions = data.sessions || [];
+            renderSessionTabs();
+            // If we have an active session, just re-render tabs
+            if (activeChatSessionId) {
+                // Check if active session still exists
+                const exists = chatSessions.some(s => s.id === activeChatSessionId);
+                if (!exists && chatSessions.length > 0) {
+                    switchSession(chatSessions[0].id);
+                } else if (!exists) {
+                    activeChatSessionId = null;
+                    clearMessages();
+                }
+            } else if (chatSessions.length > 0) {
+                switchSession(chatSessions[0].id);
+            }
+        } catch (e) {
+            console.error('loadSessions error:', e);
+        }
+    }
+
+    function renderSessionTabs() {
+        sessionTabsEl.innerHTML = '';
+        chatSessions.forEach(s => {
+            const tab = document.createElement('div');
+            tab.className = 'session-tab' + (s.id === activeChatSessionId ? ' active' : '');
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'tab-name';
+            nameSpan.textContent = s.name;
+            tab.appendChild(nameSpan);
+
+            const closeBtn = document.createElement('span');
+            closeBtn.className = 'tab-close';
+            closeBtn.textContent = '\u00d7';
+            closeBtn.title = 'Delete';
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteSession(s.id);
+            });
+            tab.appendChild(closeBtn);
+
+            tab.addEventListener('click', () => switchSession(s.id));
+            tab.addEventListener('dblclick', () => renameSession(s.id, s.name));
+            sessionTabsEl.appendChild(tab);
+        });
+    }
+
+    function escapeHtml(text) {
+        const d = document.createElement('div');
+        d.textContent = text;
+        return d.innerHTML;
+    }
+
+    async function switchSession(sessionId) {
+        activeChatSessionId = sessionId;
+        renderSessionTabs();
+        await loadHistory();
+        // Show typing indicator only if this session is pending
+        if (pendingSessions[sessionId]) {
+            typingIndicator.classList.add('visible');
+        } else {
+            typingIndicator.classList.remove('visible');
+        }
+        // Update send button state
+        isStreaming = !!pendingSessions[sessionId];
+        sendBtn.disabled = isStreaming;
+    }
+
+    newSessionBtn.addEventListener('click', async () => {
+        // Create a new session immediately via a dummy API call
+        // We'll create it server-side and switch to it
+        try {
+            const res = await fetch('/api/agent/sessions/create/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                body: JSON.stringify({ name: 'New Chat' }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+                activeChatSessionId = data.id;
+                await loadSessions();
+                clearMessages();
+                welcomeScreen.style.display = 'flex';
+            }
+        } catch (e) {
+            console.error('Create session error:', e);
+        }
+    });
+
+    async function renameSession(sessionId, currentName) {
+        const newName = prompt('Rename session:', currentName);
+        if (!newName || newName === currentName) return;
+        try {
+            await fetch('/api/agent/sessions/rename/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                body: JSON.stringify({ chat_session_id: sessionId, name: newName }),
+            });
+            await loadSessions();
+        } catch (e) {}
+    }
+
+    async function deleteSession(sessionId) {
+        if (!confirm('Delete this session? This will permanently remove the conversation.')) return;
+        try {
+            await fetch('/api/agent/sessions/delete/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                body: JSON.stringify({ chat_session_id: sessionId }),
+            });
+            if (activeChatSessionId === sessionId) {
+                activeChatSessionId = null;
+                clearMessages();
+            }
+            await loadSessions();
+        } catch (e) {}
+    }
+
+    function clearMessages() {
+        const msgs = chatMessages.querySelectorAll('.message:not(.typing-indicator)');
+        msgs.forEach(m => m.remove());
+        welcomeScreen.style.display = 'flex';
+    }
+
+    async function loadHistory() {
+        clearMessages();
+        if (!activeChatSessionId) return;
+        try {
+            const res = await fetch(`/api/agent/chat/history/?chat_session_id=${activeChatSessionId}&limit=100`);
+            const data = await res.json();
+            if (data.messages && data.messages.length > 0) {
+                welcomeScreen.style.display = 'none';
+                data.messages.forEach(msg => {
+                    appendMessage(msg.role, msg.content, false);
+                });
+                scrollToBottom();
+            } else {
+                welcomeScreen.style.display = 'flex';
+            }
+        } catch (e) {}
+    }
+
+    // Check agent status
+    async function checkStatus() {
+        try {
+            const res = await fetch('/api/agent/status/');
+            const data = await res.json();
+            updateStatusUI(data.status);
+        } catch (e) {}
+    }
+
+    function updateStatusUI(status) {
+        statusDot.className = 'status-dot ' + status;
+        const labels = {
+            'running': 'Running',
+            'stopped': 'Idle',
+            'starting': 'Starting...',
+            'error': 'Error',
+        };
+        statusText.textContent = labels[status] || status;
+        stopAgentBtn.style.display = status === 'running' ? 'inline-block' : 'none';
+    }
+
+    // Auto-resize textarea
+    chatInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+    });
+
+    function handleKeyDown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    }
+
+    function sendSuggestion(el) {
+        chatInput.value = el.textContent;
+        sendMessage();
+    }
+
+    function appendMessage(role, content, animate = true) {
+        welcomeScreen.style.display = 'none';
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${role}-message`;
+
+        const avatar = document.createElement('div');
+        avatar.className = 'message-avatar';
+        avatar.innerHTML = role === 'user'
+            ? '<i class="fas fa-user"></i>'
+            : '<i class="fas fa-robot"></i>';
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+
+        if (role === 'assistant') {
+            contentDiv.innerHTML = renderAssistantContent(content);
+        } else {
+            contentDiv.textContent = content;
+        }
+
+        msgDiv.appendChild(avatar);
+        msgDiv.appendChild(contentDiv);
+
+        // Insert before typing indicator
+        chatMessages.insertBefore(msgDiv, typingIndicator);
+        addCopyButtons(contentDiv);
+        scrollToBottom();
+
+        return contentDiv;
+    }
+
+    function renderAssistantContent(text) {
+        // Process ADMA-specific markers
+        let processed = text;
+
+        // [adma-link:/path/to/resource/] -> clickable card
+        processed = processed.replace(
+            /\[adma-link:([^\]]+)\]/g,
+            (_, path) => {
+                const label = path.replace(/\/$/, '').split('/').pop() || path;
+                return `<a class="adma-resource-card" href="${path}" target="_blank"><i class="fas fa-external-link-alt"></i> ${label}</a>`;
+            }
+        );
+
+        // [adma-map:UUID] -> embedded map iframe
+        processed = processed.replace(
+            /\[adma-map:([^\]]+)\]/g,
+            (_, uuid) => `<iframe class="adma-map-embed" src="/file/${uuid}/map/" frameborder="0"></iframe>`
+        );
+
+        // [adma-redirect:URL] -> action button
+        processed = processed.replace(
+            /\[adma-redirect:([^\]]+)\]/g,
+            (_, url) => `<a class="btn btn-sm btn-outline-danger mt-1 mb-1" href="${url}" target="_blank"><i class="fas fa-external-link-alt me-1"></i>Open in ADMA</a>`
+        );
+
+        // Render markdown
+        let html = marked.parse(processed);
+
+        // Post-process: find ```html code blocks and render them as live iframes
+        // marked.js wraps them as <pre><code class="language-html">...</code></pre>
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        div.querySelectorAll('pre code.language-html').forEach(codeEl => {
+            const htmlContent = codeEl.textContent;
+            // Only render as iframe if it looks like a full HTML document or has <script>/<canvas>/<svg>
+            if (htmlContent.includes('<script') || htmlContent.includes('<canvas') ||
+                htmlContent.includes('<svg') || htmlContent.includes('<!DOCTYPE') ||
+                htmlContent.includes('Chart(') || htmlContent.includes('plotly')) {
+                const iframe = document.createElement('iframe');
+                iframe.className = 'adma-html-embed';
+                iframe.sandbox = 'allow-scripts allow-same-origin';
+                iframe.srcdoc = htmlContent;
+                // Replace the <pre> with the iframe
+                codeEl.closest('pre').replaceWith(iframe);
+            }
+        });
+        return div.innerHTML;
+    }
+
+    function addCopyButtons(container) {
+        container.querySelectorAll('pre').forEach(pre => {
+            const btn = document.createElement('button');
+            btn.className = 'code-copy-btn';
+            btn.textContent = 'Copy';
+            btn.onclick = () => {
+                const code = pre.querySelector('code');
+                navigator.clipboard.writeText(code ? code.textContent : pre.textContent);
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy', 2000);
+            };
+            pre.style.position = 'relative';
+            pre.appendChild(btn);
+        });
+    }
+
+    function scrollToBottom() {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
+
+    async function sendMessage() {
+        const message = chatInput.value.trim();
+        if (!message || isStreaming) return;
+
+        isStreaming = true;
+        sendBtn.disabled = true;
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+
+        // Append user message
+        appendMessage('user', message);
+
+        // Show typing indicator for this session
+        typingIndicator.classList.add('visible');
+        updateStatusUI('running');
+        scrollToBottom();
+
+        const sendingSessionId = activeChatSessionId;
+
+        try {
+            const response = await fetch('/api/agent/chat/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken,
+                },
+                body: JSON.stringify({
+                    message,
+                    chat_session_id: activeChatSessionId,
+                }),
+            });
+
+            const data = await response.json();
+            if (data.ok) {
+                const targetSessionId = data.chat_session_id;
+                // Update active session if new
+                if (targetSessionId && targetSessionId !== activeChatSessionId) {
+                    activeChatSessionId = targetSessionId;
+                    loadSessions();
+                }
+                startPolling(targetSessionId, data.user_message_id);
+            } else {
+                typingIndicator.classList.remove('visible');
+                appendMessage('assistant', '**Error:** ' + (data.error || 'Unknown error'));
+                isStreaming = false;
+                sendBtn.disabled = false;
+            }
+        } catch (error) {
+            typingIndicator.classList.remove('visible');
+            appendMessage('assistant', 'Sorry, I encountered a connection error. Please try again.');
+            isStreaming = false;
+            sendBtn.disabled = false;
+        }
+    }
+
+    function startPolling(sessionId, afterMsgId) {
+        // Clear any existing poll for this session
+        if (pendingSessions[sessionId]) {
+            clearInterval(pendingSessions[sessionId].pollTimer);
+        }
+
+        let streamingMsgEl = null; // DOM element for the streaming message
+        let lastContent = '';
+
+        const pollTimer = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/agent/chat/history/?after=${afterMsgId}&chat_session_id=${sessionId}`);
+                const data = await res.json();
+
+                const assistantMsgs = data.messages.filter(m => m.role === 'assistant');
+                if (assistantMsgs.length > 0) {
+                    const msg = assistantMsgs[assistantMsgs.length - 1];
+
+                    // Only update if this is the active session
+                    if (sessionId === activeChatSessionId) {
+                        typingIndicator.classList.remove('visible');
+
+                        if (msg.content && msg.content !== lastContent) {
+                            lastContent = msg.content;
+
+                            if (!streamingMsgEl) {
+                                // Create the message element on first content
+                                streamingMsgEl = appendMessage('assistant', msg.content);
+                            } else {
+                                // Update existing element with new content
+                                streamingMsgEl.innerHTML = renderAssistantContent(msg.content);
+                                addCopyButtons(streamingMsgEl);
+                            }
+                            scrollToBottom();
+                        }
+                    }
+
+                    // If streaming is done, stop polling
+                    if (!msg.is_streaming) {
+                        clearInterval(pendingSessions[sessionId]?.pollTimer);
+                        delete pendingSessions[sessionId];
+
+                        if (sessionId === activeChatSessionId) {
+                            // Final render to make sure we have the complete content
+                            if (streamingMsgEl) {
+                                streamingMsgEl.innerHTML = renderAssistantContent(msg.content);
+                                addCopyButtons(streamingMsgEl);
+                            }
+                            isStreaming = false;
+                            sendBtn.disabled = false;
+                            chatInput.focus();
+                        }
+                        checkStatus();
+                    }
+                }
+            } catch (e) {}
+        }, 1500); // Poll every 1.5s for snappier updates
+
+        pendingSessions[sessionId] = { pollTimer, afterMsgId };
+
+        // Safety timeout: 10 minutes (longer for complex tasks)
+        setTimeout(() => {
+            if (pendingSessions[sessionId]) {
+                clearInterval(pendingSessions[sessionId].pollTimer);
+                delete pendingSessions[sessionId];
+                if (sessionId === activeChatSessionId) {
+                    typingIndicator.classList.remove('visible');
+                    if (!streamingMsgEl) {
+                        appendMessage('assistant', 'The agent is taking too long. Your response may appear when you refresh.');
+                    }
+                    isStreaming = false;
+                    sendBtn.disabled = false;
+                }
+            }
+        }, 600000);
+    }
+
+    // Stop agent
+    stopAgentBtn.addEventListener('click', async () => {
+        try {
+            await fetch('/api/agent/stop/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrftoken },
+            });
+            updateStatusUI('stopped');
+        } catch (e) {}
+    });
+
+    // Initialize
+    loadSessions();
+    checkStatus();
+    setInterval(checkStatus, 30000);
+</script>
+{% endblock %}

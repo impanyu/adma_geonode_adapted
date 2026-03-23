@@ -152,6 +152,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'filemanager.tasks.sync_johndeere_task',
         'schedule': crontab(hour=3, minute=0),  # Run at 3:00 AM daily
     },
+    'cleanup-idle-agents': {
+        'task': 'filemanager.tasks.cleanup_idle_agents_task',
+        'schedule': crontab(minute='*/5'),  # Every 5 minutes
+    },
 }
 
 # Realm5 API Configuration
@@ -164,6 +168,12 @@ JD_CLIENT_ID = os.environ.get('JD_CLIENT_ID')
 JD_CLIENT_SECRET = os.environ.get('JD_CLIENT_SECRET')
 JD_REFRESH_TOKEN = os.environ.get('JD_REFRESH_TOKEN')
 JD_ORG_ID = os.environ.get('JD_ORG_ID', '4193081')  # Default organization ID
+
+# Agent Configuration
+AGENT_IMAGE = os.environ.get('AGENT_IMAGE', 'adma-openclaw-agent:latest')
+AGENT_NETWORK = os.environ.get('AGENT_NETWORK', 'adma_network')
+AGENT_WORKSPACES_DIR = os.environ.get('AGENT_WORKSPACES_DIR', '/opt/adma/agent_workspaces')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
 # File Upload Settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 500 * 1024 * 1024  # 500MB

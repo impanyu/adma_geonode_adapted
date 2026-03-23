@@ -5,7 +5,7 @@ Django REST Framework serializers for file management APIs.
 """
 
 from rest_framework import serializers
-from .models import File, Folder
+from .models import File, Folder, Map, MapLayer, Tool, AgentSession, AgentMessage
 
 
 class FileSerializer(serializers.ModelSerializer):
@@ -99,3 +99,78 @@ class TokenCreateSerializer(serializers.Serializer):
         style={'input_type': 'password'},
         help_text="Password"
     )
+
+
+class FileDetailSerializer(serializers.ModelSerializer):
+    """Extended file serializer with all metadata."""
+    owner = serializers.StringRelatedField()
+    folder_id = serializers.UUIDField(source='folder.id', allow_null=True, read_only=True)
+    folder_path = serializers.SerializerMethodField()
+
+    class Meta:
+        model = File
+        fields = [
+            'id', 'name', 'file_type', 'mime_type', 'file_size', 'is_public',
+            'is_spatial', 'gis_status', 'geoserver_layer_name', 'crs',
+            'owner', 'folder_id', 'folder_path', 'created_at', 'updated_at',
+        ]
+
+    def get_folder_path(self, obj):
+        if obj.folder:
+            return obj.folder.get_full_path()
+        return None
+
+
+class FolderDetailSerializer(serializers.ModelSerializer):
+    """Extended folder serializer."""
+    owner = serializers.StringRelatedField()
+    parent_id = serializers.UUIDField(source='parent.id', allow_null=True, read_only=True)
+    file_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Folder
+        fields = [
+            'id', 'name', 'is_public', 'owner', 'parent_id',
+            'file_count', 'created_at', 'updated_at',
+        ]
+
+
+class MapSerializer(serializers.ModelSerializer):
+    """Serializer for Map model."""
+    owner = serializers.StringRelatedField()
+    layer_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Map
+        fields = [
+            'id', 'name', 'description', 'is_public', 'owner',
+            'center_lat', 'center_lng', 'zoom_level',
+            'layer_count', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+
+class ToolSerializer(serializers.ModelSerializer):
+    """Serializer for Tool model."""
+    class Meta:
+        model = Tool
+        fields = [
+            'id', 'name', 'slug', 'short_description', 'category',
+            'icon', 'icon_color', 'status', 'version',
+            'input_config', 'output_config',
+        ]
+
+
+class AgentMessageSerializer(serializers.ModelSerializer):
+    """Serializer for agent chat messages."""
+    class Meta:
+        model = AgentMessage
+        fields = ['id', 'role', 'content', 'metadata', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class AgentStatusSerializer(serializers.ModelSerializer):
+    """Serializer for agent session status."""
+    class Meta:
+        model = AgentSession
+        fields = ['status', 'started_at', 'last_activity', 'error_message']

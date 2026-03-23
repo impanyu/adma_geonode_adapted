@@ -2086,3 +2086,185 @@ def run_yield_summary_tool_task(
     except Exception as e:
         logger.exception(f"Error in Yield Summary Tool task")
         return {"success": False, "error": str(e)}
+
+
+@shared_task
+def run_agent_message_task(user_id, session_id, message_text, chat_session_id=None):
+    """
+    Run an agent message in the background with streaming output.
+    Streams openclaw CLI stdout into an AgentMessage that gets updated incrementally,
+    so the frontend can show partial results as they arrive.
+    """
+    import json as _json
+    import time as _time
+    import docker as _docker
+    from .models import AgentSession, AgentMessage, ChatSession
+    from django.utils import timezone as _tz
+
+    try:
+        session = AgentSession.objects.get(id=session_id)
+        chat_session = None
+        if chat_session_id:
+            try:
+                chat_session = ChatSession.objects.get(id=chat_session_id)
+            except ChatSession.DoesNotExist:
+                pass
+
+        container_name = f'adma-agent-{user_id}'
+        client = _docker.from_env()
+        container = client.containers.get(container_name)
+
+        session_id_for_openclaw = chat_session_id or 'default'
+
+        # Append ADMA context
+        augmented_message = (
+            f"{message_text}\n\n"
+            f"[System context: This is from an ADMA platform user. "
+            f"Use the adma CLI or ADMA REST API. "
+            f"Your local filesystem is private — never show it. "
+            f"Always use ?include_public=true when listing files/folders. "
+            f"You can pip install any package. "
+            f"For visualizations, generate self-contained HTML with Chart.js and output in ```html block.]"
+        )
+
+        import time as _time
+
+        # Create a streaming assistant message placeholder
+        assistant_msg = AgentMessage.objects.create(
+            session=session,
+            chat_session=chat_session,
+            role='assistant',
+            content='*Agent is working...*',
+            is_streaming=True,
+        )
+
+        # Use --json for the final output, but monitor the gateway log for progress
+        cmd = [
+            'node', 'openclaw.mjs', 'agent',
+            '--session-id', session_id_for_openclaw,
+            '--message', augmented_message,
+            '--json',
+        ]
+
+        # Get the current log position before starting
+        log_path = '/tmp/openclaw/openclaw-' + _tz.now().strftime('%Y-%m-%d') + '.log'
+        try:
+            log_size_before = int(container.exec_run(
+                ['wc', '-c', log_path], workdir='/opt/openclaw'
+            ).output.split()[0])
+        except Exception:
+            log_size_before = 0
+
+        # Start exec in background (non-blocking)
+        exec_handle = container.client.api.exec_create(
+            container.id, cmd, workdir='/opt/openclaw',
+            stdout=True, stderr=True,
+        )
+        output_stream = container.client.api.exec_start(
+            exec_handle['Id'], stream=True, demux=True
+        )
+
+        # Collect output while monitoring log for tool events
+        full_stdout = []
+        full_stderr = []
+        progress_lines = []
+        last_log_check = 0
+
+        for stdout_chunk, stderr_chunk in output_stream:
+            if stdout_chunk:
+                full_stdout.append(stdout_chunk.decode('utf-8', errors='replace'))
+            if stderr_chunk:
+                full_stderr.append(stderr_chunk.decode('utf-8', errors='replace'))
+
+            # Check gateway log for tool execution events every 2 seconds
+            now = _time.time()
+            if now - last_log_check > 2.0:
+                last_log_check = now
+                try:
+                    log_tail = container.exec_run(
+                        ['tail', '-20', log_path], workdir='/opt/openclaw'
+                    ).output.decode('utf-8', errors='replace')
+                    # Extract tool call info from log
+                    new_progress = []
+                    for line in log_tail.split('\n'):
+                        if '"exec"' in line and 'command' in line.lower():
+                            try:
+                                entry = _json.loads(line)
+                                cmd_text = str(entry.get('1', entry.get('0', '')))
+                                if 'adma ' in cmd_text or 'curl ' in cmd_text or 'python' in cmd_text:
+                                    short = cmd_text[:100].strip()
+                                    if short and short not in progress_lines:
+                                        progress_lines.append(short)
+                                        new_progress.append(short)
+                            except Exception:
+                                pass
+                    if new_progress:
+                        status_text = '*Agent is working...*\n\n' + '\n'.join(
+                            f'`{p}`' for p in progress_lines[-5:]
+                        )
+                        assistant_msg.content = status_text
+                        assistant_msg.save(update_fields=['content'])
+                except Exception:
+                    pass
+
+        # Parse final JSON output
+        stdout_text = ''.join(full_stdout).strip()
+        response_text = ''
+        if stdout_text:
+            try:
+                result = _json.loads(stdout_text)
+                payloads = result.get('payloads', [])
+                if not payloads and 'result' in result:
+                    payloads = result['result'].get('payloads', [])
+                texts = [p.get('text', '') for p in payloads if p.get('text')]
+                response_text = '\n\n'.join(texts)
+            except _json.JSONDecodeError:
+                response_text = stdout_text
+
+        if not response_text and full_stderr:
+            response_text = f"Error: {''.join(full_stderr).strip()}"
+
+        if not response_text:
+            response_text = "The agent did not produce a response."
+
+        assistant_msg.content = response_text
+        assistant_msg.is_streaming = False
+        assistant_msg.save(update_fields=['content', 'is_streaming'])
+
+        session.last_activity = _tz.now()
+        session.save(update_fields=['last_activity'])
+
+        return {"success": True}
+
+    except Exception as e:
+        logger.exception(f"Agent message task failed for user {user_id}")
+        try:
+            session = AgentSession.objects.get(id=session_id)
+            chat_session = None
+            if chat_session_id:
+                try:
+                    chat_session = ChatSession.objects.get(id=chat_session_id)
+                except Exception:
+                    pass
+            AgentMessage.objects.create(
+                session=session,
+                chat_session=chat_session,
+                role='assistant',
+                content=f"Sorry, I encountered an error: {e}",
+            )
+        except Exception:
+            pass
+        return {"success": False, "error": str(e)}
+
+
+@shared_task
+def cleanup_idle_agents_task():
+    """
+    Periodic task to stop agent containers that have been idle for too long.
+    Runs every 5 minutes via Celery Beat.
+    """
+    from .agent_manager import cleanup_idle_agents
+    count = cleanup_idle_agents()
+    if count > 0:
+        logger.info(f"Cleaned up {count} idle agent container(s)")
+    return {"stopped": count}

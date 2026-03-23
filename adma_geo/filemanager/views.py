@@ -262,6 +262,12 @@ class HomeView(TemplateView):
         return context
 
 @login_required
+def agent_chat_page(request):
+    """Agent chat page - renders the chat UI."""
+    return render(request, 'filemanager/agent_chat.html')
+
+
+@login_required
 def dashboard(request):
     """Main dashboard for authenticated users"""
     user = request.user

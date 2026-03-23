@@ -5,13 +5,15 @@ Token-based API views for file management.
 These APIs use token authentication instead of session authentication.
 """
 
+import json
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 import zipfile
@@ -19,10 +21,15 @@ import io
 import os
 from django.utils.text import slugify
 
-from .models import File, Folder
+from django.db.models import Q, Count
+from django.http import StreamingHttpResponse
+
+from .models import File, Folder, Map, MapLayer, Tool, AgentSession, AgentMessage
 from .serializers import (
     FileUploadSerializer, FolderUploadSerializer, FileDownloadSerializer,
-    FolderDownloadSerializer, TokenCreateSerializer, FileSerializer, FolderSerializer
+    FolderDownloadSerializer, TokenCreateSerializer, FileSerializer, FolderSerializer,
+    FileDetailSerializer, FolderDetailSerializer, MapSerializer, ToolSerializer,
+    AgentMessageSerializer, AgentStatusSerializer,
 )
 from .views import generate_unique_name
 from .tasks import process_gis_file_task
@@ -699,3 +706,452 @@ def _format_file_size(size_bytes):
         i += 1
     
     return f"{size_bytes:.1f} {size_names[i]}"
+
+
+# ============================================================
+# Folder CRUD APIs
+# ============================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_create_folder(request):
+    """
+    Create a new folder.
+
+    POST /api/v1/folders/create/
+    {"name": "My Folder", "parent_id": "uuid-or-null", "is_public": false}
+    """
+    name = request.data.get('name')
+    if not name:
+        return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    parent_id = request.data.get('parent_id')
+    parent = None
+    if parent_id:
+        parent = get_object_or_404(Folder, id=parent_id, owner=request.user)
+
+    is_public = request.data.get('is_public', False)
+
+    if Folder.objects.filter(name=name, parent=parent, owner=request.user).exists():
+        return Response({'error': 'Folder with this name already exists'}, status=status.HTTP_409_CONFLICT)
+
+    folder = Folder.objects.create(
+        name=name, parent=parent, owner=request.user, is_public=is_public,
+    )
+    return Response(FolderDetailSerializer(folder).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def api_delete_folder(request, folder_id):
+    """Delete a folder owned by the user."""
+    folder = get_object_or_404(Folder, id=folder_id, owner=request.user)
+    folder.delete()
+    return Response({'success': True}, status=status.HTTP_200_OK)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def api_update_folder(request, folder_id):
+    """
+    Update folder name or visibility.
+
+    PATCH /api/v1/folders/<id>/
+    {"name": "New Name", "is_public": true}
+    """
+    folder = get_object_or_404(Folder, id=folder_id, owner=request.user)
+    if 'name' in request.data:
+        folder.name = request.data['name']
+    if 'is_public' in request.data:
+        folder.is_public = request.data['is_public']
+    folder.save()
+    return Response(FolderDetailSerializer(folder).data)
+
+
+# ============================================================
+# File CRUD APIs
+# ============================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_file_metadata(request, file_id):
+    """Get detailed file metadata."""
+    file_obj = get_object_or_404(File, id=file_id)
+    if file_obj.owner != request.user and not file_obj.is_public:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(FileDetailSerializer(file_obj).data)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def api_delete_file(request, file_id):
+    """Delete a file owned by the user."""
+    file_obj = get_object_or_404(File, id=file_id, owner=request.user)
+    file_obj.delete()
+    return Response({'success': True}, status=status.HTTP_200_OK)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def api_update_file(request, file_id):
+    """
+    Update file name or visibility.
+
+    PATCH /api/v1/files/<id>/
+    {"name": "new_name.txt", "is_public": true}
+    """
+    file_obj = get_object_or_404(File, id=file_id, owner=request.user)
+    if 'name' in request.data:
+        file_obj.name = request.data['name']
+    if 'is_public' in request.data:
+        file_obj.is_public = request.data['is_public']
+    file_obj.save()
+    return Response(FileDetailSerializer(file_obj).data)
+
+
+# ============================================================
+# Map APIs
+# ============================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_list_maps(request):
+    """List user's maps and optionally public maps."""
+    include_public = request.query_params.get('include_public', 'false').lower() in ('true', '1')
+    if include_public:
+        qs = Map.objects.filter(Q(owner=request.user) | Q(is_public=True))
+    else:
+        qs = Map.objects.filter(owner=request.user)
+    return Response({'maps': MapSerializer(qs, many=True).data, 'count': qs.count()})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_create_map(request):
+    """Create a new map."""
+    name = request.data.get('name')
+    if not name:
+        return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if Map.objects.filter(name=name, owner=request.user).exists():
+        return Response({'error': 'Map with this name already exists'}, status=status.HTTP_409_CONFLICT)
+    map_obj = Map.objects.create(
+        name=name,
+        description=request.data.get('description', ''),
+        owner=request.user,
+        is_public=request.data.get('is_public', False),
+    )
+    return Response(MapSerializer(map_obj).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def api_delete_map(request, map_id):
+    """Delete a map owned by the user."""
+    map_obj = get_object_or_404(Map, id=map_id, owner=request.user)
+    map_obj.delete()
+    return Response({'success': True})
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def api_update_map(request, map_id):
+    """Update map name, description, or visibility."""
+    map_obj = get_object_or_404(Map, id=map_id, owner=request.user)
+    for field in ('name', 'description', 'is_public'):
+        if field in request.data:
+            setattr(map_obj, field, request.data[field])
+    map_obj.save()
+    return Response(MapSerializer(map_obj).data)
+
+
+# ============================================================
+# Tool APIs
+# ============================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_list_tools(request):
+    """List available tools for the current user."""
+    tools = Tool.get_available_tools_for_user(request.user)
+    return Response({'tools': ToolSerializer(tools, many=True).data, 'count': tools.count()})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_run_tool(request, tool_slug):
+    """
+    Run a tool by slug.
+
+    POST /api/v1/tools/<slug>/run/
+    Body varies by tool - typically includes file_id, output_folder_id, etc.
+    """
+    tool = get_object_or_404(Tool, slug=tool_slug, is_active=True)
+
+    # Map slugs to their Celery tasks
+    from celery import current_app
+    task_name = tool.celery_task_name
+    if not task_name:
+        return Response({'error': 'Tool has no execution task configured'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        task = current_app.send_task(task_name, kwargs=request.data)
+        tool.increment_usage()
+        return Response({'success': True, 'task_id': task.id})
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_tool_status(request, tool_slug, task_id):
+    """Check status of a tool execution task."""
+    from celery.result import AsyncResult
+    result = AsyncResult(task_id)
+    response = {'status': result.status}
+    if result.status == 'SUCCESS':
+        response['result'] = result.result
+    elif result.status == 'FAILURE':
+        response['error'] = str(result.result)
+    return Response(response)
+
+
+# ============================================================
+# User Info APIs
+# ============================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_user_profile(request):
+    """Get current user profile."""
+    user = request.user
+    return Response({
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'date_joined': user.date_joined,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_user_stats(request):
+    """Get user statistics."""
+    user = request.user
+    files = File.objects.filter(owner=user)
+    folders = Folder.objects.filter(owner=user)
+    maps = Map.objects.filter(owner=user)
+
+    total_size = sum(f.file_size for f in files)
+    return Response({
+        'file_count': files.count(),
+        'folder_count': folders.count(),
+        'map_count': maps.count(),
+        'total_storage_bytes': total_size,
+        'total_storage_display': _format_file_size(total_size),
+        'public_files': files.filter(is_public=True).count(),
+        'spatial_files': files.filter(is_spatial=True).count(),
+    })
+
+
+# ============================================================
+# Search API (enhanced for token auth)
+# ============================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_search(request):
+    """
+    Search files, folders, and maps.
+
+    GET /api/v1/search/?q=keyword&type=file|folder|map
+    """
+    query = request.query_params.get('q', '').strip()
+    search_type = request.query_params.get('type', 'all')
+
+    if not query:
+        return Response({'error': 'q parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    results = {}
+
+    if search_type in ('all', 'file'):
+        files = File.objects.filter(
+            Q(owner=request.user) | Q(is_public=True),
+            name__icontains=query,
+        )[:20]
+        results['files'] = FileDetailSerializer(files, many=True).data
+
+    if search_type in ('all', 'folder'):
+        folders = Folder.objects.filter(
+            Q(owner=request.user) | Q(is_public=True),
+            name__icontains=query,
+        )[:20]
+        results['folders'] = FolderDetailSerializer(folders, many=True).data
+
+    if search_type in ('all', 'map'):
+        maps = Map.objects.filter(
+            Q(owner=request.user) | Q(is_public=True),
+            Q(name__icontains=query) | Q(description__icontains=query),
+        )[:20]
+        results['maps'] = MapSerializer(maps, many=True).data
+
+    return Response(results)
+
+
+# ============================================================
+# Agent Chat APIs (session-auth, called from browser)
+# ============================================================
+
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.csrf import csrf_protect
+
+
+@login_required
+@require_POST
+def api_agent_chat(request):
+    """
+    Send a message to the user's AI agent asynchronously.
+    Returns immediately with the user message ID and chat session ID.
+    """
+    body = json.loads(request.body)
+    message = body.get('message', '').strip()
+    chat_session_id = body.get('chat_session_id')
+    if not message:
+        return JsonResponse({'error': 'message is required'}, status=400)
+
+    from .agent_manager import AgentContainerManager
+    manager = AgentContainerManager()
+
+    try:
+        user_msg_id, cs_id = manager.send_message_async(
+            request.user, message, chat_session_id=chat_session_id
+        )
+        return JsonResponse({'ok': True, 'user_message_id': user_msg_id, 'chat_session_id': cs_id})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_GET
+def api_agent_history(request):
+    """
+    Get agent chat history for a specific chat session.
+    Supports ?chat_session_id=<id>&after=<message_id>
+    """
+    from .agent_manager import AgentContainerManager
+    manager = AgentContainerManager()
+
+    limit = int(request.GET.get('limit', 50))
+    after_id = request.GET.get('after')
+    chat_session_id = request.GET.get('chat_session_id')
+
+    messages = manager.get_chat_history(
+        request.user, chat_session_id=chat_session_id, limit=limit
+    )
+
+    if after_id:
+        from .models import AgentMessage as AM
+        try:
+            after_msg = AM.objects.get(id=after_id)
+            messages = [m for m in messages if m.created_at > after_msg.created_at]
+        except AM.DoesNotExist:
+            pass
+
+    data = [
+        {
+            'id': str(m.id),
+            'role': m.role,
+            'content': m.content,
+            'is_streaming': m.is_streaming,
+            'metadata': m.metadata,
+            'created_at': m.created_at.isoformat(),
+        }
+        for m in messages
+    ]
+    return JsonResponse({'messages': data, 'count': len(data)})
+
+
+@login_required
+@require_GET
+def api_agent_sessions(request):
+    """List all chat sessions for the user."""
+    from .agent_manager import AgentContainerManager
+    manager = AgentContainerManager()
+    sessions = manager.get_chat_sessions(request.user)
+    data = [
+        {
+            'id': str(s.id),
+            'name': s.name,
+            'created_at': s.created_at.isoformat(),
+            'updated_at': s.updated_at.isoformat(),
+        }
+        for s in sessions
+    ]
+    return JsonResponse({'sessions': data})
+
+
+@login_required
+@require_POST
+def api_agent_session_create(request):
+    """Create a new chat session."""
+    body = json.loads(request.body)
+    name = body.get('name', 'New Chat').strip() or 'New Chat'
+    from .models import ChatSession
+    cs = ChatSession.objects.create(user=request.user, name=name)
+    return JsonResponse({'ok': True, 'id': str(cs.id), 'name': cs.name})
+
+
+@login_required
+@require_POST
+def api_agent_session_rename(request):
+    """Rename a chat session."""
+    body = json.loads(request.body)
+    cs_id = body.get('chat_session_id')
+    name = body.get('name', '').strip()
+    if not cs_id or not name:
+        return JsonResponse({'error': 'chat_session_id and name required'}, status=400)
+    from .agent_manager import AgentContainerManager
+    manager = AgentContainerManager()
+    try:
+        cs = manager.rename_chat_session(request.user, cs_id, name)
+        return JsonResponse({'ok': True, 'id': str(cs.id), 'name': cs.name})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def api_agent_session_delete(request):
+    """Permanently delete a chat session and its data."""
+    body = json.loads(request.body)
+    cs_id = body.get('chat_session_id')
+    if not cs_id:
+        return JsonResponse({'error': 'chat_session_id required'}, status=400)
+    from .agent_manager import AgentContainerManager
+    manager = AgentContainerManager()
+    try:
+        manager.delete_chat_session(request.user, cs_id)
+        return JsonResponse({'ok': True})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+@require_GET
+def api_agent_status(request):
+    """Get agent container status."""
+    from .agent_manager import AgentContainerManager
+    manager = AgentContainerManager()
+    return JsonResponse(manager.get_status(request.user))
+
+
+@login_required
+@require_POST
+def api_agent_stop(request):
+    """Stop the user's agent container."""
+    from .agent_manager import AgentContainerManager
+    manager = AgentContainerManager()
+    manager.stop_agent(request.user)
+    return JsonResponse({'success': True, 'status': 'stopped'})

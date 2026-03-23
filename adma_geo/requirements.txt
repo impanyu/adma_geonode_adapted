@@ -27,6 +27,10 @@ numpy>=1.24.0
 openpyxl>=3.1.0
 xlrd>=2.0.1
 
+# Agent container management
+docker>=7.0.0
+websockets>=12.0
+
 # NOTE: Vector database and embedding dependencies removed
 # Search now uses PostgreSQL text matching instead of semantic embeddings
 

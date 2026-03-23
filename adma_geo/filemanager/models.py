@@ -1009,3 +1009,86 @@ class Tool(models.Model):
             created_tools.append((tool, created))
         
         return created_tools
+
+
+class AgentSession(models.Model):
+    """
+    Tracks per-user OpenClaw agent containers.
+    Each user gets one active session at a time.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='agent_session')
+    container_id = models.CharField(max_length=255, blank=True, default='')
+    container_port = models.IntegerField(null=True, blank=True)
+    gateway_token = models.CharField(max_length=255, blank=True, default='')
+
+    STATUS_CHOICES = [
+        ('stopped', 'Stopped'),
+        ('starting', 'Starting'),
+        ('running', 'Running'),
+        ('error', 'Error'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='stopped')
+    error_message = models.TextField(blank=True, default='')
+
+    started_at = models.DateTimeField(null=True, blank=True)
+    last_activity = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Agent Session'
+        verbose_name_plural = 'Agent Sessions'
+
+    def __str__(self):
+        return f"Agent for {self.user.username} ({self.status})"
+
+
+class ChatSession(models.Model):
+    """
+    A named chat session for a user. Each user can have multiple chat sessions.
+    Maps to an OpenClaw session-id for conversation isolation.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='chat_sessions')
+    name = models.CharField(max_length=255, default='New Chat')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        verbose_name = 'Chat Session'
+        verbose_name_plural = 'Chat Sessions'
+
+    def __str__(self):
+        return f"{self.name} ({self.user.username})"
+
+
+class AgentMessage(models.Model):
+    """
+    Stores chat messages between a user and their OpenClaw agent.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(AgentSession, on_delete=models.CASCADE, related_name='messages')
+    chat_session = models.ForeignKey(
+        ChatSession, on_delete=models.CASCADE, related_name='messages',
+        null=True, blank=True,
+    )
+    ROLE_CHOICES = [
+        ('user', 'User'),
+        ('assistant', 'Assistant'),
+    ]
+    role = models.CharField(max_length=16, choices=ROLE_CHOICES)
+    content = models.TextField()
+    is_streaming = models.BooleanField(default=False, help_text="True while the agent is still generating this message")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = 'Agent Message'
+        verbose_name_plural = 'Agent Messages'
+
+    def __str__(self):
+        return f"{self.role}: {self.content[:50]}..."

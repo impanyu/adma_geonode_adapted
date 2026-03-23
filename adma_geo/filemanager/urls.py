@@ -2,6 +2,7 @@ from django.urls import path
 from django.views.generic import RedirectView
 from . import views
 from . import map_views
+from . import api_views
 
 app_name = 'filemanager'
 
@@ -15,6 +16,9 @@ urlpatterns = [
     path('public/file/<uuid:file_id>/', views.public_file_detail, name='public_file_detail'),
     path('public/file/<uuid:file_id>/download/', views.download_file, name='public_file_download'),
     
+    # Agent chat page
+    path('agent/', views.agent_chat_page, name='agent_chat'),
+
     # Authenticated URLs
     path('dashboard/', views.dashboard, name='dashboard'),
     path('tools/', views.ToolsListView.as_view(), name='tools_list'),
@@ -76,4 +80,14 @@ urlpatterns = [
     path('api/maps/<uuid:map_id>/update-order/', map_views.update_layer_order, name='update_layer_order'),
     path('api/maps/<uuid:map_id>/toggle-visibility/', map_views.toggle_map_visibility, name='toggle_map_visibility'),
     path('api/maps/<uuid:map_id>/delete/', map_views.delete_map, name='delete_map'),
+
+    # Agent API endpoints (session-auth, browser-facing)
+    path('api/agent/chat/', api_views.api_agent_chat, name='agent_chat_api'),
+    path('api/agent/chat/history/', api_views.api_agent_history, name='agent_history'),
+    path('api/agent/status/', api_views.api_agent_status, name='agent_status'),
+    path('api/agent/stop/', api_views.api_agent_stop, name='agent_stop'),
+    path('api/agent/sessions/', api_views.api_agent_sessions, name='agent_sessions'),
+    path('api/agent/sessions/create/', api_views.api_agent_session_create, name='agent_session_create'),
+    path('api/agent/sessions/rename/', api_views.api_agent_session_rename, name='agent_session_rename'),
+    path('api/agent/sessions/delete/', api_views.api_agent_session_delete, name='agent_session_delete'),
 ]

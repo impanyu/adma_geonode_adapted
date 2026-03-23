@@ -34,7 +34,8 @@ services:
       dockerfile: Dockerfile
     container_name: adma_geo_django
     command: >
-      sh -c "python manage.py migrate &&
+      sh -c "pip install docker websockets &&
+             python manage.py migrate &&
              python manage.py create_system_tools &&
              python manage.py collectstatic --noinput &&
              python manage.py runserver 0.0.0.0:8000"
@@ -42,6 +43,8 @@ services:
       - .:/app
       - adma_geo_media:/app/media
       - adma_geo_static:/app/staticfiles
+      - adma_agent_workspaces:/opt/adma/agent_workspaces
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8001:8000"
     environment:
@@ -59,6 +62,15 @@ services:
       GEOSERVER_URL: http://geoserver:8080/geoserver
       GEOSERVER_ADMIN_USER: admin
       GEOSERVER_ADMIN_PASSWORD: geoserver123
+      # Agent configuration
+      RUNNING_IN_DOCKER: "true"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AGENT_IMAGE: adma-openclaw-agent:latest
+      AGENT_NETWORK: adma_geo_default
+      AGENT_WORKSPACES_DIR: /opt/adma/agent_workspaces
+      ADMA_INTERNAL_URL: http://django:8000
+      ADMA_PUBLIC_URL: http://localhost:8001
+      AGENT_WORKSPACES_VOLUME: adma_geo_adma_agent_workspaces
       # Realm5 API (loaded from .env file)
       REALM5_API_KEY: ${REALM5_API_KEY}
       # John Deere API (loaded from .env file)
@@ -78,10 +90,14 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: adma_geo_celery
-    command: celery -A adma_geo worker -l info
+    command: >
+      sh -c "pip install docker websockets &&
+             celery -A adma_geo worker -l info"
     volumes:
       - .:/app
       - adma_geo_media:/app/media
+      - adma_agent_workspaces:/opt/adma/agent_workspaces
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       DEBUG: "True"
       SECRET_KEY: "django-secret-key-for-development"
@@ -97,6 +113,15 @@ services:
       GEOSERVER_URL: http://geoserver:8080/geoserver
       GEOSERVER_ADMIN_USER: admin
       GEOSERVER_ADMIN_PASSWORD: geoserver123
+      # Agent configuration
+      RUNNING_IN_DOCKER: "true"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AGENT_IMAGE: adma-openclaw-agent:latest
+      AGENT_NETWORK: adma_geo_default
+      AGENT_WORKSPACES_DIR: /opt/adma/agent_workspaces
+      ADMA_INTERNAL_URL: http://django:8000
+      ADMA_PUBLIC_URL: http://localhost:8001
+      AGENT_WORKSPACES_VOLUME: adma_geo_adma_agent_workspaces
       # Realm5 API (loaded from .env file)
       REALM5_API_KEY: ${REALM5_API_KEY}
       # John Deere API (loaded from .env file)
@@ -188,6 +213,10 @@ services:
       timeout: 10s
       retries: 5
 
+networks:
+  default:
+    name: adma_geo_default
+
 volumes:
   adma_geo_db:
     driver: local
@@ -198,4 +227,6 @@ volumes:
   adma_geo_static:
     driver: local
   adma_geo_geoserver_data:
+    driver: local
+  adma_agent_workspaces:
     driver: local

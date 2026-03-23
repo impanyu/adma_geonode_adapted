@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Folder, File, Map, MapLayer, Tool
+from .models import Folder, File, Map, MapLayer, Tool, AgentSession, AgentMessage, ChatSession
 
 
 @admin.register(Folder)
@@ -64,3 +64,30 @@ class ToolAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+
+@admin.register(ChatSession)
+class ChatSessionAdmin(admin.ModelAdmin):
+    list_display = ['name', 'user', 'is_active', 'created_at', 'updated_at']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['name', 'user__username']
+
+
+@admin.register(AgentSession)
+class AgentSessionAdmin(admin.ModelAdmin):
+    list_display = ['user', 'status', 'container_port', 'started_at', 'last_activity']
+    list_filter = ['status']
+    search_fields = ['user__username']
+    readonly_fields = ['id', 'container_id', 'gateway_token', 'created_at', 'updated_at']
+
+
+@admin.register(AgentMessage)
+class AgentMessageAdmin(admin.ModelAdmin):
+    list_display = ['session', 'role', 'short_content', 'created_at']
+    list_filter = ['role', 'created_at']
+    search_fields = ['content']
+    readonly_fields = ['id', 'created_at']
+
+    def short_content(self, obj):
+        return obj.content[:80] + '...' if len(obj.content) > 80 else obj.content
+    short_content.short_description = 'Content'

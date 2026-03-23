@@ -14,6 +14,8 @@ x-common-django:
     - backup-restore:/backup_restore
     - data:/data
     - tmp:/tmp
+    - agent-workspaces:/opt/adma/agent_workspaces
+    - /var/run/docker.sock:/var/run/docker.sock
   depends_on:
     db:
       condition: service_healthy
@@ -35,6 +37,13 @@ services:
       retries: 2
     environment:
       - IS_CELERY=False
+      - RUNNING_IN_DOCKER=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AGENT_IMAGE=${AGENT_IMAGE:-adma-openclaw-agent:latest}
+      - AGENT_NETWORK=${COMPOSE_PROJECT_NAME}_default
+      - AGENT_WORKSPACES_DIR=/opt/adma/agent_workspaces
+      - ADMA_INTERNAL_URL=http://django:8000
+      - ADMA_PUBLIC_URL=${SITEURL:-https://adma.unl.edu}
     entrypoint: ["/usr/src/adma_geonode_project/entrypoint.sh"]
     command: "uwsgi --ini /usr/src/adma_geonode_project/uwsgi.ini"
 
@@ -47,6 +56,13 @@ services:
         condition: service_healthy
     environment:
       - IS_CELERY=True
+      - RUNNING_IN_DOCKER=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AGENT_IMAGE=${AGENT_IMAGE:-adma-openclaw-agent:latest}
+      - AGENT_NETWORK=${COMPOSE_PROJECT_NAME}_default
+      - AGENT_WORKSPACES_DIR=/opt/adma/agent_workspaces
+      - ADMA_INTERNAL_URL=http://django:8000
+      - ADMA_PUBLIC_URL=${SITEURL:-https://adma.unl.edu}
     entrypoint: ["/usr/src/adma_geonode_project/entrypoint.sh"]
     command: "celery-cmd"
 
@@ -177,6 +193,17 @@ services:
       - rabbitmq:/var/lib/rabbitmq
     restart: unless-stopped
 
+  # OpenClaw agent image builder (not a running service - used to build the agent image)
+  openclaw-agent-build:
+    build:
+      context: ../
+      dockerfile: adma_geonode_project/docker/openclaw/Dockerfile
+    image: adma-openclaw-agent:latest
+    container_name: openclaw-build4${COMPOSE_PROJECT_NAME}
+    entrypoint: ["echo", "Agent image built successfully"]
+    profiles:
+      - build
+
 volumes:
   statics:
     name: ${COMPOSE_PROJECT_NAME}-statics
@@ -198,3 +225,5 @@ volumes:
     name: ${COMPOSE_PROJECT_NAME}-tmp
   rabbitmq:
     name: ${COMPOSE_PROJECT_NAME}-rabbitmq
+  agent-workspaces:
+    name: ${COMPOSE_PROJECT_NAME}-agent-workspaces
