@@ -2320,13 +2320,15 @@ class SIToolView(LoginRequiredMixin, TemplateView):
         user = self.request.user
         
         # Build hierarchical tree data structure for the file browsers
-        # We need separate trees for shapefiles and CSV files
+        # We need separate trees for shapefiles, CSV files, and TIF files
         shp_tree_data = self._build_tree_data(user, file_extensions=['.shp'])
         csv_tree_data = self._build_tree_data(user, file_extensions=['.csv'])
+        tif_tree_data = self._build_tree_data(user, file_extensions=['.tif', '.tiff'])
         folder_tree_data = self._build_folder_tree(user)
-        
+
         context['shp_tree_data'] = json.dumps(shp_tree_data)
         context['csv_tree_data'] = json.dumps(csv_tree_data)
+        context['tif_tree_data'] = json.dumps(tif_tree_data)
         context['folder_tree_data'] = json.dumps(folder_tree_data)
         context['page_title'] = 'SI Tool'
         
@@ -2845,130 +2847,137 @@ def check_shape_to_json_status(request, task_id):
 @login_required
 def run_si_tool(request):
     """
-    API endpoint to trigger the SI (Stress Index) Tool.
-    
+    API endpoint to trigger the SI (Sufficiency Index) Tool v2.
+
     POST request with JSON body:
     {
-        "treatment": "STANDARD" or "SBF",
-        "imagery": "UAV" or "SATELLITE",
-        "si_column_name": "SI_08_01",
-        "field_column": "Plot_Numbe",
-        "buffer_sectors_file_id": "uuid-of-file",
-        "ndre_file_id": "uuid-of-file" (optional, required for UAV),
-        "csv_file_id": "uuid-of-file",
-        "indicator_block_file_id": "uuid-of-file" (optional, required for SBF),
-        "output_folder_id": "uuid-of-folder" (optional)
-    }
-    
-    Returns:
-    {
-        "success": true/false,
-        "message": "...",
-        "task_id": "celery-task-id" (if async)
+        "workflow": "standard_uav" | "standard_satellite" | "sbf_uav" | "sbf_satellite",
+        "buffer_shp_id": "uuid",
+        "csv_file_id": "uuid",
+        "ndre_shp_id": "uuid" (UAV workflows),
+        "nir_tif_id": "uuid" (SATELLITE workflows),
+        "rededge_tif_id": "uuid" (SATELLITE workflows),
+        "indicator_shp_id": "uuid" (SBF workflows),
+        "field_column": "Plot_Numbe" (STANDARD workflows),
+        "si_column_name": "SI" (optional, default "SI"),
+        "output_folder_id": "uuid" (optional)
     }
     """
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
-    
+
     try:
         data = json.loads(request.body)
-        
-        # Required fields
-        treatment = data.get('treatment', '').upper()
-        imagery = data.get('imagery', '').upper()
-        si_column_name = data.get('si_column_name', '').strip()
-        field_column = data.get('field_column', '').strip()
-        buffer_sectors_file_id = data.get('buffer_sectors_file_id')
-        
-        # Optional fields
-        ndre_file_id = data.get('ndre_file_id')
+
+        workflow = data.get('workflow', '').strip()
+        buffer_shp_id = data.get('buffer_shp_id')
         csv_file_id = data.get('csv_file_id')
-        indicator_block_file_id = data.get('indicator_block_file_id')
+        ndre_shp_id = data.get('ndre_shp_id')
+        nir_tif_id = data.get('nir_tif_id')
+        rededge_tif_id = data.get('rededge_tif_id')
+        indicator_shp_id = data.get('indicator_shp_id')
+        field_column = data.get('field_column', '').strip()
+        si_column_name = data.get('si_column_name', 'SI').strip()
         output_folder_id = data.get('output_folder_id')
-        
-        # Validate required fields
-        if treatment not in ['STANDARD', 'SBF']:
-            return JsonResponse({'success': False, 'error': 'Treatment must be STANDARD or SBF'}, status=400)
-        
-        if imagery not in ['UAV', 'SATELLITE']:
-            return JsonResponse({'success': False, 'error': 'Imagery must be UAV or SATELLITE'}, status=400)
-        
+
+        valid_workflows = ['standard_uav', 'standard_satellite', 'sbf_uav', 'sbf_satellite']
+        if workflow not in valid_workflows:
+            return JsonResponse({'success': False, 'error': f'Workflow must be one of: {valid_workflows}'}, status=400)
+
+        if not buffer_shp_id:
+            return JsonResponse({'success': False, 'error': 'Buffer sectors shapefile is required'}, status=400)
+        if not csv_file_id:
+            return JsonResponse({'success': False, 'error': 'CSV file is required'}, status=400)
         if not si_column_name:
             return JsonResponse({'success': False, 'error': 'SI column name is required'}, status=400)
-        
-        if not field_column:
-            return JsonResponse({'success': False, 'error': 'Field column name is required'}, status=400)
-        
-        if not buffer_sectors_file_id:
-            return JsonResponse({'success': False, 'error': 'Buffer sectors file is required'}, status=400)
-        
-        # Validate buffer sectors file
+
+        # Validate buffer shapefile
         try:
-            buffer_file = File.objects.get(id=buffer_sectors_file_id)
+            buffer_file = File.objects.get(id=buffer_shp_id)
             if buffer_file.owner != request.user and not buffer_file.is_public:
                 return JsonResponse({'success': False, 'error': 'Permission denied for buffer sectors file'}, status=403)
         except File.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Buffer sectors file not found'}, status=404)
-        
-        # Validate NDRE file for UAV
-        if imagery == 'UAV':
-            if not ndre_file_id:
-                return JsonResponse({'success': False, 'error': 'NDRE file is required for UAV imagery'}, status=400)
-            try:
-                ndre_file = File.objects.get(id=ndre_file_id)
-                if ndre_file.owner != request.user and not ndre_file.is_public:
-                    return JsonResponse({'success': False, 'error': 'Permission denied for NDRE file'}, status=403)
-            except File.DoesNotExist:
-                return JsonResponse({'success': False, 'error': 'NDRE file not found'}, status=404)
-        
+
         # Validate CSV file
-        if not csv_file_id:
-            return JsonResponse({'success': False, 'error': 'CSV file is required'}, status=400)
         try:
             csv_file = File.objects.get(id=csv_file_id)
             if csv_file.owner != request.user and not csv_file.is_public:
                 return JsonResponse({'success': False, 'error': 'Permission denied for CSV file'}, status=403)
         except File.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'CSV file not found'}, status=404)
-        
-        # Validate indicator block file for SBF
-        if treatment == 'SBF':
-            if not indicator_block_file_id:
-                return JsonResponse({'success': False, 'error': 'Indicator block file is required for SBF treatment'}, status=400)
+
+        # Workflow-specific validation
+        if workflow in ('standard_uav', 'standard_satellite'):
+            if not field_column:
+                return JsonResponse({'success': False, 'error': 'Field column is required for STANDARD workflows'}, status=400)
+
+        if workflow in ('standard_uav', 'sbf_uav'):
+            if not ndre_shp_id:
+                return JsonResponse({'success': False, 'error': 'NDRE shapefile is required for UAV workflows'}, status=400)
             try:
-                indicator_file = File.objects.get(id=indicator_block_file_id)
-                if indicator_file.owner != request.user and not indicator_file.is_public:
-                    return JsonResponse({'success': False, 'error': 'Permission denied for indicator block file'}, status=403)
+                ndre_file = File.objects.get(id=ndre_shp_id)
+                if ndre_file.owner != request.user and not ndre_file.is_public:
+                    return JsonResponse({'success': False, 'error': 'Permission denied for NDRE file'}, status=403)
             except File.DoesNotExist:
-                return JsonResponse({'success': False, 'error': 'Indicator block file not found'}, status=404)
-        
+                return JsonResponse({'success': False, 'error': 'NDRE file not found'}, status=404)
+
+        if workflow in ('standard_satellite', 'sbf_satellite'):
+            if not nir_tif_id:
+                return JsonResponse({'success': False, 'error': 'NIR GeoTIFF is required for Satellite workflows'}, status=400)
+            if not rededge_tif_id:
+                return JsonResponse({'success': False, 'error': 'RedEdge GeoTIFF is required for Satellite workflows'}, status=400)
+            try:
+                nir_file = File.objects.get(id=nir_tif_id)
+                if nir_file.owner != request.user and not nir_file.is_public:
+                    return JsonResponse({'success': False, 'error': 'Permission denied for NIR file'}, status=403)
+            except File.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'NIR GeoTIFF file not found'}, status=404)
+            try:
+                rededge_file = File.objects.get(id=rededge_tif_id)
+                if rededge_file.owner != request.user and not rededge_file.is_public:
+                    return JsonResponse({'success': False, 'error': 'Permission denied for RedEdge file'}, status=403)
+            except File.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'RedEdge GeoTIFF file not found'}, status=404)
+
+        if workflow in ('sbf_uav', 'sbf_satellite'):
+            if not indicator_shp_id:
+                return JsonResponse({'success': False, 'error': 'Indicator Block shapefile is required for SBF workflows'}, status=400)
+            try:
+                indicator_file = File.objects.get(id=indicator_shp_id)
+                if indicator_file.owner != request.user and not indicator_file.is_public:
+                    return JsonResponse({'success': False, 'error': 'Permission denied for Indicator Block file'}, status=403)
+            except File.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Indicator Block file not found'}, status=404)
+
         # Validate output folder if provided
         if output_folder_id:
             try:
                 output_folder = Folder.objects.get(id=output_folder_id, owner=request.user)
             except Folder.DoesNotExist:
                 return JsonResponse({'success': False, 'error': 'Output folder not found'}, status=404)
-        
+
         # Trigger the Celery task
         from .tasks import run_si_tool_task
         task = run_si_tool_task.delay(
-            treatment=treatment,
-            imagery=imagery,
+            workflow=workflow,
+            buffer_shp_id=str(buffer_shp_id),
+            csv_file_id=str(csv_file_id),
+            ndre_shp_id=str(ndre_shp_id) if ndre_shp_id else None,
+            nir_tif_id=str(nir_tif_id) if nir_tif_id else None,
+            rededge_tif_id=str(rededge_tif_id) if rededge_tif_id else None,
+            indicator_shp_id=str(indicator_shp_id) if indicator_shp_id else None,
+            field_column=field_column if field_column else None,
             si_column_name=si_column_name,
-            field_column=field_column,
-            buffer_sectors_file_id=str(buffer_sectors_file_id),
-            ndre_file_id=str(ndre_file_id) if ndre_file_id else None,
-            csv_file_id=str(csv_file_id) if csv_file_id else None,
-            indicator_block_file_id=str(indicator_block_file_id) if indicator_block_file_id else None,
-            output_dir_id=output_folder_id
+            output_folder_id=str(output_folder_id) if output_folder_id else None,
         )
-        
+
         return JsonResponse({
             'success': True,
-            'message': f'SI Tool ({treatment} + {imagery}) started',
+            'message': f'SI Tool ({workflow}) started',
             'task_id': task.id
         })
-        
+
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
     except Exception as e:
@@ -3163,6 +3172,276 @@ def check_yield_summary_tool_status(request, task_id):
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error checking Yield Summary Tool status: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+class ValidYieldExtractorToolView(LoginRequiredMixin, TemplateView):
+    """Valid Yield Extractor Tool page - allows users to select plots, as-applied, and harvest files"""
+    template_name = 'filemanager/valid_yield_extractor_tool.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+
+        # Build hierarchical tree data structure for the file browser
+        tree_data = self._build_tree_data(user)
+
+        context['tree_data'] = json.dumps(tree_data)
+        context['page_title'] = 'Valid Yield Extractor'
+
+        # Default parameter values
+        context['default_crs'] = 'EPSG:26914'
+        context['default_rate_tolerance'] = 0.10
+
+        return context
+
+    def _build_tree_data(self, user):
+        """Build hierarchical folder/file tree for the browser UI"""
+
+        def folder_to_dict(folder, include_files=True):
+            """Convert a folder to a dictionary with its contents"""
+            data = {
+                'id': str(folder.id),
+                'name': folder.name,
+                'file_count': folder.files.filter(deletion_in_progress=False).count(),
+                'subfolders': [],
+                'files': []
+            }
+
+            # Get subfolders
+            subfolders = Folder.objects.filter(
+                parent=folder,
+                deletion_in_progress=False
+            ).order_by('name')
+
+            for subfolder in subfolders:
+                data['subfolders'].append(folder_to_dict(subfolder, include_files))
+
+            # Get files (only shapefiles for input selection)
+            if include_files:
+                files = File.objects.filter(
+                    folder=folder,
+                    deletion_in_progress=False,
+                    name__iendswith='.shp'
+                ).order_by('name')
+
+                for file in files:
+                    data['files'].append({
+                        'id': str(file.id),
+                        'name': file.name,
+                        'size_display': file.get_size_display()
+                    })
+
+            return data
+
+        # Get user's root-level folders (no parent)
+        my_root_folders = Folder.objects.filter(
+            owner=user,
+            parent__isnull=True,
+            deletion_in_progress=False
+        ).order_by('name')
+
+        # Get user's root-level files (no folder)
+        my_root_files = File.objects.filter(
+            owner=user,
+            folder__isnull=True,
+            deletion_in_progress=False,
+            name__iendswith='.shp'
+        ).order_by('name')
+
+        # Get public root-level folders (from other users)
+        public_root_folders = Folder.objects.filter(
+            is_public=True,
+            parent__isnull=True,
+            deletion_in_progress=False
+        ).exclude(owner=user).order_by('name')
+
+        # Get public root-level files (from other users)
+        public_root_files = File.objects.filter(
+            is_public=True,
+            folder__isnull=True,
+            deletion_in_progress=False,
+            name__iendswith='.shp'
+        ).exclude(owner=user).order_by('name')
+
+        # Build tree structure
+        tree_data = {
+            'my_folders': [folder_to_dict(f) for f in my_root_folders],
+            'my_root_files': [{
+                'id': str(f.id),
+                'name': f.name,
+                'size_display': f.get_size_display()
+            } for f in my_root_files],
+            'public_folders': [folder_to_dict(f) for f in public_root_folders],
+            'public_root_files': [{
+                'id': str(f.id),
+                'name': f.name,
+                'size_display': f.get_size_display()
+            } for f in public_root_files]
+        }
+
+        return tree_data
+
+
+@login_required
+def run_valid_yield_extractor(request):
+    """
+    API endpoint to trigger the Valid Yield Extractor Tool on plots, as-applied, and harvest shapefiles.
+
+    POST request with JSON body:
+    {
+        "plots_file_id": "uuid-of-plots-file",
+        "app_file_id": "uuid-of-app-file",
+        "harv_file_id": "uuid-of-harv-file",
+        "output_folder_id": "uuid-of-folder" (optional),
+        "crs": "EPSG:26914" (optional),
+        "rate_tolerance": 0.10 (optional)
+    }
+
+    Returns:
+    {
+        "success": true/false,
+        "message": "...",
+        "task_id": "celery-task-id" (if async)
+    }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        plots_file_id = data.get('plots_file_id')
+        app_file_id = data.get('app_file_id')
+        harv_file_id = data.get('harv_file_id')
+        output_folder_id = data.get('output_folder_id')
+        crs = data.get('crs', 'EPSG:26914')
+        rate_tolerance = data.get('rate_tolerance', 0.10)
+
+        if not plots_file_id:
+            return JsonResponse({'success': False, 'error': 'plots_file_id is required'}, status=400)
+
+        if not app_file_id:
+            return JsonResponse({'success': False, 'error': 'app_file_id is required'}, status=400)
+
+        if not harv_file_id:
+            return JsonResponse({'success': False, 'error': 'harv_file_id is required'}, status=400)
+
+        # Get file objects
+        try:
+            plots_file = File.objects.get(id=plots_file_id)
+        except File.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Plots file not found'}, status=404)
+
+        try:
+            app_file = File.objects.get(id=app_file_id)
+        except File.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'As-applied file not found'}, status=404)
+
+        try:
+            harv_file = File.objects.get(id=harv_file_id)
+        except File.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Harvest file not found'}, status=404)
+
+        # Check permissions
+        if plots_file.owner != request.user and not plots_file.is_public:
+            return JsonResponse({'success': False, 'error': 'Permission denied for plots file'}, status=403)
+
+        if app_file.owner != request.user and not app_file.is_public:
+            return JsonResponse({'success': False, 'error': 'Permission denied for as-applied file'}, status=403)
+
+        if harv_file.owner != request.user and not harv_file.is_public:
+            return JsonResponse({'success': False, 'error': 'Permission denied for harvest file'}, status=403)
+
+        # Validate output folder if provided
+        if output_folder_id:
+            try:
+                output_folder = Folder.objects.get(id=output_folder_id, owner=request.user)
+            except Folder.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Output folder not found'}, status=404)
+
+        # Validate file types
+        plots_ext = os.path.splitext(plots_file.name)[1].lower()
+        app_ext = os.path.splitext(app_file.name)[1].lower()
+        harv_ext = os.path.splitext(harv_file.name)[1].lower()
+
+        if plots_ext != '.shp':
+            return JsonResponse({
+                'success': False,
+                'error': f'Plots file must be a .shp file. Got: {plots_ext}'
+            }, status=400)
+
+        if app_ext != '.shp':
+            return JsonResponse({
+                'success': False,
+                'error': f'As-applied file must be a .shp file. Got: {app_ext}'
+            }, status=400)
+
+        if harv_ext != '.shp':
+            return JsonResponse({
+                'success': False,
+                'error': f'Harvest file must be a .shp file. Got: {harv_ext}'
+            }, status=400)
+
+        # Trigger the Celery task
+        from .tasks import run_valid_yield_extractor_task
+        task = run_valid_yield_extractor_task.delay(
+            str(plots_file_id),
+            str(app_file_id),
+            str(harv_file_id),
+            output_folder_id,
+            crs,
+            rate_tolerance
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Valid Yield Extractor started for {plots_file.name}, {app_file.name}, and {harv_file.name}',
+            'task_id': task.id
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error running Valid Yield Extractor: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def check_valid_yield_extractor_status(request, task_id):
+    """
+    Check the status of a Valid Yield Extractor task.
+
+    GET request returns:
+    {
+        "success": true,
+        "status": "PENDING" | "STARTED" | "SUCCESS" | "FAILURE",
+        "result": {...} (if completed)
+    }
+    """
+    try:
+        from celery.result import AsyncResult
+
+        result = AsyncResult(task_id)
+
+        response = {
+            'success': True,
+            'status': result.status,
+        }
+
+        if result.ready():
+            if result.successful():
+                response['result'] = result.result
+            else:
+                response['error'] = str(result.result)
+
+        return JsonResponse(response)
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error checking Valid Yield Extractor status: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 

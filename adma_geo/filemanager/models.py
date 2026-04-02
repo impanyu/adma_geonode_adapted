@@ -953,10 +953,10 @@ class Tool(models.Model):
             {
                 'slug': 'si-tool',
                 'name': 'SI Tool',
-                'short_description': 'Calculate Stress Index values from NDRE and buffer sector data.',
-                'description': 'The SI (Stress Index) Tool calculates stress index values by combining '
-                              'NDRE (Normalized Difference Red Edge) imagery data with buffer sector shapefiles. '
-                              'Useful for agricultural analysis and crop health monitoring.',
+                'short_description': 'Calculate Sufficiency Index (SI) from buffer sectors and NDRE data. Supports STANDARD/SBF workflows with UAV/Satellite imagery.',
+                'description': 'The SI (Sufficiency Index) Tool evaluates crop nitrogen sufficiency by comparing NDRE values '
+                              'against reference values. Supports four workflow modes: STANDARD+UAV, STANDARD+Satellite, '
+                              'SBF+UAV, and SBF+Satellite. Computes SI = avg_ndre / reference_ndre and writes results to CSV.',
                 'category': 'analysis',
                 'icon': 'fa-chart-line',
                 'icon_color': 'success',
@@ -964,11 +964,13 @@ class Tool(models.Model):
                 'celery_task_name': 'filemanager.tasks.run_si_tool_task',
                 'status': 'available',
                 'input_config': {
-                    'accepted_extensions': ['.shp', '.csv'],
-                    'required_inputs': ['buffer_sectors_shp', 'ndre_csv'],
+                    'accepted_extensions': ['.shp', '.csv', '.tif', '.tiff'],
+                    'required_inputs': ['buffer_sectors_shp', 'csv_file'],
+                    'optional_inputs': ['ndre_shp', 'nir_tif', 'rededge_tif', 'indicator_block_shp'],
+                    'workflows': ['standard_uav', 'standard_satellite', 'sbf_uav', 'sbf_satellite'],
                 },
                 'output_config': {
-                    'generates': ['shapefile_with_si'],
+                    'generates': ['updated_csv_with_si'],
                 },
             },
             {
@@ -991,6 +993,27 @@ class Tool(models.Model):
                 },
                 'output_config': {
                     'generates': ['buffer_shp', 'summary_shp', 'summary_xlsx', 'statistics_xlsx'],
+                },
+            },
+            {
+                'slug': 'valid-yield-extractor',
+                'name': 'Valid Yield Extractor',
+                'short_description': 'Clean yield data by filtering harvest points to valid application areas.',
+                'description': 'The Valid Yield Extractor processes treatment plots, as-applied data, and harvest data '
+                              'to build Valid Application Areas (VAA), filter harvest to Valid Harvest Areas (VHA), '
+                              'create harvest strips, and output cleaned yield points.',
+                'category': 'analysis',
+                'icon': 'fa-filter',
+                'icon_color': 'warning',
+                'url_name': 'filemanager:valid_yield_extractor_tool',
+                'celery_task_name': 'filemanager.tasks.run_valid_yield_extractor_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.shp'],
+                    'required_inputs': ['plots_shp', 'application_shp', 'harvest_shp'],
+                },
+                'output_config': {
+                    'generates': ['valid_application_area_shp', 'valid_harvest_area_shp', 'harvest_strips_shp', 'clean_yield_points_shp', 'summary_csv', 'visualizations_png'],
                 },
             },
         ]

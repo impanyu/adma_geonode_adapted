@@ -757,96 +757,128 @@ def run_shape_to_json_task(self, file_id, output_dir_id=None):
 @shared_task(bind=True)
 def run_si_tool_task(
     self,
-    treatment,
-    imagery,
-    si_column_name,
-    field_column,
-    buffer_sectors_file_id,
+    workflow,
+    buffer_shp_id,
+    csv_file_id,
+    ndre_shp_id=None,
+    nir_tif_id=None,
+    rededge_tif_id=None,
+    indicator_shp_id=None,
+    field_column=None,
+    si_column_name="SI",
+    output_folder_id=None,
+    # Legacy parameters kept for backward compatibility
+    treatment=None,
+    imagery=None,
+    buffer_sectors_file_id=None,
     ndre_file_id=None,
-    csv_file_id=None,
     indicator_block_file_id=None,
-    output_dir_id=None
+    output_dir_id=None,
 ):
     """
-    Run the SI (Stress Index) Tool.
-    
-    This task:
-    1. Validates inputs based on treatment/imagery combination
-    2. Runs the appropriate SI calculation workflow
-    3. Updates the CSV with SI values
-    4. Creates File records for output files
-    
-    Args:
-        treatment: 'STANDARD' or 'SBF'
-        imagery: 'UAV' or 'SATELLITE'
-        si_column_name: Column name for SI values (e.g., 'SI_08_01')
-        field_column: Field column for grouping (e.g., 'Plot_Numbe')
-        buffer_sectors_file_id: ID of the buffer sectors shapefile
-        ndre_file_id: ID of the NDRE shapefile (for UAV)
-        csv_file_id: ID of the CSV file to update
-        indicator_block_file_id: ID of indicator block shapefile (for SBF)
-        output_dir_id: Optional ID of output folder
+    Run the SI (Sufficiency Index) Tool with support for 4 workflow modes:
+    - standard_uav: buffer_shp, ndre_shp, csv, field_column
+    - standard_satellite: buffer_shp, nir_tif, rededge_tif, csv, field_column
+    - sbf_uav: buffer_shp, indicator_shp, ndre_shp, csv
+    - sbf_satellite: buffer_shp, indicator_shp, nir_tif, rededge_tif, csv
     """
     from django.conf import settings
     import os
-    
+    import shutil
+
+    from .ADMA_SI_Tool_v2 import (
+        calculate_si_standard_uav_and_update_csv,
+        calculate_si_standard_satellite_and_update_csv,
+        calculate_si_sbf_uav_and_update_csv,
+        calculate_si_sbf_satellite_and_update_csv,
+    )
+
     try:
-        logger.info(f"Starting SI Tool task: {treatment} + {imagery}")
-        
-        # Get buffer sectors file (required for all workflows)
+        valid_workflows = ['standard_uav', 'standard_satellite', 'sbf_uav', 'sbf_satellite']
+        if workflow not in valid_workflows:
+            return {"success": False, "error": f"Invalid workflow '{workflow}'. Must be one of: {valid_workflows}"}
+
+        logger.info(f"Starting SI Tool task: workflow={workflow}")
+
+        # --- Retrieve required files ---
+
+        # Buffer shapefile (always required)
         try:
-            buffer_file = File.objects.get(id=buffer_sectors_file_id)
-            buffer_sectors_path = buffer_file.file.path
+            buffer_file = File.objects.get(id=buffer_shp_id)
+            buffer_shp_path = buffer_file.file.path
         except File.DoesNotExist:
-            return {"success": False, "error": "Buffer sectors file not found"}
-        
-        # Get NDRE file (required for UAV)
-        ndre_path = None
-        if ndre_file_id:
+            return {"success": False, "error": "Buffer sectors shapefile not found"}
+
+        # CSV file (always required)
+        try:
+            csv_file = File.objects.get(id=csv_file_id)
+            csv_path = csv_file.file.path
+        except File.DoesNotExist:
+            return {"success": False, "error": "CSV file not found"}
+
+        # NDRE shapefile (required for UAV workflows)
+        ndre_shp_path = None
+        if workflow in ('standard_uav', 'sbf_uav'):
+            if not ndre_shp_id:
+                return {"success": False, "error": "NDRE shapefile is required for UAV workflows"}
             try:
-                ndre_file = File.objects.get(id=ndre_file_id)
-                ndre_path = ndre_file.file.path
+                ndre_file = File.objects.get(id=ndre_shp_id)
+                ndre_shp_path = ndre_file.file.path
             except File.DoesNotExist:
-                return {"success": False, "error": "NDRE file not found"}
-        
-        # Get CSV file (required for all workflows)
-        csv_path = None
-        csv_file = None
-        if csv_file_id:
+                return {"success": False, "error": "NDRE shapefile not found"}
+
+        # NIR and RedEdge TIFFs (required for SATELLITE workflows)
+        nir_tif_path = None
+        rededge_tif_path = None
+        if workflow in ('standard_satellite', 'sbf_satellite'):
+            if not nir_tif_id:
+                return {"success": False, "error": "NIR GeoTIFF is required for Satellite workflows"}
+            if not rededge_tif_id:
+                return {"success": False, "error": "RedEdge GeoTIFF is required for Satellite workflows"}
             try:
-                csv_file = File.objects.get(id=csv_file_id)
-                csv_path = csv_file.file.path
+                nir_file = File.objects.get(id=nir_tif_id)
+                nir_tif_path = nir_file.file.path
             except File.DoesNotExist:
-                return {"success": False, "error": "CSV file not found"}
-        
-        # Get indicator block file (required for SBF)
-        indicator_block_path = None
-        if indicator_block_file_id:
+                return {"success": False, "error": "NIR GeoTIFF file not found"}
             try:
-                indicator_file = File.objects.get(id=indicator_block_file_id)
-                indicator_block_path = indicator_file.file.path
+                rededge_file = File.objects.get(id=rededge_tif_id)
+                rededge_tif_path = rededge_file.file.path
             except File.DoesNotExist:
-                return {"success": False, "error": "Indicator block file not found"}
-        
-        # Determine output directory
+                return {"success": False, "error": "RedEdge GeoTIFF file not found"}
+
+        # Indicator block shapefile (required for SBF workflows)
+        indicator_shp_path = None
+        if workflow in ('sbf_uav', 'sbf_satellite'):
+            if not indicator_shp_id:
+                return {"success": False, "error": "Indicator Block shapefile is required for SBF workflows"}
+            try:
+                indicator_file = File.objects.get(id=indicator_shp_id)
+                indicator_shp_path = indicator_file.file.path
+            except File.DoesNotExist:
+                return {"success": False, "error": "Indicator Block shapefile not found"}
+
+        # Field column (required for STANDARD workflows)
+        if workflow in ('standard_uav', 'standard_satellite'):
+            if not field_column:
+                return {"success": False, "error": "Field column is required for STANDARD workflows"}
+
+        # --- Determine output directory ---
         from .models import Folder
         output_folder_obj = None
-        
-        if output_dir_id:
+
+        if output_folder_id:
             try:
-                output_folder_obj = Folder.objects.get(id=output_dir_id)
+                output_folder_obj = Folder.objects.get(id=output_folder_id)
             except Folder.DoesNotExist:
                 return {"success": False, "error": "Output folder not found"}
         else:
-            # Auto-create 'si_tool_output' folder under the buffer file's parent folder
             parent_folder = buffer_file.folder
-            
             existing_folder = Folder.objects.filter(
                 name="si_tool_output",
                 parent=parent_folder,
                 owner=buffer_file.owner
             ).first()
-            
+
             if existing_folder:
                 output_folder_obj = existing_folder
             else:
@@ -856,104 +888,118 @@ def run_si_tool_task(
                     owner=buffer_file.owner,
                     is_public=buffer_file.is_public
                 )
-        
-        # Build the full output directory path under MEDIA_ROOT/uploads
+
         relative_output_dir = output_folder_obj.get_full_path()
         output_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', relative_output_dir)
-        
         os.makedirs(output_dir, exist_ok=True)
-        
-        logger.info(f"Processing SI Tool: treatment={treatment}, imagery={imagery}")
-        logger.info(f"Output directory: {output_dir}")
-        
-        # Import and run the SI tool
-        from .ADMA_SI_Tool import process_si_tool
-        
-        success, message, output_files = process_si_tool(
-            treatment=treatment,
-            imagery=imagery,
-            si_column_name=si_column_name,
-            field_column=field_column,
-            buffer_sectors_path=buffer_sectors_path,
-            ndre_path=ndre_path,
-            csv_path=csv_path,
-            indicator_block_path=indicator_block_path,
-            output_dir=output_dir
-        )
-        
-        if not success:
-            logger.error(f"SI Tool failed: {message}")
-            buffer_file.processing_log = (buffer_file.processing_log or "") + f"\n✗ SI Tool failed: {message}"
-            buffer_file.save(update_fields=['processing_log'])
-            return {"success": False, "error": message}
-        
-        logger.info(f"SI Tool completed: {message}")
-        
-        # Create File records for output files
+
+        logger.info(f"Processing SI Tool: workflow={workflow}, output_dir={output_dir}")
+
+        # --- Copy CSV to output directory (tool overwrites in-place) ---
+        csv_basename = os.path.basename(csv_path)
+        output_csv_path = os.path.join(output_dir, csv_basename)
+        shutil.copy2(csv_path, output_csv_path)
+        logger.info(f"Copied CSV to output: {output_csv_path}")
+
+        # --- Call the appropriate SI Tool v2 function ---
+        if workflow == 'standard_uav':
+            calculate_si_standard_uav_and_update_csv(
+                buffer_shp_path=buffer_shp_path,
+                ndre_shp_path=ndre_shp_path,
+                csv_path=output_csv_path,
+                field_column=field_column,
+                si_column_name=si_column_name,
+            )
+        elif workflow == 'standard_satellite':
+            calculate_si_standard_satellite_and_update_csv(
+                buffer_shp_path=buffer_shp_path,
+                nir_tif_path=nir_tif_path,
+                rededge_tif_path=rededge_tif_path,
+                csv_path=output_csv_path,
+                field_column=field_column,
+                si_column_name=si_column_name,
+            )
+        elif workflow == 'sbf_uav':
+            calculate_si_sbf_uav_and_update_csv(
+                buffer_shp_path=buffer_shp_path,
+                indicator_shp_path=indicator_shp_path,
+                ndre_shp_path=ndre_shp_path,
+                csv_path=output_csv_path,
+                si_column_name=si_column_name,
+            )
+        elif workflow == 'sbf_satellite':
+            calculate_si_sbf_satellite_and_update_csv(
+                buffer_shp_path=buffer_shp_path,
+                indicator_shp_path=indicator_shp_path,
+                nir_tif_path=nir_tif_path,
+                rededge_tif_path=rededge_tif_path,
+                csv_path=output_csv_path,
+                si_column_name=si_column_name,
+            )
+
+        logger.info(f"SI Tool v2 calculation completed for workflow={workflow}")
+
+        # --- Create File record for the updated CSV ---
         created_files = []
-        
-        for file_type, file_path in output_files.items():
-            if os.path.exists(file_path):
-                try:
-                    media_root = settings.MEDIA_ROOT
-                    if file_path.startswith(str(media_root)):
-                        relative_path = os.path.relpath(file_path, media_root)
-                    else:
-                        relative_path = file_path
-                    
-                    file_name = os.path.basename(file_path)
-                    file_size = os.path.getsize(file_path)
-                    
-                    existing_file = File.objects.filter(
+        if os.path.exists(output_csv_path):
+            try:
+                media_root = settings.MEDIA_ROOT
+                if output_csv_path.startswith(str(media_root)):
+                    relative_path = os.path.relpath(output_csv_path, media_root)
+                else:
+                    relative_path = output_csv_path
+
+                file_name = os.path.basename(output_csv_path)
+                file_size = os.path.getsize(output_csv_path)
+
+                existing_file = File.objects.filter(
+                    name=file_name,
+                    folder=output_folder_obj,
+                    owner=buffer_file.owner
+                ).first()
+
+                if existing_file:
+                    existing_file.file_size = file_size
+                    existing_file.save(update_fields=['file_size', 'updated_at'])
+                    created_files.append({
+                        'name': file_name,
+                        'id': str(existing_file.id),
+                        'updated': True
+                    })
+                else:
+                    new_file = File(
                         name=file_name,
                         folder=output_folder_obj,
-                        owner=buffer_file.owner
-                    ).first()
-                    
-                    if existing_file:
-                        existing_file.file_size = file_size
-                        existing_file.save(update_fields=['file_size', 'updated_at'])
-                        created_files.append({
-                            'name': file_name,
-                            'id': str(existing_file.id),
-                            'updated': True
-                        })
-                    else:
-                        new_file = File(
-                            name=file_name,
-                            folder=output_folder_obj,
-                            owner=buffer_file.owner,
-                            file_size=file_size,
-                            is_public=buffer_file.is_public,
-                        )
-                        new_file.file.name = relative_path
-                        new_file.save()
-                        
-                        created_files.append({
-                            'name': file_name,
-                            'id': str(new_file.id),
-                            'updated': False
-                        })
-                        
-                except Exception as e:
-                    logger.error(f"Error creating file record for {file_path}: {e}")
-        
+                        owner=buffer_file.owner,
+                        file_size=file_size,
+                        is_public=buffer_file.is_public,
+                    )
+                    new_file.file.name = relative_path
+                    new_file.save()
+                    created_files.append({
+                        'name': file_name,
+                        'id': str(new_file.id),
+                        'updated': False
+                    })
+            except Exception as e:
+                logger.error(f"Error creating file record for {output_csv_path}: {e}")
+
         # Update source file processing log
-        buffer_file.processing_log = (buffer_file.processing_log or "") + f"\n✓ SI Tool completed: {message}"
+        buffer_file.processing_log = (buffer_file.processing_log or "") + f"\n✓ SI Tool ({workflow}) completed"
         buffer_file.save(update_fields=['processing_log'])
-        
+
         result = {
             "success": True,
-            "message": message,
+            "message": f"SI Tool ({workflow}) completed successfully. SI column '{si_column_name}' added to CSV.",
             "created_files": created_files,
-            "output_files": {k: os.path.basename(v) for k, v in output_files.items()}
+            "output_files": {"updated_csv": os.path.basename(output_csv_path)}
         }
-        
+
         logger.info(f"SI Tool task completed successfully: {result}")
         return result
-        
+
     except Exception as e:
-        logger.exception(f"Error in SI Tool task")
+        logger.exception("Error in SI Tool task")
         return {"success": False, "error": str(e)}
 
 
@@ -2254,6 +2300,228 @@ def run_agent_message_task(user_id, session_id, message_text, chat_session_id=No
             )
         except Exception:
             pass
+        return {"success": False, "error": str(e)}
+
+
+@shared_task(bind=True)
+def run_valid_yield_extractor_task(
+    self,
+    plots_file_id,
+    app_file_id,
+    harv_file_id,
+    output_folder_id=None,
+    crs="EPSG:26914",
+    rate_tolerance=0.10
+):
+    """
+    Run the Valid Yield Extractor Tool on treatment plots, as-applied, and harvest shapefiles.
+
+    This task:
+    1. Reads treatment plots, as-applied data, and harvest data shapefiles
+    2. Builds Valid Application Areas (VAA)
+    3. Filters harvest to Valid Harvest Areas (VHA)
+    4. Creates harvest strips and outputs cleaned yield points
+    5. Creates File records for the output files in Django
+
+    Args:
+        plots_file_id: ID of the treatment plots shapefile File object
+        app_file_id: ID of the as-applied data shapefile File object
+        harv_file_id: ID of the harvest data shapefile File object
+        output_folder_id: Optional ID of the Folder object for output
+        crs: Coordinate reference system (default "EPSG:26914")
+        rate_tolerance: Rate tolerance for filtering (default 0.10)
+    """
+    from django.conf import settings
+    import os
+    import argparse
+
+    try:
+        logger.info(f"Starting Valid Yield Extractor task for plots file ID: {plots_file_id}, app file ID: {app_file_id}, harv file ID: {harv_file_id}")
+
+        # Get the plots file object
+        try:
+            plots_file = File.objects.get(id=plots_file_id)
+        except File.DoesNotExist:
+            logger.error(f"Plots file with ID {plots_file_id} not found")
+            return {"success": False, "error": f"Plots file with ID {plots_file_id} not found"}
+
+        # Get the app file object
+        try:
+            app_file = File.objects.get(id=app_file_id)
+        except File.DoesNotExist:
+            logger.error(f"As-applied file with ID {app_file_id} not found")
+            return {"success": False, "error": f"As-applied file with ID {app_file_id} not found"}
+
+        # Get the harv file object
+        try:
+            harv_file = File.objects.get(id=harv_file_id)
+        except File.DoesNotExist:
+            logger.error(f"Harvest file with ID {harv_file_id} not found")
+            return {"success": False, "error": f"Harvest file with ID {harv_file_id} not found"}
+
+        # Validate file types
+        plots_ext = os.path.splitext(plots_file.name)[1].lower()
+        app_ext = os.path.splitext(app_file.name)[1].lower()
+        harv_ext = os.path.splitext(harv_file.name)[1].lower()
+
+        if plots_ext != '.shp':
+            error_msg = f"Plots file must be a .shp file, got: {plots_ext}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+
+        if app_ext != '.shp':
+            error_msg = f"As-applied file must be a .shp file, got: {app_ext}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+
+        if harv_ext != '.shp':
+            error_msg = f"Harvest file must be a .shp file, got: {harv_ext}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+
+        # Get the input file paths
+        plots_path = plots_file.file.path
+        app_path = app_file.file.path
+        harv_path = harv_file.file.path
+
+        # Determine output directory and folder
+        from .models import Folder
+        output_folder_obj = None
+
+        if output_folder_id:
+            try:
+                output_folder_obj = Folder.objects.get(id=output_folder_id)
+            except Folder.DoesNotExist:
+                logger.error(f"Output folder with ID {output_folder_id} not found")
+                return {"success": False, "error": f"Output folder with ID {output_folder_id} not found"}
+        else:
+            # Auto-create 'yield_cleaning_output' folder under the plots file's parent folder
+            parent_folder = plots_file.folder
+
+            existing_folder = Folder.objects.filter(
+                name="yield_cleaning_output",
+                parent=parent_folder,
+                owner=plots_file.owner
+            ).first()
+
+            if existing_folder:
+                output_folder_obj = existing_folder
+                logger.info(f"Using existing 'yield_cleaning_output' folder: {output_folder_obj.id}")
+            else:
+                output_folder_obj = Folder.objects.create(
+                    name="yield_cleaning_output",
+                    parent=parent_folder,
+                    owner=plots_file.owner,
+                    is_public=plots_file.is_public
+                )
+                logger.info(f"Created new 'yield_cleaning_output' folder: {output_folder_obj.id}")
+
+        # Build the full output directory path under MEDIA_ROOT/uploads
+        relative_output_dir = output_folder_obj.get_full_path()
+        output_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', relative_output_dir)
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        logger.info(f"Processing plots file: {plots_path}")
+        logger.info(f"Processing app file: {app_path}")
+        logger.info(f"Processing harv file: {harv_path}")
+        logger.info(f"Output directory: {output_dir}")
+
+        # Import and run the Valid Yield Extractor Tool
+        from .ValidYieldExtractorTool import run
+
+        args = argparse.Namespace(
+            plots=plots_path, app=app_path, harv=harv_path,
+            crs=crs, out=output_dir,
+            plots_wkt=None, plots_easting=None, plots_northing=None,
+            plots_lat=None, plots_lon=None, plots_crs_in='EPSG:4326',
+            app_wkt=None, app_easting=None, app_northing=None,
+            app_lat=None, app_lon=None, app_crs_in='EPSG:4326',
+            harv_wkt=None, harv_easting=None, harv_northing=None,
+            harv_lat=None, harv_lon=None, harv_crs_in='EPSG:4326',
+        )
+        run(args)
+
+        logger.info(f"Valid Yield Extractor Tool completed for output directory: {output_dir}")
+
+        # Scan the output directory for all generated files and create File records
+        created_files = []
+
+        def create_file_record(file_path):
+            if not os.path.exists(file_path):
+                return None
+            try:
+                media_root = settings.MEDIA_ROOT
+                if file_path.startswith(str(media_root)):
+                    relative_path = os.path.relpath(file_path, media_root)
+                else:
+                    relative_path = file_path
+
+                file_name = os.path.basename(file_path)
+                file_size = os.path.getsize(file_path)
+
+                existing_file = File.objects.filter(
+                    name=file_name,
+                    folder=output_folder_obj,
+                    owner=plots_file.owner
+                ).first()
+
+                if existing_file:
+                    existing_file.file_size = file_size
+                    existing_file.save(update_fields=['file_size', 'updated_at'])
+                    logger.info(f"Updated existing file: {file_name}")
+                    return {
+                        'name': file_name,
+                        'id': str(existing_file.id),
+                        'updated': True
+                    }
+                else:
+                    new_file = File(
+                        name=file_name,
+                        folder=output_folder_obj,
+                        owner=plots_file.owner,
+                        file_size=file_size,
+                        is_public=plots_file.is_public,
+                    )
+                    new_file.file.name = relative_path
+                    new_file.save()
+
+                    logger.info(f"Created new file record: {file_name}")
+                    return {
+                        'name': file_name,
+                        'id': str(new_file.id),
+                        'updated': False
+                    }
+
+            except Exception as e:
+                logger.error(f"Error creating file record for {file_path}: {e}")
+                return None
+
+        # Scan output directory for all generated files
+        output_extensions = {'.shp', '.shx', '.dbf', '.prj', '.cpg', '.csv', '.png'}
+        for filename in os.listdir(output_dir):
+            file_ext = os.path.splitext(filename)[1].lower()
+            if file_ext in output_extensions:
+                file_path = os.path.join(output_dir, filename)
+                result = create_file_record(file_path)
+                if result:
+                    created_files.append(result)
+
+        # Update source file processing log
+        plots_file.processing_log = (plots_file.processing_log or "") + f"\n✓ Valid Yield Extractor completed. {len(created_files)} output files created."
+        plots_file.save(update_fields=['processing_log'])
+
+        result = {
+            "success": True,
+            "message": f"Valid Yield Extractor completed. {len(created_files)} output files created.",
+            "created_files": created_files,
+        }
+
+        logger.info(f"Valid Yield Extractor task completed successfully: {result}")
+        return result
+
+    except Exception as e:
+        logger.exception(f"Error in Valid Yield Extractor task")
         return {"success": False, "error": str(e)}
 
 

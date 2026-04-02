@@ -1,0 +1,1251 @@
+{% extends 'base.html' %}
+
+{% block title %}Valid Yield Extractor - ADMA{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Tree View Styles */
+.file-tree {
+    max-height: 350px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 10px;
+    background: #fafafa;
+}
+
+.tree-node {
+    user-select: none;
+}
+
+.tree-node-content {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin: 2px 0;
+}
+
+.tree-node-content:hover {
+    background-color: #e9ecef;
+}
+
+.tree-node-content.selected {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+}
+
+.tree-node-content.selected-plots {
+    background-color: #cfe2ff;
+    border: 1px solid #0d6efd;
+}
+
+.tree-node-content.selected-app {
+    background-color: #d1e7dd;
+    border: 1px solid #198754;
+}
+
+.tree-node-content.selected-harv {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+}
+
+.tree-node-content.selected-output {
+    background-color: #e2e3e5;
+    border: 1px solid #6c757d;
+}
+
+.tree-toggle {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #6c757d;
+    flex-shrink: 0;
+}
+
+.tree-toggle:hover {
+    color: #212529;
+}
+
+.tree-toggle.expanded i {
+    transform: rotate(90deg);
+}
+
+.tree-toggle i {
+    transition: transform 0.15s ease;
+    font-size: 12px;
+}
+
+.tree-icon {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 6px;
+    flex-shrink: 0;
+    font-size: 14px;
+}
+
+.tree-icon.folder-icon {
+    color: #ffc107;
+}
+
+.tree-icon.file-icon {
+    color: #28a745;
+}
+
+.tree-icon.public-icon {
+    color: #17a2b8;
+}
+
+.tree-label {
+    flex-grow: 1;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tree-badge {
+    font-size: 10px;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+.tree-children {
+    margin-left: 20px;
+    display: none;
+}
+
+.tree-children.expanded {
+    display: block;
+}
+
+.tree-root-section {
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed #dee2e6;
+}
+
+.tree-root-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.tree-section-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 5px 10px;
+    margin-bottom: 5px;
+}
+
+.empty-folder {
+    padding: 8px 10px 8px 52px;
+    color: #adb5bd;
+    font-size: 13px;
+    font-style: italic;
+}
+
+/* Selection info */
+.selection-info {
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: 8px;
+    display: none;
+}
+
+.selection-info.show {
+    display: block;
+}
+
+.selection-info.file-selected {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+}
+
+.selection-info.plots-selected {
+    background-color: #cfe2ff;
+    border: 1px solid #0d6efd;
+}
+
+.selection-info.app-selected {
+    background-color: #d1e7dd;
+    border: 1px solid #198754;
+}
+
+.selection-info.harv-selected {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+}
+
+.selection-info.folder-selected {
+    background-color: #e2e3e5;
+    border: 1px solid #6c757d;
+}
+
+/* Tool description */
+.tool-description {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffc107 100%);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+/* Parameter section */
+.parameter-section {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+/* Loading spinner for tree */
+.tree-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: #6c757d;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            <a href="{% url 'filemanager:dashboard' %}">
+                <i class="fas fa-home me-1"></i>Dashboard
+            </a>
+        </li>
+        <li class="breadcrumb-item">
+            <a href="{% url 'filemanager:tools_list' %}">
+                <i class="fas fa-tools me-1"></i>Tools
+            </a>
+        </li>
+        <li class="breadcrumb-item active">
+            <i class="fas fa-filter me-1"></i>Valid Yield Extractor
+        </li>
+    </ol>
+</nav>
+
+<!-- Tool Header -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="tool-description">
+            <div class="d-flex align-items-center mb-3">
+                <i class="fas fa-filter fa-2x text-warning me-3"></i>
+                <div>
+                    <h2 class="mb-0">Valid Yield Extractor</h2>
+                    <p class="text-muted mb-0">Clean yield data by filtering harvest points to valid application areas</p>
+                </div>
+            </div>
+            <p class="mb-0">
+                This tool processes treatment plots, as-applied data, and harvest data to generate:
+            </p>
+            <ul class="mb-0 mt-2">
+                <li><strong>Valid Application Area (VAA)</strong> - Areas where application rates match target rates</li>
+                <li><strong>Valid Harvest Area (VHA)</strong> - Harvest points within valid application areas</li>
+                <li><strong>Harvest Strips</strong> - Strip-level analysis of harvest data</li>
+                <li><strong>Clean Yield Points</strong> - Filtered yield points for downstream analysis</li>
+                <li><strong>Summary CSV</strong> - Tabular summary of results</li>
+                <li><strong>Visualizations</strong> - PNG plots of the analysis</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Main Form -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Tool Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form id="validYieldExtractorForm">
+                    <div class="row">
+                        <!-- Plots File Selection -->
+                        <div class="col-md-4 mb-4">
+                            <h6 class="fw-bold mb-3">
+                                <i class="fas fa-file-import me-2 text-primary"></i>
+                                Step 1: Select Treatment Plots Shapefile
+                            </h6>
+                            <p class="text-muted small mb-3">
+                                Browse and select the treatment plots shapefile (.shp).
+                            </p>
+
+                            <div class="file-tree" id="plotsFileTree">
+                                <div class="tree-loading">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>Loading files...
+                                </div>
+                            </div>
+
+                            <input type="hidden" id="selectedPlotsFileId" name="plots_file_id" required>
+                            <div id="selectedPlotsDisplay" class="selection-info plots-selected">
+                                <i class="fas fa-check-circle me-2 text-primary"></i>
+                                <strong>Plots File:</strong> <span id="selectedPlotsFileName"></span>
+                            </div>
+                        </div>
+
+                        <!-- App File Selection -->
+                        <div class="col-md-4 mb-4">
+                            <h6 class="fw-bold mb-3">
+                                <i class="fas fa-file-import me-2 text-success"></i>
+                                Step 2: Select As-Applied Data Shapefile
+                            </h6>
+                            <p class="text-muted small mb-3">
+                                Browse and select the as-applied data shapefile (.shp).
+                            </p>
+
+                            <div class="file-tree" id="appFileTree">
+                                <div class="tree-loading">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>Loading files...
+                                </div>
+                            </div>
+
+                            <input type="hidden" id="selectedAppFileId" name="app_file_id" required>
+                            <div id="selectedAppDisplay" class="selection-info app-selected">
+                                <i class="fas fa-check-circle me-2 text-success"></i>
+                                <strong>As-Applied File:</strong> <span id="selectedAppFileName"></span>
+                            </div>
+                        </div>
+
+                        <!-- Harvest File Selection -->
+                        <div class="col-md-4 mb-4">
+                            <h6 class="fw-bold mb-3">
+                                <i class="fas fa-file-import me-2 text-warning"></i>
+                                Step 3: Select Harvest Data Shapefile
+                            </h6>
+                            <p class="text-muted small mb-3">
+                                Browse and select the harvest data shapefile (.shp).
+                            </p>
+
+                            <div class="file-tree" id="harvFileTree">
+                                <div class="tree-loading">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>Loading files...
+                                </div>
+                            </div>
+
+                            <input type="hidden" id="selectedHarvFileId" name="harv_file_id" required>
+                            <div id="selectedHarvDisplay" class="selection-info harv-selected">
+                                <i class="fas fa-check-circle me-2 text-warning"></i>
+                                <strong>Harvest File:</strong> <span id="selectedHarvFileName"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Parameters Section -->
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="fw-bold mb-3">
+                                <i class="fas fa-sliders-h me-2 text-info"></i>
+                                Step 4: Configure Parameters
+                            </h6>
+                            <div class="parameter-section">
+                                <div class="row">
+                                    <!-- CRS -->
+                                    <div class="col-md-6 mb-3">
+                                        <label for="crsInput" class="form-label">
+                                            <strong>Coordinate Reference System (CRS)</strong>
+                                            <i class="fas fa-question-circle text-muted ms-1"
+                                               data-bs-toggle="tooltip"
+                                               title="The projected CRS to use for spatial operations. Default is EPSG:26914 (UTM Zone 14N)."></i>
+                                        </label>
+                                        <input type="text" class="form-control" id="crsInput" name="crs"
+                                               value="{{ default_crs }}" placeholder="e.g., EPSG:26914">
+                                        <small class="text-muted">Default: EPSG:26914 (UTM Zone 14N)</small>
+                                    </div>
+
+                                    <!-- Rate Tolerance -->
+                                    <div class="col-md-6 mb-3">
+                                        <label for="rateTolerance" class="form-label">
+                                            <strong>Rate Tolerance</strong>
+                                            <i class="fas fa-question-circle text-muted ms-1"
+                                               data-bs-toggle="tooltip"
+                                               title="Tolerance for matching application rates to target rates. E.g., 0.10 means +/- 10%."></i>
+                                        </label>
+                                        <input type="number" class="form-control" id="rateTolerance" name="rate_tolerance"
+                                               value="{{ default_rate_tolerance }}" step="0.01" min="0" max="1">
+                                        <small class="text-muted">Default: 0.10 (10% tolerance)</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Output Folder Selection -->
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="fw-bold mb-0">
+                                    <i class="fas fa-folder-open me-2 text-secondary"></i>
+                                    Step 5: Select Output Folder (Optional)
+                                </h6>
+                                <button type="button" class="btn btn-sm btn-outline-success" id="createFolderBtn" onclick="showCreateFolderModal()">
+                                    <i class="fas fa-folder-plus me-1"></i>New Folder
+                                </button>
+                            </div>
+                            <p class="text-muted small mb-3">
+                                Choose where to save the output files, or leave default to auto-create a folder.
+                            </p>
+
+                            <div class="file-tree" id="outputFolderTree">
+                                <div class="tree-loading">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>Loading folders...
+                                </div>
+                            </div>
+
+                            <input type="hidden" id="selectedFolderId" name="output_folder_id" value="">
+                            <div id="selectedFolderDisplay" class="selection-info folder-selected show">
+                                <i class="fas fa-check-circle me-2 text-secondary"></i>
+                                <strong>Output:</strong> <span id="selectedFolderName">Auto-create "yield_cleaning_output" folder</span>
+                            </div>
+                        </div>
+
+                        <!-- Summary Panel -->
+                        <div class="col-md-6 mb-4">
+                            <h6 class="fw-bold mb-3">
+                                <i class="fas fa-info-circle me-2 text-info"></i>
+                                Configuration Summary
+                            </h6>
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <table class="table table-sm table-borderless mb-0">
+                                        <tr>
+                                            <td><i class="fas fa-file text-primary me-2"></i>Plots File:</td>
+                                            <td id="summaryPlots" class="text-muted">Not selected</td>
+                                        </tr>
+                                        <tr>
+                                            <td><i class="fas fa-file text-success me-2"></i>As-Applied File:</td>
+                                            <td id="summaryApp" class="text-muted">Not selected</td>
+                                        </tr>
+                                        <tr>
+                                            <td><i class="fas fa-file text-warning me-2"></i>Harvest File:</td>
+                                            <td id="summaryHarv" class="text-muted">Not selected</td>
+                                        </tr>
+                                        <tr>
+                                            <td><i class="fas fa-globe text-info me-2"></i>CRS:</td>
+                                            <td id="summaryCrs">{{ default_crs }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><i class="fas fa-percentage text-secondary me-2"></i>Rate Tolerance:</td>
+                                            <td id="summaryTolerance">{{ default_rate_tolerance }}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="row">
+                        <div class="col-12">
+                            <hr>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <a href="{% url 'filemanager:tools_list' %}" class="btn btn-outline-secondary">
+                                    <i class="fas fa-arrow-left me-2"></i>Back to Tools
+                                </a>
+                                <button type="submit" class="btn btn-warning btn-lg" id="runToolBtn" disabled>
+                                    <i class="fas fa-play me-2"></i>Run Valid Yield Extractor
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Processing Status Modal -->
+<div class="modal fade" id="processingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-filter me-2 text-warning"></i>Processing...
+                </h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-warning mb-3" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5 id="processingStatus">Starting Valid Yield Extractor...</h5>
+                <p class="text-muted" id="processingMessage">Please wait while your data is being processed.</p>
+                <div class="progress mt-3" style="height: 10px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
+                         role="progressbar" style="width: 100%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Results Modal -->
+<div class="modal fade" id="resultsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-check-circle me-2"></i>Processing Complete!
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>The Valid Yield Extractor has successfully processed your data.</p>
+                <h6>Output Files Created:</h6>
+                <ul id="outputFilesList" class="list-group">
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <a href="{% url 'filemanager:dashboard' %}" class="btn btn-primary">
+                    <i class="fas fa-home me-2"></i>Go to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Folder Modal -->
+<div class="modal fade" id="createFolderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-folder-plus me-2 text-success"></i>Create New Folder
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="newFolderName" class="form-label">Folder Name</label>
+                    <input type="text" class="form-control" id="newFolderName" placeholder="Enter folder name" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Parent Folder</label>
+                    <div class="file-tree" id="parentFolderTree" style="max-height: 250px;">
+                    </div>
+                    <input type="hidden" id="newFolderParentId" value="">
+                    <small class="text-muted mt-1 d-block">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Selected parent: <span id="selectedParentName">Root (no parent)</span>
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmCreateFolderBtn" onclick="createNewFolder()">
+                    <i class="fas fa-folder-plus me-2"></i>Create Folder
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// CSRF token setup
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+const csrftoken = getCookie('csrftoken');
+
+// Data from Django context
+const treeData = {{ tree_data|safe }};
+
+// Initialize tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    buildPlotsFileTree();
+    buildAppFileTree();
+    buildHarvFileTree();
+    buildOutputFolderTree();
+
+    // Add event listeners for parameter updates
+    document.getElementById('crsInput').addEventListener('input', updateSummary);
+    document.getElementById('rateTolerance').addEventListener('input', updateSummary);
+});
+
+// Build plots file tree
+function buildPlotsFileTree() {
+    const container = document.getElementById('plotsFileTree');
+    container.innerHTML = '';
+    buildFileTree(container, 'plots');
+}
+
+// Build app file tree
+function buildAppFileTree() {
+    const container = document.getElementById('appFileTree');
+    container.innerHTML = '';
+    buildFileTree(container, 'app');
+}
+
+// Build harv file tree
+function buildHarvFileTree() {
+    const container = document.getElementById('harvFileTree');
+    container.innerHTML = '';
+    buildFileTree(container, 'harv');
+}
+
+// Generic file tree builder
+function buildFileTree(container, mode) {
+    // My Files section
+    if (treeData.my_folders.length > 0 || treeData.my_root_files.length > 0) {
+        const mySection = document.createElement('div');
+        mySection.className = 'tree-root-section';
+        mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Files</div>';
+
+        treeData.my_root_files.forEach(file => {
+            if (file.name.toLowerCase().endsWith('.shp')) {
+                mySection.appendChild(createFileNode(file, mode, false));
+            }
+        });
+
+        treeData.my_folders.forEach(folder => {
+            mySection.appendChild(createFolderNode(folder, mode, false));
+        });
+
+        container.appendChild(mySection);
+    }
+
+    // Public Files section
+    if (treeData.public_folders.length > 0 || treeData.public_root_files.length > 0) {
+        const publicSection = document.createElement('div');
+        publicSection.className = 'tree-root-section';
+        publicSection.innerHTML = '<div class="tree-section-header"><i class="fas fa-globe me-2"></i>Public Files</div>';
+
+        treeData.public_root_files.forEach(file => {
+            if (file.name.toLowerCase().endsWith('.shp')) {
+                publicSection.appendChild(createFileNode(file, mode, true));
+            }
+        });
+
+        treeData.public_folders.forEach(folder => {
+            publicSection.appendChild(createFolderNode(folder, mode, true));
+        });
+
+        container.appendChild(publicSection);
+    }
+
+    if (container.children.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-exclamation-circle fa-2x mb-2"></i>
+                <p class="mb-0">No shapefiles found.</p>
+                <p class="small">Upload a .shp file first.</p>
+            </div>
+        `;
+    }
+}
+
+// Build output folder tree
+function buildOutputFolderTree() {
+    const container = document.getElementById('outputFolderTree');
+    container.innerHTML = '';
+
+    // Auto-create option
+    const autoOption = document.createElement('div');
+    autoOption.className = 'tree-node';
+    autoOption.innerHTML = `
+        <div class="tree-node-content selected-output" data-folder-id="" data-folder-name="Auto-create folder" onclick="selectOutputFolder(this)">
+            <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
+            <div class="tree-icon"><i class="fas fa-magic text-info"></i></div>
+            <span class="tree-label">Auto-create "yield_cleaning_output" folder</span>
+        </div>
+    `;
+    container.appendChild(autoOption);
+
+    // My Folders section
+    if (treeData.my_folders.length > 0) {
+        const mySection = document.createElement('div');
+        mySection.className = 'tree-root-section';
+        mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Folders</div>';
+
+        treeData.my_folders.forEach(folder => {
+            mySection.appendChild(createFolderNode(folder, 'output', false));
+        });
+
+        container.appendChild(mySection);
+    }
+}
+
+// Create a folder node
+function createFolderNode(folder, mode, isPublic) {
+    const node = document.createElement('div');
+    node.className = 'tree-node';
+
+    const hasChildren = (folder.subfolders && folder.subfolders.length > 0) ||
+                        (folder.files && folder.files.length > 0);
+    const hasShpFiles = folder.files && folder.files.some(f => f.name.toLowerCase().endsWith('.shp'));
+    const hasSubfolders = folder.subfolders && folder.subfolders.length > 0;
+
+    const showToggle = mode === 'output' ? hasSubfolders : (hasShpFiles || hasSubfolders);
+
+    const content = document.createElement('div');
+    content.className = 'tree-node-content';
+    content.setAttribute('data-has-children', showToggle ? 'true' : 'false');
+
+    if (mode === 'output') {
+        content.setAttribute('data-folder-id', folder.id);
+        content.setAttribute('data-folder-name', folder.name);
+        content.setAttribute('onclick', 'selectOutputFolder(this)');
+    }
+
+    content.setAttribute('ondblclick', 'handleFolderDoubleClick(event, this)');
+
+    content.innerHTML = `
+        <div class="tree-toggle ${showToggle ? '' : 'style="visibility: hidden;"'}" onclick="event.stopPropagation(); toggleFolder(this)">
+            <i class="fas fa-chevron-right"></i>
+        </div>
+        <div class="tree-icon folder-icon"><i class="fas fa-folder"></i></div>
+        <span class="tree-label">${folder.name}</span>
+        ${isPublic ? '<span class="badge bg-info tree-badge">Public</span>' : ''}
+        ${folder.file_count !== undefined ? `<span class="badge bg-secondary tree-badge">${folder.file_count} files</span>` : ''}
+    `;
+
+    node.appendChild(content);
+
+    if (showToggle) {
+        const children = document.createElement('div');
+        children.className = 'tree-children';
+
+        if (folder.subfolders) {
+            folder.subfolders.forEach(subfolder => {
+                children.appendChild(createFolderNode(subfolder, mode, isPublic));
+            });
+        }
+
+        if (mode !== 'output' && folder.files) {
+            folder.files.forEach(file => {
+                if (file.name.toLowerCase().endsWith('.shp')) {
+                    children.appendChild(createFileNode(file, mode, isPublic));
+                }
+            });
+        }
+
+        if (children.children.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-folder';
+            empty.textContent = mode === 'output' ? 'Empty' : 'No shapefiles';
+            children.appendChild(empty);
+        }
+
+        node.appendChild(children);
+    }
+
+    return node;
+}
+
+// Handle double-click on folder
+function handleFolderDoubleClick(event, element) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const hasChildren = element.getAttribute('data-has-children') === 'true';
+    if (hasChildren) {
+        const toggleEl = element.querySelector('.tree-toggle');
+        if (toggleEl) {
+            toggleFolder(toggleEl);
+        }
+    }
+}
+
+// Create a file node
+function createFileNode(file, mode, isPublic) {
+    const node = document.createElement('div');
+    node.className = 'tree-node';
+
+    const content = document.createElement('div');
+    content.className = 'tree-node-content';
+    content.setAttribute('data-file-id', file.id);
+    content.setAttribute('data-file-name', file.name);
+    content.setAttribute('data-mode', mode);
+    content.setAttribute('onclick', `selectInputFile(this, '${mode}')`);
+
+    content.innerHTML = `
+        <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
+        <div class="tree-icon file-icon"><i class="fas fa-file-archive"></i></div>
+        <span class="tree-label">${file.name}</span>
+        ${isPublic ? '<span class="badge bg-info tree-badge">Public</span>' : ''}
+        ${file.size_display ? `<span class="badge bg-light text-dark tree-badge">${file.size_display}</span>` : ''}
+    `;
+
+    node.appendChild(content);
+    return node;
+}
+
+// Toggle folder expand/collapse
+function toggleFolder(toggleEl) {
+    const nodeContent = toggleEl.closest('.tree-node-content');
+    const node = nodeContent.closest('.tree-node');
+    const children = node.querySelector('.tree-children');
+
+    if (children) {
+        toggleEl.classList.toggle('expanded');
+        children.classList.toggle('expanded');
+
+        const folderIcon = nodeContent.querySelector('.folder-icon i');
+        if (children.classList.contains('expanded')) {
+            folderIcon.className = 'fas fa-folder-open';
+        } else {
+            folderIcon.className = 'fas fa-folder';
+        }
+    }
+}
+
+// Select input file (plots, app, or harv)
+function selectInputFile(element, mode) {
+    const treeIdMap = { 'plots': 'plotsFileTree', 'app': 'appFileTree', 'harv': 'harvFileTree' };
+    const selectedClassMap = { 'plots': 'selected-plots', 'app': 'selected-app', 'harv': 'selected-harv' };
+    const treeId = treeIdMap[mode];
+    const selectedClass = selectedClassMap[mode];
+
+    // Remove selection from this tree only
+    document.querySelectorAll(`#${treeId} .tree-node-content`).forEach(item => {
+        item.classList.remove('selected-plots', 'selected-app', 'selected-harv');
+    });
+
+    element.classList.add(selectedClass);
+
+    const fileId = element.dataset.fileId;
+    const fileName = element.dataset.fileName;
+
+    if (mode === 'plots') {
+        document.getElementById('selectedPlotsFileId').value = fileId;
+        document.getElementById('selectedPlotsFileName').textContent = fileName;
+        document.getElementById('selectedPlotsDisplay').classList.add('show');
+        document.getElementById('summaryPlots').textContent = fileName;
+    } else if (mode === 'app') {
+        document.getElementById('selectedAppFileId').value = fileId;
+        document.getElementById('selectedAppFileName').textContent = fileName;
+        document.getElementById('selectedAppDisplay').classList.add('show');
+        document.getElementById('summaryApp').textContent = fileName;
+    } else if (mode === 'harv') {
+        document.getElementById('selectedHarvFileId').value = fileId;
+        document.getElementById('selectedHarvFileName').textContent = fileName;
+        document.getElementById('selectedHarvDisplay').classList.add('show');
+        document.getElementById('summaryHarv').textContent = fileName;
+    }
+
+    updateSubmitButton();
+}
+
+// Select output folder
+function selectOutputFolder(element) {
+    document.querySelectorAll('#outputFolderTree .tree-node-content').forEach(item => {
+        item.classList.remove('selected-output');
+    });
+
+    element.classList.add('selected-output');
+
+    const folderId = element.dataset.folderId;
+    const folderName = element.dataset.folderName;
+
+    document.getElementById('selectedFolderId').value = folderId;
+    document.getElementById('selectedFolderName').textContent = folderName || 'Auto-create "yield_cleaning_output" folder';
+}
+
+// Update summary panel
+function updateSummary() {
+    const crs = document.getElementById('crsInput').value.trim();
+    const tolerance = document.getElementById('rateTolerance').value;
+
+    document.getElementById('summaryCrs').textContent = crs || 'Not entered';
+    document.getElementById('summaryTolerance').textContent = tolerance;
+
+    updateSubmitButton();
+}
+
+// Update submit button state
+function updateSubmitButton() {
+    const plotsFileId = document.getElementById('selectedPlotsFileId').value;
+    const appFileId = document.getElementById('selectedAppFileId').value;
+    const harvFileId = document.getElementById('selectedHarvFileId').value;
+
+    const submitBtn = document.getElementById('runToolBtn');
+    submitBtn.disabled = !(plotsFileId && appFileId && harvFileId);
+}
+
+// ============================================
+// Create Folder Functionality
+// ============================================
+
+let createFolderModal = null;
+
+function showCreateFolderModal() {
+    buildParentFolderTree();
+
+    document.getElementById('newFolderName').value = '';
+    document.getElementById('newFolderParentId').value = '';
+    document.getElementById('selectedParentName').textContent = 'Root (no parent)';
+
+    if (!createFolderModal) {
+        createFolderModal = new bootstrap.Modal(document.getElementById('createFolderModal'));
+    }
+    createFolderModal.show();
+
+    setTimeout(() => {
+        document.getElementById('newFolderName').focus();
+    }, 300);
+}
+
+function buildParentFolderTree() {
+    const container = document.getElementById('parentFolderTree');
+    container.innerHTML = '';
+
+    const rootOption = document.createElement('div');
+    rootOption.className = 'tree-node';
+    rootOption.innerHTML = `
+        <div class="tree-node-content selected-output" data-folder-id="" data-folder-name="Root (no parent)" onclick="selectParentFolder(this)">
+            <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
+            <div class="tree-icon"><i class="fas fa-home text-secondary"></i></div>
+            <span class="tree-label">Root (no parent folder)</span>
+        </div>
+    `;
+    container.appendChild(rootOption);
+
+    if (treeData.my_folders.length > 0) {
+        const mySection = document.createElement('div');
+        mySection.className = 'tree-root-section';
+        mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Folders</div>';
+
+        treeData.my_folders.forEach(folder => {
+            mySection.appendChild(createParentFolderNode(folder));
+        });
+
+        container.appendChild(mySection);
+    }
+}
+
+function createParentFolderNode(folder) {
+    const node = document.createElement('div');
+    node.className = 'tree-node';
+
+    const hasSubfolders = folder.subfolders && folder.subfolders.length > 0;
+
+    const content = document.createElement('div');
+    content.className = 'tree-node-content';
+    content.setAttribute('data-folder-id', folder.id);
+    content.setAttribute('data-folder-name', folder.name);
+    content.setAttribute('onclick', 'selectParentFolder(this)');
+    content.setAttribute('ondblclick', 'handleFolderDoubleClick(event, this)');
+    content.setAttribute('data-has-children', hasSubfolders ? 'true' : 'false');
+
+    content.innerHTML = `
+        <div class="tree-toggle ${hasSubfolders ? '' : 'style="visibility: hidden;"'}" onclick="event.stopPropagation(); toggleFolder(this)">
+            <i class="fas fa-chevron-right"></i>
+        </div>
+        <div class="tree-icon folder-icon"><i class="fas fa-folder"></i></div>
+        <span class="tree-label">${folder.name}</span>
+    `;
+
+    node.appendChild(content);
+
+    if (hasSubfolders) {
+        const children = document.createElement('div');
+        children.className = 'tree-children';
+
+        folder.subfolders.forEach(subfolder => {
+            children.appendChild(createParentFolderNode(subfolder));
+        });
+
+        node.appendChild(children);
+    }
+
+    return node;
+}
+
+function selectParentFolder(element) {
+    document.querySelectorAll('#parentFolderTree .tree-node-content').forEach(item => {
+        item.classList.remove('selected-output');
+    });
+
+    element.classList.add('selected-output');
+
+    const folderId = element.dataset.folderId;
+    const folderName = element.dataset.folderName;
+
+    document.getElementById('newFolderParentId').value = folderId;
+    document.getElementById('selectedParentName').textContent = folderName || 'Root (no parent)';
+}
+
+async function createNewFolder() {
+    const folderName = document.getElementById('newFolderName').value.trim();
+    const parentId = document.getElementById('newFolderParentId').value;
+
+    if (!folderName) {
+        alert('Please enter a folder name');
+        document.getElementById('newFolderName').focus();
+        return;
+    }
+
+    const btn = document.getElementById('confirmCreateFolderBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Creating...';
+
+    try {
+        const response = await fetch('{% url "filemanager:create_folder" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                name: folderName,
+                parent_id: parentId || null,
+                is_public: false
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success || data.folder) {
+            const newFolder = data.folder;
+            addFolderToTreeData(newFolder, parentId);
+            buildOutputFolderTree();
+
+            setTimeout(() => {
+                const newFolderEl = document.querySelector(`#outputFolderTree [data-folder-id="${newFolder.id}"]`);
+                if (newFolderEl) {
+                    selectOutputFolder(newFolderEl);
+                    expandToFolder(newFolderEl);
+                }
+            }, 100);
+
+            createFolderModal.hide();
+        } else {
+            alert(data.error || 'Failed to create folder');
+        }
+    } catch (error) {
+        console.error('Error creating folder:', error);
+        alert('Error creating folder: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+function addFolderToTreeData(folder, parentId) {
+    const newFolderData = {
+        id: folder.id,
+        name: folder.name,
+        file_count: 0,
+        subfolders: [],
+        files: []
+    };
+
+    if (!parentId) {
+        treeData.my_folders.push(newFolderData);
+        treeData.my_folders.sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+        const addToParent = (folders) => {
+            for (let f of folders) {
+                if (f.id === parentId) {
+                    if (!f.subfolders) f.subfolders = [];
+                    f.subfolders.push(newFolderData);
+                    f.subfolders.sort((a, b) => a.name.localeCompare(b.name));
+                    return true;
+                }
+                if (f.subfolders && addToParent(f.subfolders)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        addToParent(treeData.my_folders);
+    }
+}
+
+function expandToFolder(element) {
+    let parent = element.closest('.tree-children');
+    while (parent) {
+        parent.classList.add('expanded');
+        const toggle = parent.previousElementSibling?.querySelector('.tree-toggle');
+        if (toggle) {
+            toggle.classList.add('expanded');
+            const folderIcon = parent.previousElementSibling?.querySelector('.folder-icon i');
+            if (folderIcon) {
+                folderIcon.className = 'fas fa-folder-open';
+            }
+        }
+        parent = parent.parentElement?.closest('.tree-children');
+    }
+}
+
+// ============================================
+// Form submission
+// ============================================
+
+document.getElementById('validYieldExtractorForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const plotsFileId = document.getElementById('selectedPlotsFileId').value;
+    const appFileId = document.getElementById('selectedAppFileId').value;
+    const harvFileId = document.getElementById('selectedHarvFileId').value;
+    const folderId = document.getElementById('selectedFolderId').value;
+    const crs = document.getElementById('crsInput').value.trim() || 'EPSG:26914';
+    const rateTolerance = parseFloat(document.getElementById('rateTolerance').value) || 0.10;
+
+    if (!plotsFileId) {
+        alert('Please select a treatment plots shapefile');
+        return;
+    }
+
+    if (!appFileId) {
+        alert('Please select an as-applied data shapefile');
+        return;
+    }
+
+    if (!harvFileId) {
+        alert('Please select a harvest data shapefile');
+        return;
+    }
+
+    // Show processing modal
+    const processingModal = new bootstrap.Modal(document.getElementById('processingModal'));
+    processingModal.show();
+
+    try {
+        const response = await fetch('{% url "filemanager:run_valid_yield_extractor" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                plots_file_id: plotsFileId,
+                app_file_id: appFileId,
+                harv_file_id: harvFileId,
+                output_folder_id: folderId || null,
+                crs: crs,
+                rate_tolerance: rateTolerance
+            })
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to start Valid Yield Extractor');
+        }
+
+        const taskId = data.task_id;
+        document.getElementById('processingStatus').textContent = 'Processing...';
+        document.getElementById('processingMessage').textContent = 'Building VAA, filtering harvest, and creating clean yield points.';
+
+        let pollCount = 0;
+        const maxPolls = 60;
+
+        const pollStatus = async () => {
+            pollCount++;
+
+            if (pollCount > maxPolls) {
+                processingModal.hide();
+                alert('Processing timed out. Please check the dashboard for results.');
+                return;
+            }
+
+            try {
+                const statusResponse = await fetch(`/api/valid-yield-extractor/status/${taskId}/`);
+                const statusData = await statusResponse.json();
+
+                if (statusData.status === 'SUCCESS') {
+                    processingModal.hide();
+
+                    if (statusData.result && statusData.result.success) {
+                        showResults(statusData.result);
+                    } else {
+                        alert(statusData.result?.error || 'Processing completed with errors');
+                    }
+                } else if (statusData.status === 'FAILURE') {
+                    processingModal.hide();
+                    alert('Processing failed: ' + (statusData.error || 'Unknown error'));
+                } else {
+                    setTimeout(pollStatus, 3000);
+                }
+            } catch (error) {
+                console.error('Error polling status:', error);
+                setTimeout(pollStatus, 3000);
+            }
+        };
+
+        setTimeout(pollStatus, 2000);
+
+    } catch (error) {
+        processingModal.hide();
+        alert('Error: ' + error.message);
+    }
+});
+
+// Show results
+function showResults(result) {
+    const createdFiles = result.created_files || [];
+    const filesList = document.getElementById('outputFilesList');
+    filesList.innerHTML = '';
+
+    const iconMap = {
+        '.shp': { icon: 'fa-draw-polygon', color: 'success' },
+        '.shx': { icon: 'fa-file', color: 'secondary' },
+        '.dbf': { icon: 'fa-database', color: 'info' },
+        '.prj': { icon: 'fa-globe', color: 'primary' },
+        '.cpg': { icon: 'fa-file-code', color: 'secondary' },
+        '.csv': { icon: 'fa-file-csv', color: 'warning' },
+        '.png': { icon: 'fa-image', color: 'danger' },
+    };
+
+    createdFiles.forEach(file => {
+        const ext = '.' + file.name.split('.').pop().toLowerCase();
+        const info = iconMap[ext] || { icon: 'fa-file', color: 'secondary' };
+
+        const li = document.createElement('li');
+        li.className = 'list-group-item d-flex align-items-center';
+        li.innerHTML = `
+            <i class="fas ${info.icon} text-${info.color} me-3"></i>
+            <div>
+                <strong>${file.name}</strong>
+                ${file.updated ? '<span class="badge bg-info ms-2">Updated</span>' : '<span class="badge bg-success ms-2">New</span>'}
+            </div>
+        `;
+        filesList.appendChild(li);
+    });
+
+    if (createdFiles.length === 0) {
+        filesList.innerHTML = '<li class="list-group-item text-muted">No output files were created.</li>';
+    }
+
+    const resultsModal = new bootstrap.Modal(document.getElementById('resultsModal'));
+    resultsModal.show();
+}
+</script>
+{% endblock %}

@@ -89,6 +89,10 @@
     color: #17a2b8;
 }
 
+.tree-icon.tif-icon {
+    color: #6f42c1;
+}
+
 .tree-label {
     flex-grow: 1;
     font-size: 13px;
@@ -179,16 +183,6 @@
     background-color: #d1e7dd;
 }
 
-.workflow-option.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.workflow-option.disabled:hover {
-    border-color: #dee2e6;
-    background-color: transparent;
-}
-
 /* Input groups */
 .input-section {
     background: #f8f9fa;
@@ -235,18 +229,19 @@
             <div class="d-flex align-items-center mb-3">
                 <i class="fas fa-chart-line fa-2x text-success me-3"></i>
                 <div>
-                    <h2 class="mb-0">SI Tool (Stress Index Calculator)</h2>
-                    <p class="text-muted mb-0">Calculate Stress Index values from NDRE and buffer sector data</p>
+                    <h2 class="mb-0">SI Tool (Sufficiency Index Calculator)</h2>
+                    <p class="text-muted mb-0">Calculate Sufficiency Index values from buffer sectors and NDRE data</p>
                 </div>
             </div>
             <p class="mb-0">
-                This tool calculates the Stress Index (SI) for each field by:
+                This tool evaluates crop nitrogen sufficiency by comparing NDRE values against reference values.
+                Supports four workflow modes:
             </p>
             <ul class="mb-0 mt-2">
-                <li><strong>Intersecting</strong> buffer sectors with NDRE data</li>
-                <li><strong>Calculating</strong> average NDRE per field</li>
-                <li><strong>Computing SI</strong> = avg_ndre / 95th_percentile_ndre</li>
-                <li><strong>Updating</strong> your CSV file with SI values</li>
+                <li><strong>STANDARD + UAV</strong> - Buffer sectors + NDRE shapefile + CSV</li>
+                <li><strong>STANDARD + Satellite</strong> - Buffer sectors + NIR/RedEdge GeoTIFFs + CSV</li>
+                <li><strong>SBF + UAV</strong> - Buffer sectors + Indicator blocks + NDRE shapefile + CSV</li>
+                <li><strong>SBF + Satellite</strong> - Buffer sectors + Indicator blocks + NIR/RedEdge GeoTIFFs + CSV</li>
             </ul>
         </div>
     </div>
@@ -267,99 +262,107 @@
                             <span class="badge bg-success me-2">1</span>
                             Select Workflow
                         </h6>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Treatment Methodology</label>
-                                <div class="d-flex gap-3">
-                                    <div class="workflow-option flex-fill text-center selected" data-value="STANDARD" onclick="selectTreatment('STANDARD')">
-                                        <i class="fas fa-ruler-combined fa-2x text-success mb-2"></i>
-                                        <div class="fw-bold">STANDARD</div>
-                                        <small class="text-muted">Standard field treatment</small>
-                                    </div>
-                                    <div class="workflow-option flex-fill text-center disabled" data-value="SBF" onclick="selectTreatment('SBF')">
-                                        <i class="fas fa-th fa-2x text-secondary mb-2"></i>
-                                        <div class="fw-bold">SBF</div>
-                                        <small class="text-muted">Coming Soon</small>
-                                    </div>
-                                </div>
-                                <input type="hidden" id="treatment" name="treatment" value="STANDARD">
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label><strong>Treatment Methodology</strong></label>
+                                <select id="treatmentMethod" class="form-select">
+                                    <option value="STANDARD">STANDARD</option>
+                                    <option value="SBF">SBF (Sensor-Based Fertigation)</option>
+                                </select>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Imagery Type</label>
-                                <div class="d-flex gap-3">
-                                    <div class="workflow-option flex-fill text-center selected" data-value="UAV" onclick="selectImagery('UAV')">
-                                        <i class="fas fa-drone fa-2x text-success mb-2"></i>
-                                        <div class="fw-bold">UAV</div>
-                                        <small class="text-muted">Drone imagery</small>
-                                    </div>
-                                    <div class="workflow-option flex-fill text-center disabled" data-value="SATELLITE" onclick="selectImagery('SATELLITE')">
-                                        <i class="fas fa-satellite fa-2x text-secondary mb-2"></i>
-                                        <div class="fw-bold">SATELLITE</div>
-                                        <small class="text-muted">Coming Soon</small>
-                                    </div>
-                                </div>
-                                <input type="hidden" id="imagery" name="imagery" value="UAV">
+                            <div class="col-md-6">
+                                <label><strong>Imagery Type</strong></label>
+                                <select id="imageryType" class="form-select">
+                                    <option value="UAV">UAV</option>
+                                    <option value="SATELLITE">Satellite</option>
+                                </select>
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Step 2: Column Configuration -->
                     <div class="mb-4">
                         <h6 class="fw-bold mb-3">
                             <span class="badge bg-success me-2">2</span>
-                            Column Configuration
+                            Parameters
                         </h6>
                         <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="siColumnName" class="form-label">SI Column Name <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="siColumnName" name="si_column_name" 
-                                       placeholder="e.g., SI_08_01" required>
-                                <small class="text-muted">The column name where SI values will be stored in the CSV</small>
+                            <div class="col-md-6 mb-3 conditional-section show" id="fieldColumnSection">
+                                <label for="fieldColumn" class="form-label">Field Column Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="fieldColumn" name="field_column"
+                                       placeholder="e.g., Plot_Numbe, Field_ID">
+                                <small class="text-muted">The column used for grouping fields (must exist in both shapefile and CSV)</small>
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label for="fieldColumn" class="form-label">Field Column Name <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="fieldColumn" name="field_column" 
-                                       placeholder="e.g., Plot_Numbe, Field_ID" required>
-                                <small class="text-muted">The column used for grouping fields (must exist in both shapefile and CSV)</small>
+                                <label for="siColumnName" class="form-label">SI Column Name</label>
+                                <input type="text" class="form-control" id="siColumnName" name="si_column_name"
+                                       placeholder="SI" value="SI">
+                                <small class="text-muted">The column name where SI values will be stored in the CSV (default: SI)</small>
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Step 3: File Selection -->
                     <div class="mb-4">
                         <h6 class="fw-bold mb-3">
                             <span class="badge bg-success me-2">3</span>
                             Select Input Files
                         </h6>
-                        
+
                         <div class="row">
-                            <!-- Buffer Sectors Shapefile -->
+                            <!-- Buffer Sectors Shapefile (always shown) -->
                             <div class="col-md-4 mb-3">
                                 <div class="input-section h-100">
-                                    <h6><i class="fas fa-draw-polygon me-2 text-warning"></i>Buffer Sectors Shapefile <span class="text-danger">*</span></h6>
+                                    <h6><i class="fas fa-draw-polygon me-2 text-warning"></i>Buffer Sector Shapefile <span class="text-danger">*</span></h6>
                                     <div class="file-tree" id="bufferSectorsTree"></div>
-                                    <input type="hidden" id="bufferSectorsFileId" name="buffer_sectors_file_id" required>
+                                    <input type="hidden" id="bufferSectorsFileId" name="buffer_shp_id" required>
                                     <div id="bufferSectorsDisplay" class="selection-info file-selected">
                                         <i class="fas fa-check-circle me-1"></i>
                                         <span id="bufferSectorsFileName"></span>
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <!-- NDRE Shapefile (UAV only) -->
                             <div class="col-md-4 mb-3 conditional-section show" id="ndreSection">
                                 <div class="input-section h-100">
                                     <h6><i class="fas fa-leaf me-2 text-success"></i>NDRE Shapefile <span class="text-danger">*</span></h6>
                                     <div class="file-tree" id="ndreTree"></div>
-                                    <input type="hidden" id="ndreFileId" name="ndre_file_id">
+                                    <input type="hidden" id="ndreFileId" name="ndre_shp_id">
                                     <div id="ndreDisplay" class="selection-info file-selected">
                                         <i class="fas fa-check-circle me-1"></i>
                                         <span id="ndreFileName"></span>
                                     </div>
                                 </div>
                             </div>
-                            
-                            <!-- CSV File -->
+
+                            <!-- NIR GeoTIFF (Satellite only) -->
+                            <div class="col-md-4 mb-3 conditional-section" id="nirSection">
+                                <div class="input-section h-100">
+                                    <h6><i class="fas fa-image me-2 text-purple"></i>NIR GeoTIFF <span class="text-danger">*</span></h6>
+                                    <div class="file-tree" id="nirTree"></div>
+                                    <input type="hidden" id="nirFileId" name="nir_tif_id">
+                                    <div id="nirDisplay" class="selection-info file-selected">
+                                        <i class="fas fa-check-circle me-1"></i>
+                                        <span id="nirFileName"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- RedEdge GeoTIFF (Satellite only) -->
+                            <div class="col-md-4 mb-3 conditional-section" id="rededgeSection">
+                                <div class="input-section h-100">
+                                    <h6><i class="fas fa-image me-2 text-danger"></i>RedEdge GeoTIFF <span class="text-danger">*</span></h6>
+                                    <div class="file-tree" id="rededgeTree"></div>
+                                    <input type="hidden" id="rededgeFileId" name="rededge_tif_id">
+                                    <div id="rededgeDisplay" class="selection-info file-selected">
+                                        <i class="fas fa-check-circle me-1"></i>
+                                        <span id="rededgeFileName"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- CSV File (always shown) -->
                             <div class="col-md-4 mb-3">
                                 <div class="input-section h-100">
                                     <h6><i class="fas fa-file-csv me-2 text-info"></i>CSV File <span class="text-danger">*</span></h6>
@@ -372,14 +375,14 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Indicator Block (SBF only) -->
                         <div class="row conditional-section" id="indicatorBlockSection">
                             <div class="col-md-4 mb-3">
                                 <div class="input-section">
                                     <h6><i class="fas fa-th-large me-2 text-purple"></i>Indicator Block Shapefile <span class="text-danger">*</span></h6>
                                     <div class="file-tree" id="indicatorBlockTree"></div>
-                                    <input type="hidden" id="indicatorBlockFileId" name="indicator_block_file_id">
+                                    <input type="hidden" id="indicatorBlockFileId" name="indicator_shp_id">
                                     <div id="indicatorBlockDisplay" class="selection-info file-selected">
                                         <i class="fas fa-check-circle me-1"></i>
                                         <span id="indicatorBlockFileName"></span>
@@ -388,7 +391,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Step 4: Output (Optional) -->
                     <div class="mb-4">
                         <h6 class="fw-bold mb-3">
@@ -407,7 +410,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Submit Button -->
                     <div class="row">
                         <div class="col-12">
@@ -444,7 +447,7 @@
                 <h5 id="processingStatus">Starting SI Tool...</h5>
                 <p class="text-muted" id="processingMessage">Please wait while SI values are being calculated.</p>
                 <div class="progress mt-3" style="height: 10px;">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
                          role="progressbar" style="width: 100%"></div>
                 </div>
             </div>
@@ -463,7 +466,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p id="resultsMessage">The SI Tool has successfully calculated stress index values.</p>
+                <p id="resultsMessage">The SI Tool has successfully calculated sufficiency index values.</p>
                 <h6>Output Files:</h6>
                 <ul id="outputFilesList" class="list-group">
                     <!-- Files will be populated by JavaScript -->
@@ -504,6 +507,7 @@ const csrftoken = getCookie('csrftoken');
 // Data from Django context
 const shpTreeData = {{ shp_tree_data|safe }};
 const csvTreeData = {{ csv_tree_data|safe }};
+const tifTreeData = {{ tif_tree_data|safe }};
 const folderTreeData = {{ folder_tree_data|safe }};
 
 // Current selections
@@ -514,67 +518,56 @@ let currentImagery = 'UAV';
 // Workflow Selection
 // ============================================
 
-function selectTreatment(treatment) {
-    if (treatment === 'SBF') {
-        // SBF is disabled for now
-        return;
-    }
-    
-    currentTreatment = treatment;
-    document.getElementById('treatment').value = treatment;
-    
-    // Update UI
-    document.querySelectorAll('[data-value="STANDARD"], [data-value="SBF"]').forEach(el => {
-        if (el.closest('.col-md-6').querySelector('[name="treatment"]')) {
-            el.classList.remove('selected');
-            if (el.dataset.value === treatment) {
-                el.classList.add('selected');
-            }
-        }
-    });
-    
+document.getElementById('treatmentMethod').addEventListener('change', function() {
+    currentTreatment = this.value;
     updateConditionalSections();
     updateSubmitButton();
-}
+});
 
-function selectImagery(imagery) {
-    if (imagery === 'SATELLITE') {
-        // SATELLITE is disabled for now
-        return;
-    }
-    
-    currentImagery = imagery;
-    document.getElementById('imagery').value = imagery;
-    
-    // Update UI
-    document.querySelectorAll('[data-value="UAV"], [data-value="SATELLITE"]').forEach(el => {
-        if (el.closest('.col-md-6').querySelector('[name="imagery"]')) {
-            el.classList.remove('selected');
-            if (el.dataset.value === imagery) {
-                el.classList.add('selected');
-            }
-        }
-    });
-    
+document.getElementById('imageryType').addEventListener('change', function() {
+    currentImagery = this.value;
     updateConditionalSections();
     updateSubmitButton();
+});
+
+function getWorkflowKey() {
+    return currentTreatment.toLowerCase() + '_' + currentImagery.toLowerCase();
 }
 
 function updateConditionalSections() {
-    // NDRE section is shown for UAV
+    // NDRE section: shown for UAV workflows
     const ndreSection = document.getElementById('ndreSection');
     if (currentImagery === 'UAV') {
         ndreSection.classList.add('show');
     } else {
         ndreSection.classList.remove('show');
     }
-    
-    // Indicator block section is shown for SBF
+
+    // NIR and RedEdge sections: shown for SATELLITE workflows
+    const nirSection = document.getElementById('nirSection');
+    const rededgeSection = document.getElementById('rededgeSection');
+    if (currentImagery === 'SATELLITE') {
+        nirSection.classList.add('show');
+        rededgeSection.classList.add('show');
+    } else {
+        nirSection.classList.remove('show');
+        rededgeSection.classList.remove('show');
+    }
+
+    // Indicator block section: shown for SBF workflows
     const indicatorSection = document.getElementById('indicatorBlockSection');
     if (currentTreatment === 'SBF') {
         indicatorSection.classList.add('show');
     } else {
         indicatorSection.classList.remove('show');
+    }
+
+    // Field column: shown for STANDARD workflows only
+    const fieldColumnSection = document.getElementById('fieldColumnSection');
+    if (currentTreatment === 'STANDARD') {
+        fieldColumnSection.classList.add('show');
+    } else {
+        fieldColumnSection.classList.remove('show');
     }
 }
 
@@ -585,19 +578,19 @@ function updateConditionalSections() {
 function buildFileTree(containerId, treeData, fileType, onSelectCallback) {
     const container = document.getElementById(containerId);
     container.innerHTML = '';
-    
+
     function createFolderNode(folder) {
         const node = document.createElement('div');
         node.className = 'tree-node';
-        
-        const hasChildren = (folder.subfolders && folder.subfolders.length > 0) || 
+
+        const hasChildren = (folder.subfolders && folder.subfolders.length > 0) ||
                             (folder.files && folder.files.length > 0);
-        
+
         const content = document.createElement('div');
         content.className = 'tree-node-content';
         content.setAttribute('data-has-children', hasChildren ? 'true' : 'false');
         content.setAttribute('ondblclick', 'handleFolderDoubleClick(event, this)');
-        
+
         content.innerHTML = `
             <div class="tree-toggle ${hasChildren ? '' : 'style="visibility: hidden;"'}" onclick="event.stopPropagation(); toggleFolder(this)">
                 <i class="fas fa-chevron-right"></i>
@@ -605,94 +598,104 @@ function buildFileTree(containerId, treeData, fileType, onSelectCallback) {
             <div class="tree-icon folder-icon"><i class="fas fa-folder"></i></div>
             <span class="tree-label">${folder.name}</span>
         `;
-        
+
         node.appendChild(content);
-        
+
         if (hasChildren) {
             const children = document.createElement('div');
             children.className = 'tree-children';
-            
+
             if (folder.subfolders) {
                 folder.subfolders.forEach(subfolder => {
                     children.appendChild(createFolderNode(subfolder));
                 });
             }
-            
+
             if (folder.files) {
                 folder.files.forEach(file => {
                     children.appendChild(createFileNode(file, fileType, onSelectCallback));
                 });
             }
-            
+
             node.appendChild(children);
         }
-        
+
         return node;
     }
-    
+
     function createFileNode(file, fileType, callback) {
         const node = document.createElement('div');
         node.className = 'tree-node';
-        
+
         const content = document.createElement('div');
         content.className = 'tree-node-content';
         content.setAttribute('data-file-id', file.id);
         content.setAttribute('data-file-name', file.name);
         content.setAttribute('onclick', `${callback}(this)`);
-        
-        const iconClass = fileType === 'csv' ? 'csv-icon' : 'file-icon';
-        const icon = fileType === 'csv' ? 'fa-file-csv' : 'fa-file-archive';
-        
+
+        let iconClass = 'file-icon';
+        let icon = 'fa-file-archive';
+        if (fileType === 'csv') {
+            iconClass = 'csv-icon';
+            icon = 'fa-file-csv';
+        } else if (fileType === 'tif') {
+            iconClass = 'tif-icon';
+            icon = 'fa-image';
+        }
+
         content.innerHTML = `
             <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
             <div class="tree-icon ${iconClass}"><i class="fas ${icon}"></i></div>
             <span class="tree-label">${file.name}</span>
             ${file.size_display ? `<span class="badge bg-light text-dark tree-badge">${file.size_display}</span>` : ''}
         `;
-        
+
         node.appendChild(content);
         return node;
     }
-    
+
     // My Files section
     if (treeData.my_folders.length > 0 || treeData.my_root_files.length > 0) {
         const mySection = document.createElement('div');
         mySection.className = 'tree-root-section';
         mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Files</div>';
-        
+
         treeData.my_root_files.forEach(file => {
             mySection.appendChild(createFileNode(file, fileType, onSelectCallback));
         });
-        
+
         treeData.my_folders.forEach(folder => {
             mySection.appendChild(createFolderNode(folder));
         });
-        
+
         container.appendChild(mySection);
     }
-    
+
     // Public Files section
     if (treeData.public_folders.length > 0 || treeData.public_root_files.length > 0) {
         const publicSection = document.createElement('div');
         publicSection.className = 'tree-root-section';
         publicSection.innerHTML = '<div class="tree-section-header"><i class="fas fa-globe me-2"></i>Public Files</div>';
-        
+
         treeData.public_root_files.forEach(file => {
             publicSection.appendChild(createFileNode(file, fileType, onSelectCallback));
         });
-        
+
         treeData.public_folders.forEach(folder => {
             publicSection.appendChild(createFolderNode(folder));
         });
-        
+
         container.appendChild(publicSection);
     }
-    
+
     if (container.children.length === 0) {
+        let typeLabel = 'shape';
+        if (fileType === 'csv') typeLabel = 'CSV';
+        else if (fileType === 'tif') typeLabel = 'GeoTIFF';
         container.innerHTML = `
             <div class="text-center text-muted py-3">
                 <i class="fas fa-exclamation-circle mb-2"></i>
-                <p class="mb-0 small">No ${fileType === 'csv' ? 'CSV' : 'shape'} files found.</p>
+                <p class="mb-0 small">No ${typeLabel} files found.</p>
             </div>
         `;
     }
@@ -701,7 +704,7 @@ function buildFileTree(containerId, treeData, fileType, onSelectCallback) {
 function buildOutputFolderTree() {
     const container = document.getElementById('outputFolderTree');
     container.innerHTML = '';
-    
+
     // Auto option
     const autoOption = document.createElement('div');
     autoOption.className = 'tree-node';
@@ -713,13 +716,13 @@ function buildOutputFolderTree() {
         </div>
     `;
     container.appendChild(autoOption);
-    
+
     function createFolderNode(folder) {
         const node = document.createElement('div');
         node.className = 'tree-node';
-        
+
         const hasSubfolders = folder.subfolders && folder.subfolders.length > 0;
-        
+
         const content = document.createElement('div');
         content.className = 'tree-node-content';
         content.setAttribute('data-folder-id', folder.id);
@@ -727,7 +730,7 @@ function buildOutputFolderTree() {
         content.setAttribute('onclick', 'selectOutputFolder(this)');
         content.setAttribute('data-has-children', hasSubfolders ? 'true' : 'false');
         content.setAttribute('ondblclick', 'handleFolderDoubleClick(event, this)');
-        
+
         content.innerHTML = `
             <div class="tree-toggle ${hasSubfolders ? '' : 'style="visibility: hidden;"'}" onclick="event.stopPropagation(); toggleFolder(this)">
                 <i class="fas fa-chevron-right"></i>
@@ -735,32 +738,32 @@ function buildOutputFolderTree() {
             <div class="tree-icon folder-icon"><i class="fas fa-folder"></i></div>
             <span class="tree-label">${folder.name}</span>
         `;
-        
+
         node.appendChild(content);
-        
+
         if (hasSubfolders) {
             const children = document.createElement('div');
             children.className = 'tree-children';
-            
+
             folder.subfolders.forEach(subfolder => {
                 children.appendChild(createFolderNode(subfolder));
             });
-            
+
             node.appendChild(children);
         }
-        
+
         return node;
     }
-    
+
     if (folderTreeData.my_folders.length > 0) {
         const mySection = document.createElement('div');
         mySection.className = 'tree-root-section';
         mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Folders</div>';
-        
+
         folderTreeData.my_folders.forEach(folder => {
             mySection.appendChild(createFolderNode(folder));
         });
-        
+
         container.appendChild(mySection);
     }
 }
@@ -773,11 +776,11 @@ function toggleFolder(toggleEl) {
     const nodeContent = toggleEl.closest('.tree-node-content');
     const node = nodeContent.closest('.tree-node');
     const children = node.querySelector('.tree-children');
-    
+
     if (children) {
         toggleEl.classList.toggle('expanded');
         children.classList.toggle('expanded');
-        
+
         const folderIcon = nodeContent.querySelector('.folder-icon i');
         if (children.classList.contains('expanded')) {
             folderIcon.className = 'fas fa-folder-open';
@@ -790,7 +793,7 @@ function toggleFolder(toggleEl) {
 function handleFolderDoubleClick(event, element) {
     event.preventDefault();
     event.stopPropagation();
-    
+
     const hasChildren = element.getAttribute('data-has-children') === 'true';
     if (hasChildren) {
         const toggleEl = element.querySelector('.tree-toggle');
@@ -809,11 +812,11 @@ function selectBufferSectorsFile(element) {
         item.classList.remove('selected');
     });
     element.classList.add('selected');
-    
+
     document.getElementById('bufferSectorsFileId').value = element.dataset.fileId;
     document.getElementById('bufferSectorsFileName').textContent = element.dataset.fileName;
     document.getElementById('bufferSectorsDisplay').classList.add('show');
-    
+
     updateSubmitButton();
 }
 
@@ -822,11 +825,37 @@ function selectNdreFile(element) {
         item.classList.remove('selected');
     });
     element.classList.add('selected');
-    
+
     document.getElementById('ndreFileId').value = element.dataset.fileId;
     document.getElementById('ndreFileName').textContent = element.dataset.fileName;
     document.getElementById('ndreDisplay').classList.add('show');
-    
+
+    updateSubmitButton();
+}
+
+function selectNirFile(element) {
+    document.querySelectorAll('#nirTree .tree-node-content').forEach(item => {
+        item.classList.remove('selected');
+    });
+    element.classList.add('selected');
+
+    document.getElementById('nirFileId').value = element.dataset.fileId;
+    document.getElementById('nirFileName').textContent = element.dataset.fileName;
+    document.getElementById('nirDisplay').classList.add('show');
+
+    updateSubmitButton();
+}
+
+function selectRededgeFile(element) {
+    document.querySelectorAll('#rededgeTree .tree-node-content').forEach(item => {
+        item.classList.remove('selected');
+    });
+    element.classList.add('selected');
+
+    document.getElementById('rededgeFileId').value = element.dataset.fileId;
+    document.getElementById('rededgeFileName').textContent = element.dataset.fileName;
+    document.getElementById('rededgeDisplay').classList.add('show');
+
     updateSubmitButton();
 }
 
@@ -835,11 +864,11 @@ function selectCsvFile(element) {
         item.classList.remove('selected');
     });
     element.classList.add('selected');
-    
+
     document.getElementById('csvFileId').value = element.dataset.fileId;
     document.getElementById('csvFileName').textContent = element.dataset.fileName;
     document.getElementById('csvDisplay').classList.add('show');
-    
+
     updateSubmitButton();
 }
 
@@ -848,11 +877,11 @@ function selectIndicatorBlockFile(element) {
         item.classList.remove('selected');
     });
     element.classList.add('selected');
-    
+
     document.getElementById('indicatorBlockFileId').value = element.dataset.fileId;
     document.getElementById('indicatorBlockFileName').textContent = element.dataset.fileName;
     document.getElementById('indicatorBlockDisplay').classList.add('show');
-    
+
     updateSubmitButton();
 }
 
@@ -861,7 +890,7 @@ function selectOutputFolder(element) {
         item.classList.remove('selected-output');
     });
     element.classList.add('selected-output');
-    
+
     document.getElementById('outputFolderId').value = element.dataset.folderId;
     document.getElementById('outputFolderName').textContent = element.dataset.folderName || 'Auto-create folder (same location as buffer file)';
 }
@@ -872,24 +901,36 @@ function selectOutputFolder(element) {
 
 function updateSubmitButton() {
     const bufferSectorsId = document.getElementById('bufferSectorsFileId').value;
-    const ndreId = document.getElementById('ndreFileId').value;
     const csvId = document.getElementById('csvFileId').value;
-    const siColumnName = document.getElementById('siColumnName').value.trim();
-    const fieldColumn = document.getElementById('fieldColumn').value.trim();
-    
-    let isValid = bufferSectorsId && csvId && siColumnName && fieldColumn;
-    
+    const siColumnName = (document.getElementById('siColumnName').value || 'SI').trim();
+
+    let isValid = bufferSectorsId && csvId && siColumnName;
+
+    // For STANDARD workflows, field column is required
+    if (currentTreatment === 'STANDARD') {
+        const fieldColumn = document.getElementById('fieldColumn').value.trim();
+        isValid = isValid && fieldColumn;
+    }
+
     // For UAV, NDRE is required
     if (currentImagery === 'UAV') {
+        const ndreId = document.getElementById('ndreFileId').value;
         isValid = isValid && ndreId;
     }
-    
+
+    // For SATELLITE, NIR and RedEdge are required
+    if (currentImagery === 'SATELLITE') {
+        const nirId = document.getElementById('nirFileId').value;
+        const rededgeId = document.getElementById('rededgeFileId').value;
+        isValid = isValid && nirId && rededgeId;
+    }
+
     // For SBF, indicator block is required
     if (currentTreatment === 'SBF') {
         const indicatorBlockId = document.getElementById('indicatorBlockFileId').value;
         isValid = isValid && indicatorBlockId;
     }
-    
+
     document.getElementById('runToolBtn').disabled = !isValid;
 }
 
@@ -901,14 +942,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // Build file trees
     buildFileTree('bufferSectorsTree', shpTreeData, 'shp', 'selectBufferSectorsFile');
     buildFileTree('ndreTree', shpTreeData, 'shp', 'selectNdreFile');
+    buildFileTree('nirTree', tifTreeData, 'tif', 'selectNirFile');
+    buildFileTree('rededgeTree', tifTreeData, 'tif', 'selectRededgeFile');
     buildFileTree('csvTree', csvTreeData, 'csv', 'selectCsvFile');
     buildFileTree('indicatorBlockTree', shpTreeData, 'shp', 'selectIndicatorBlockFile');
     buildOutputFolderTree();
-    
+
     // Add input listeners for column fields
     document.getElementById('siColumnName').addEventListener('input', updateSubmitButton);
     document.getElementById('fieldColumn').addEventListener('input', updateSubmitButton);
-    
+
     updateConditionalSections();
 });
 
@@ -918,22 +961,38 @@ document.addEventListener('DOMContentLoaded', function() {
 
 document.getElementById('siToolForm').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
+    const workflow = getWorkflowKey();
+
     const formData = {
-        treatment: document.getElementById('treatment').value,
-        imagery: document.getElementById('imagery').value,
-        si_column_name: document.getElementById('siColumnName').value.trim(),
-        field_column: document.getElementById('fieldColumn').value.trim(),
-        buffer_sectors_file_id: document.getElementById('bufferSectorsFileId').value,
-        ndre_file_id: document.getElementById('ndreFileId').value || null,
+        workflow: workflow,
+        buffer_shp_id: document.getElementById('bufferSectorsFileId').value,
         csv_file_id: document.getElementById('csvFileId').value,
-        indicator_block_file_id: document.getElementById('indicatorBlockFileId').value || null,
+        si_column_name: (document.getElementById('siColumnName').value || 'SI').trim(),
         output_folder_id: document.getElementById('outputFolderId').value || null
     };
-    
+
+    // Add workflow-specific fields
+    if (currentTreatment === 'STANDARD') {
+        formData.field_column = document.getElementById('fieldColumn').value.trim();
+    }
+
+    if (currentImagery === 'UAV') {
+        formData.ndre_shp_id = document.getElementById('ndreFileId').value || null;
+    }
+
+    if (currentImagery === 'SATELLITE') {
+        formData.nir_tif_id = document.getElementById('nirFileId').value || null;
+        formData.rededge_tif_id = document.getElementById('rededgeFileId').value || null;
+    }
+
+    if (currentTreatment === 'SBF') {
+        formData.indicator_shp_id = document.getElementById('indicatorBlockFileId').value || null;
+    }
+
     const processingModal = new bootstrap.Modal(document.getElementById('processingModal'));
     processingModal.show();
-    
+
     try {
         const response = await fetch('{% url "filemanager:run_si_tool" %}', {
             method: 'POST',
@@ -943,36 +1002,36 @@ document.getElementById('siToolForm').addEventListener('submit', async function(
             },
             body: JSON.stringify(formData)
         });
-        
+
         const data = await response.json();
-        
+
         if (!data.success) {
             throw new Error(data.error || 'Failed to start SI Tool');
         }
-        
+
         const taskId = data.task_id;
         document.getElementById('processingStatus').textContent = 'Calculating SI values...';
-        document.getElementById('processingMessage').textContent = 'Processing intersection and calculating stress index.';
-        
+        document.getElementById('processingMessage').textContent = `Processing ${workflow.replace('_', ' + ').toUpperCase()} workflow.`;
+
         let pollCount = 0;
         const maxPolls = 120;
-        
+
         const pollStatus = async () => {
             pollCount++;
-            
+
             if (pollCount > maxPolls) {
                 processingModal.hide();
                 alert('Processing timed out. Please check the dashboard for results.');
                 return;
             }
-            
+
             try {
                 const statusResponse = await fetch(`/api/si-tool/status/${taskId}/`);
                 const statusData = await statusResponse.json();
-                
+
                 if (statusData.status === 'SUCCESS') {
                     processingModal.hide();
-                    
+
                     if (statusData.result && statusData.result.success) {
                         showResults(statusData.result);
                     } else {
@@ -989,9 +1048,9 @@ document.getElementById('siToolForm').addEventListener('submit', async function(
                 setTimeout(pollStatus, 2000);
             }
         };
-        
+
         setTimeout(pollStatus, 1500);
-        
+
     } catch (error) {
         processingModal.hide();
         alert('Error: ' + error.message);
@@ -1000,19 +1059,20 @@ document.getElementById('siToolForm').addEventListener('submit', async function(
 
 function showResults(result) {
     document.getElementById('resultsMessage').textContent = result.message || 'SI calculation completed successfully.';
-    
+
     const outputFiles = result.output_files || {};
+    const createdFiles = result.created_files || [];
     const filesList = document.getElementById('outputFilesList');
     filesList.innerHTML = '';
-    
+
     const fileTypes = {
-        'updated_csv': { icon: 'fa-file-csv', label: 'Updated CSV', color: 'info' }
+        'updated_csv': { icon: 'fa-file-csv', label: 'Updated CSV with SI', color: 'info' }
     };
-    
+
     for (const [type, path] of Object.entries(outputFiles)) {
         const info = fileTypes[type] || { icon: 'fa-file', label: type, color: 'secondary' };
         const fileName = typeof path === 'string' ? path.split('/').pop() : path;
-        
+
         const li = document.createElement('li');
         li.className = 'list-group-item d-flex align-items-center';
         li.innerHTML = `
@@ -1024,7 +1084,7 @@ function showResults(result) {
         `;
         filesList.appendChild(li);
     }
-    
+
     const resultsModal = new bootstrap.Modal(document.getElementById('resultsModal'));
     resultsModal.show();
 }

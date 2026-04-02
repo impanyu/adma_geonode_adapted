@@ -65,6 +65,11 @@ urlpatterns = [
     # Yield Summary Tool endpoints
     path('api/yield-summary-tool/run/', views.run_yield_summary_tool, name='run_yield_summary_tool'),
     path('api/yield-summary-tool/status/<str:task_id>/', views.check_yield_summary_tool_status, name='check_yield_summary_tool_status'),
+
+    # Valid Yield Extractor Tool
+    path('tools/valid-yield-extractor/', views.ValidYieldExtractorToolView.as_view(), name='valid_yield_extractor_tool'),
+    path('api/valid-yield-extractor/run/', views.run_valid_yield_extractor, name='run_valid_yield_extractor'),
+    path('api/valid-yield-extractor/status/<str:task_id>/', views.check_valid_yield_extractor_status, name='check_valid_yield_extractor_status'),
     
     # File management endpoints
     path('api/file/rename/', views.rename_file, name='rename_file'),
