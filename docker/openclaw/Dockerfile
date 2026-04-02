@@ -40,12 +40,12 @@ RUN rm -f /usr/lib/python3.*/EXTERNALLY-MANAGED && \
 COPY --from=build /opt/openclaw /opt/openclaw
 WORKDIR /opt/openclaw
 
-# Copy ADMA skill into the skills directory
-COPY adma_geonode_project/docker/openclaw/skills/adma/ /opt/openclaw/skills/adma/
-
-# Copy config template and entrypoint
-COPY adma_geonode_project/docker/openclaw/openclaw.json /opt/openclaw/openclaw.json.template
-COPY adma_geonode_project/docker/openclaw/entrypoint.sh /opt/openclaw/entrypoint.sh
+# Copy ADMA skill, config, and entrypoint
+# ADMA_DIR allows building from repos with different directory names
+ARG ADMA_DIR=adma_geonode_project
+COPY ${ADMA_DIR}/docker/openclaw/skills/adma/ /opt/openclaw/skills/adma/
+COPY ${ADMA_DIR}/docker/openclaw/openclaw.json /opt/openclaw/openclaw.json.template
+COPY ${ADMA_DIR}/docker/openclaw/entrypoint.sh /opt/openclaw/entrypoint.sh
 RUN chmod +x /opt/openclaw/entrypoint.sh
 
 # Create workspace directory (will be mounted per-user)
