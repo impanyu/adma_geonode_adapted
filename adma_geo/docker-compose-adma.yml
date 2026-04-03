@@ -208,7 +208,7 @@ services:
       - "8080:8080"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/geoserver/web/wicket/resource/org.geoserver.web.GeoServerBasePage/geoserver-logo.png || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/geoserver/index.html || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
