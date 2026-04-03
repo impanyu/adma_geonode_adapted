@@ -44,7 +44,7 @@ services:
       - adma_geo_media:/app/media
       - adma_geo_static:/app/staticfiles
       - adma_agent_workspaces:/opt/adma/agent_workspaces
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
     ports:
       - "8001:8000"
     environment:
@@ -97,7 +97,7 @@ services:
       - .:/app
       - adma_geo_media:/app/media
       - adma_agent_workspaces:/opt/adma/agent_workspaces
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
     environment:
       DEBUG: "True"
       SECRET_KEY: "django-secret-key-for-development"
