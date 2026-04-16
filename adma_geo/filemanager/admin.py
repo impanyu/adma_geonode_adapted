@@ -91,3 +91,48 @@ class AgentMessageAdmin(admin.ModelAdmin):
     def short_content(self, obj):
         return obj.content[:80] + '...' if len(obj.content) > 80 else obj.content
     short_content.short_description = 'Content'
+
+
+from .johndeere_webhook_tasks import process_johndeere_event_task
+from .models import JohnDeereSubscription, JohnDeereWebhookEvent
+
+
+@admin.register(JohnDeereSubscription)
+class JohnDeereSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ('jd_subscription_id', 'org_id', 'is_active',
+                    'client_endpoint', 'created_at')
+    list_filter = ('is_active', 'org_id')
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    search_fields = ('jd_subscription_id', 'org_id')
+
+
+@admin.register(JohnDeereWebhookEvent)
+class JohnDeereWebhookEventAdmin(admin.ModelAdmin):
+    list_display = ('jd_event_id', 'event_type_id', 'org_id',
+                    'status', 'received_at', 'processing_completed_at')
+    list_filter = ('status', 'event_type_id', 'org_id')
+    search_fields = ('jd_event_id', 'target_resource_uri')
+    readonly_fields = (
+        'id', 'jd_event_id', 'event_type_id', 'org_id',
+        'target_resource_uri', 'payload', 'received_at',
+        'processing_started_at', 'processing_completed_at',
+        'related_folder', 'related_file',
+    )
+    ordering = ('-received_at',)
+    actions = ['reprocess_event']
+
+    @admin.action(description='Re-enqueue selected events for processing')
+    def reprocess_event(self, request, queryset):
+        count = 0
+        for evt in queryset:
+            evt.status = JohnDeereWebhookEvent.STATUS_PENDING
+            evt.error_message = None
+            evt.processing_started_at = None
+            evt.processing_completed_at = None
+            evt.save(update_fields=[
+                'status', 'error_message',
+                'processing_started_at', 'processing_completed_at',
+            ])
+            process_johndeere_event_task.delay(str(evt.id))
+            count += 1
+        self.message_user(request, f"Re-enqueued {count} event(s).")
