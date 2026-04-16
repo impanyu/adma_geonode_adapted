@@ -69,6 +69,13 @@ def _check_basic_auth(request):
 
 
 def _parse_event(request):
+    content_length_header = request.META.get('CONTENT_LENGTH') or '0'
+    try:
+        content_length = int(content_length_header)
+    except (TypeError, ValueError):
+        content_length = 0
+    if content_length > MAX_BODY_BYTES:
+        raise WebhookValidationError("payload too large", status_code=413)
     if len(request.body) > MAX_BODY_BYTES:
         raise WebhookValidationError("payload too large", status_code=413)
 
@@ -96,7 +103,10 @@ def johndeere_webhook_receiver(request):
     except WebhookValidationError as err:
         # Auth/format failures — do not retry. Do not log credentials.
         logger.info("JD webhook rejected: %s (status=%s)", err, err.status_code)
-        return JsonResponse({"error": str(err)}, status=err.status_code)
+        response = JsonResponse({"error": str(err)}, status=err.status_code)
+        if err.status_code == 401:
+            response['WWW-Authenticate'] = 'Basic realm="JD Webhook"'
+        return response
 
     jd_event_id = payload['eventId']
     event_type_id = payload.get('eventTypeId', '') or ''

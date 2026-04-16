@@ -2,7 +2,7 @@ import base64
 import json
 from unittest.mock import patch
 
-from django.test import Client, TestCase, override_settings
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from filemanager.models import JohnDeereWebhookEvent
@@ -77,6 +77,7 @@ class TestWebhookReceiver(TestCase):
             HTTP_AUTHORIZATION=basic_auth_header('jd_user', 'jd_pass'),
         )
         self.assertEqual(resp.status_code, 400)
+        self.assertEqual(JohnDeereWebhookEvent.objects.count(), 0)
 
     def test_oversized_body_returns_413(self):
         big = dict(self.valid_payload)
@@ -125,6 +126,23 @@ class TestWebhookReceiver(TestCase):
         existing = JohnDeereWebhookEvent.objects.get()
         self.assertEqual(existing.status, 'skipped_duplicate')
         mock_delay.assert_not_called()
+
+    @patch(
+        'filemanager.johndeere_webhook.process_johndeere_event_task.delay',
+        side_effect=RuntimeError("broker unavailable"),
+    )
+    def test_celery_dispatch_failure_returns_500_and_leaves_row(self, mock_delay):
+        resp = self.client.post(
+            self.url,
+            data=json.dumps(self.valid_payload),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=basic_auth_header('jd_user', 'jd_pass'),
+        )
+        self.assertEqual(resp.status_code, 500)
+        # The row was created before the dispatch failed; a JD retry of the same
+        # event will hit the duplicate path and mark it skipped_duplicate.
+        self.assertEqual(JohnDeereWebhookEvent.objects.count(), 1)
+        self.assertEqual(JohnDeereWebhookEvent.objects.get().status, 'pending')
 
     def test_missing_settings_returns_500(self):
         with self.settings(JD_WEBHOOK_USERNAME=None, JD_WEBHOOK_PASSWORD=None):
