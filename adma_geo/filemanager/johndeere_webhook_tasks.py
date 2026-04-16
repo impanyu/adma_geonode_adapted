@@ -232,8 +232,98 @@ def _write_boundary_shapefile(boundary_folder: Folder, boundary: dict) -> list:
 
 
 def handle_field_operation_event(event: JohnDeereWebhookEvent) -> None:
-    """Implemented in Task 8."""
-    raise NotImplementedError("handle_field_operation_event implemented in Task 8")
+    """Upsert a folder for the field operation, and a JSON record file."""
+    import json
+    from django.core.files.base import ContentFile
+
+    uri = event.target_resource_uri or ''
+    field_id = _parse_field_id_from_uri(uri)
+    operation_id = _parse_operation_id_from_uri(uri)
+    if not operation_id:
+        logger.warning("JD event %s: could not parse operation id from URI %r",
+                       event.jd_event_id, uri)
+        return
+
+    try:
+        field_folder = Folder.objects.get(
+            third_party_source='johndeere',
+            third_party_id=field_id,
+        )
+    except Folder.DoesNotExist:
+        logger.info(
+            "JD event %s: field %s has no local folder; skipping operation update",
+            event.jd_event_id, field_id,
+        )
+        return
+
+    client = _build_jd_client()
+    data = client.get_resource_by_link(uri)
+    if data is None:
+        logger.info(
+            "JD event %s: operation %s returned no data; skipping",
+            event.jd_event_id, operation_id,
+        )
+        return
+
+    name = data.get('name') or operation_id
+
+    op_folder, _ = Folder.objects.update_or_create(
+        third_party_source='johndeere',
+        third_party_id=operation_id,
+        defaults={
+            'name': name,
+            'parent': field_folder,
+            'owner': field_folder.owner,
+            'is_public': field_folder.is_public,
+            'is_third_party': True,
+            'is_archived': False,
+        },
+    )
+
+    blob = json.dumps(data, indent=2).encode('utf-8')
+    existing = File.objects.filter(
+        folder=op_folder, name='fieldOperation.json'
+    ).first()
+    if existing:
+        existing.file.save('fieldOperation.json', ContentFile(blob), save=False)
+        existing.file_size = len(blob)
+        existing.is_archived = False
+        existing.save()
+        record = existing
+    else:
+        record = File(
+            name='fieldOperation.json',
+            folder=op_folder,
+            owner=op_folder.owner,
+            file_size=len(blob),
+            mime_type='application/json',
+            is_public=op_folder.is_public,
+            is_third_party=True,
+            third_party_source='johndeere',
+            third_party_id=operation_id,
+        )
+        record.file.save('fieldOperation.json', ContentFile(blob), save=False)
+        record.save()
+
+    event.related_folder = op_folder
+    event.related_file = record
+    event.save(update_fields=['related_folder', 'related_file'])
+
+
+def _parse_operation_id_from_uri(uri: str) -> str:
+    """
+    Given a URI like
+        https://.../fields/{fieldId}/fieldOperations/{opId}
+    return ``{opId}``. Returns '' if missing.
+    """
+    if not uri:
+        return ''
+    marker = '/fieldOperations/'
+    idx = uri.find(marker)
+    if idx < 0:
+        return ''
+    tail = uri[idx + len(marker):]
+    return tail.split('/', 1)[0]
 
 
 # Maps JD event-type strings to the *name* of the handler in this module.
