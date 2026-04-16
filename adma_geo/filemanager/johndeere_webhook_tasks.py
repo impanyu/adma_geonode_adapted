@@ -59,7 +59,7 @@ def _parse_field_id_from_uri(uri: str) -> str:
     if idx < 0:
         return ''
     tail = uri[idx + len(marker):]
-    return tail.split('/', 1)[0]
+    return tail.split('/', 1)[0].split('?', 1)[0]
 
 
 def _archive_folder_recursive(folder: Folder) -> None:
@@ -323,7 +323,7 @@ def _parse_operation_id_from_uri(uri: str) -> str:
     if idx < 0:
         return ''
     tail = uri[idx + len(marker):]
-    return tail.split('/', 1)[0]
+    return tail.split('/', 1)[0].split('?', 1)[0]
 
 
 # Maps JD event-type strings to the *name* of the handler in this module.

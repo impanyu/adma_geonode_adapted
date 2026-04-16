@@ -94,6 +94,31 @@ class TestHandleFieldEvent(FieldHandlerTestBase):
             Folder.objects.filter(third_party_id='F_GONE').exists()
         )
 
+    @patch('filemanager.johndeere_webhook_tasks._build_jd_client')
+    def test_uri_with_query_string_parses_field_id_correctly(self, mock_client_factory):
+        """Regression: JD URIs may include ?embed= query params."""
+        mock_client_factory.return_value.get_resource_by_link.return_value = {
+            'id': 'F1', 'name': 'With Query',
+        }
+        evt = JohnDeereWebhookEvent.objects.create(
+            jd_event_id='evt-qstring',
+            event_type_id='fieldUpdated',
+            org_id='4193081',
+            target_resource_uri=(
+                'https://sandboxapi.deere.com/platform/organizations/'
+                '4193081/fields/F1?embed=boundaries'
+            ),
+            payload={'eventId': 'evt-qstring'},
+        )
+        handle_field_event(evt)
+        # If query-string stripping is broken, the field_id would be
+        # "F1?embed=boundaries" and no folder would be upserted.
+        self.assertTrue(
+            Folder.objects.filter(
+                third_party_source='johndeere', third_party_id='F1'
+            ).exists()
+        )
+
 
 class TestHandleFieldDeletion(FieldHandlerTestBase):
     def test_soft_deletes_folder_and_all_descendants(self):

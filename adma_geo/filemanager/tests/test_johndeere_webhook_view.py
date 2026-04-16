@@ -154,3 +154,15 @@ class TestWebhookReceiver(TestCase):
             )
             # Without configured credentials, the endpoint is unsafe to accept traffic.
             self.assertEqual(resp.status_code, 500)
+
+    @override_settings(DEBUG=False)
+    def test_http_in_production_returns_403(self):
+        # Django test client's default wsgi_request has scheme='http'; when
+        # DEBUG=False, the view should reject before even looking at auth.
+        resp = self.client.post(
+            self.url,
+            data=json.dumps(self.valid_payload),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=basic_auth_header('jd_user', 'jd_pass'),
+        )
+        self.assertEqual(resp.status_code, 403)

@@ -979,6 +979,7 @@ def api_search(request):
         files = File.objects.filter(
             Q(owner=request.user) | Q(is_public=True),
             name__icontains=query,
+            is_archived=False,
         )[:20]
         results['files'] = FileDetailSerializer(files, many=True).data
 
@@ -986,6 +987,7 @@ def api_search(request):
         folders = Folder.objects.filter(
             Q(owner=request.user) | Q(is_public=True),
             name__icontains=query,
+            is_archived=False,
         )[:20]
         results['folders'] = FolderDetailSerializer(folders, many=True).data
 

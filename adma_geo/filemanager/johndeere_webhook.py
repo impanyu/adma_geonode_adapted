@@ -97,6 +97,10 @@ def _parse_event(request):
 @csrf_exempt
 @require_POST
 def johndeere_webhook_receiver(request):
+    if not request.is_secure() and not settings.DEBUG:
+        logger.warning("JD webhook rejected: non-HTTPS in production")
+        return JsonResponse({"error": "https required"}, status=403)
+
     try:
         _check_basic_auth(request)
         payload = _parse_event(request)

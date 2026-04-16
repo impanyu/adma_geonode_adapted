@@ -102,3 +102,26 @@ class TestHandleFieldOperationEvent(TestCase):
         self.assertFalse(
             Folder.objects.filter(third_party_id='OP1').exists()
         )
+
+    @patch('filemanager.johndeere_webhook_tasks._build_jd_client')
+    def test_operation_uri_with_query_string_parses_correctly(self, mock_factory):
+        mock_factory.return_value.get_resource_by_link.return_value = {
+            'id': 'OP_Q', 'name': 'Op with query',
+        }
+        uri = (
+            'https://sandboxapi.deere.com/platform/organizations/4193081'
+            '/fields/F1/fieldOperations/OP_Q?embed=stuff'
+        )
+        evt = JohnDeereWebhookEvent.objects.create(
+            jd_event_id='evt-op-qstring',
+            event_type_id='fieldOperationUpdated',
+            org_id='4193081',
+            target_resource_uri=uri,
+            payload={'eventId': 'evt-op-qstring'},
+        )
+        handle_field_operation_event(evt)
+        self.assertTrue(
+            Folder.objects.filter(
+                third_party_source='johndeere', third_party_id='OP_Q'
+            ).exists()
+        )
