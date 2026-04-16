@@ -132,8 +132,103 @@ def handle_field_deletion(event: JohnDeereWebhookEvent) -> None:
 
 
 def handle_boundary_event(event: JohnDeereWebhookEvent) -> None:
-    """Implemented in Task 7."""
-    raise NotImplementedError("handle_boundary_event implemented in Task 7")
+    """Regenerate shapefile components for the event's field."""
+    field_id = _parse_field_id_from_uri(event.target_resource_uri or '')
+    if not field_id:
+        logger.warning("JD event %s: could not parse field id from URI %r",
+                       event.jd_event_id, event.target_resource_uri)
+        return
+
+    try:
+        field_folder = Folder.objects.get(
+            third_party_source='johndeere',
+            third_party_id=field_id,
+        )
+    except Folder.DoesNotExist:
+        logger.info(
+            "JD event %s: field %s has no local folder; skipping boundary update",
+            event.jd_event_id, field_id,
+        )
+        return
+
+    boundary_folder, _ = Folder.objects.get_or_create(
+        name='boundary',
+        parent=field_folder,
+        owner=field_folder.owner,
+        defaults={
+            'is_third_party': True,
+            'third_party_source': 'johndeere',
+            'is_public': field_folder.is_public,
+        },
+    )
+
+    client = _build_jd_client()
+    boundaries = client.get_field_boundaries(event.org_id, field_id)
+
+    fresh_file_names: set = set()
+    for boundary in boundaries:
+        fresh_file_names.update(
+            _write_boundary_shapefile(boundary_folder, boundary)
+        )
+
+    # Archive any pre-existing boundary files not in the fresh response.
+    File.objects.filter(folder=boundary_folder).exclude(
+        name__in=fresh_file_names
+    ).update(is_archived=True)
+
+    event.related_folder = boundary_folder
+    event.save(update_fields=['related_folder'])
+    logger.info(
+        "JD event %s: regenerated %d boundary(ies) for field %s",
+        event.jd_event_id, len(boundaries), field_id,
+    )
+
+
+def _write_boundary_shapefile(boundary_folder: Folder, boundary: dict) -> list:
+    """
+    Convert one JD boundary to a shapefile and upsert each component File.
+
+    Returns the list of component filenames written (e.g. ``['North.shp', 'North.shx', ...]``).
+    """
+    from django.core.files.base import ContentFile
+
+    geojson = JohnDeereClient.boundary_to_geojson(boundary)
+    if not geojson:
+        return []
+    name = (boundary.get('name') or boundary.get('id') or 'boundary').strip().replace(' ', '_')
+    components = JohnDeereClient.geojson_to_shapefile_components(geojson, name=name)
+
+    written: list = []
+    for filename, blob in components.items():
+        existing = File.objects.filter(
+            name=filename, folder=boundary_folder
+        ).first()
+        if existing:
+            existing.file.save(filename, ContentFile(blob), save=False)
+            existing.file_size = len(blob)
+            existing.is_archived = False
+            existing.is_spatial = filename.lower().endswith('.shp')
+            existing.is_third_party = True
+            existing.third_party_source = 'johndeere'
+            existing.third_party_id = boundary.get('id') or ''
+            existing.save()
+        else:
+            new_file = File(
+                name=filename,
+                folder=boundary_folder,
+                owner=boundary_folder.owner,
+                file_size=len(blob),
+                is_public=boundary_folder.is_public,
+                is_spatial=filename.lower().endswith('.shp'),
+                is_third_party=True,
+                third_party_source='johndeere',
+                third_party_id=boundary.get('id') or '',
+            )
+            new_file.file.save(filename, ContentFile(blob), save=False)
+            new_file.save()
+        written.append(filename)
+
+    return written
 
 
 def handle_field_operation_event(event: JohnDeereWebhookEvent) -> None:
