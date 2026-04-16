@@ -340,6 +340,91 @@ class JohnDeereClient:
         
         return response.json()
     
+    def create_subscription(
+        self,
+        client_endpoint: str,
+        username: str,
+        password: str,
+        event_type_ids: List[str],
+        org_id: str,
+    ) -> Dict[str, Any]:
+        """
+        POST /eventSubscriptions — create a new webhook subscription.
+
+        Returns the parsed JSON body (the new subscription, including ``id``).
+        """
+        body = {
+            'clientEndpoint': {
+                'uri': client_endpoint,
+                'username': username,
+                'password': password,
+            },
+            'eventTypeIds': list(event_type_ids),
+            'scopes': [
+                {'objectType': 'organization', 'objectId': str(org_id)},
+            ],
+        }
+        response = self._make_request('POST', '/eventSubscriptions', json=body)
+        if response.status_code not in (200, 201):
+            raise Exception(
+                f"Failed to create subscription: {response.status_code} - {response.text}"
+            )
+        return response.json()
+
+    def list_subscriptions(self) -> List[Dict[str, Any]]:
+        """GET /eventSubscriptions with pagination handling."""
+        endpoint = '/eventSubscriptions'
+        all_subs: List[Dict[str, Any]] = []
+        while endpoint:
+            response = self._make_request('GET', endpoint)
+            if response.status_code != 200:
+                logger.error(
+                    "Failed to list subscriptions: %s - %s",
+                    response.status_code, response.text,
+                )
+                break
+            data = response.json()
+            all_subs.extend(data.get('values', []))
+            next_uri = None
+            for link in data.get('links', []):
+                if link.get('rel') == 'nextPage':
+                    next_uri = link.get('uri')
+                    break
+            if next_uri:
+                endpoint = next_uri.replace(self.API_BASE_URL, '')
+            else:
+                endpoint = None
+        return all_subs
+
+    def delete_subscription(self, subscription_id: str) -> bool:
+        """DELETE /eventSubscriptions/{id}. Returns True on 204 or 404, else False."""
+        response = self._make_request('DELETE', f'/eventSubscriptions/{subscription_id}')
+        if response.status_code in (204, 200, 404):
+            return True
+        logger.error(
+            "Failed to delete subscription %s: %s - %s",
+            subscription_id, response.status_code, response.text,
+        )
+        return False
+
+    def get_resource_by_link(self, uri: str) -> Optional[Dict[str, Any]]:
+        """
+        Follow an absolute URI returned in an event's ``targetResource`` field
+        and return the parsed JSON. Returns None on non-200.
+        """
+        if uri.startswith(self.API_BASE_URL):
+            endpoint = uri[len(self.API_BASE_URL):]
+        else:
+            endpoint = uri
+        response = self._make_request('GET', endpoint)
+        if response.status_code != 200:
+            logger.error(
+                "Failed to fetch resource %s: %s - %s",
+                uri, response.status_code, response.text,
+            )
+            return None
+        return response.json()
+
     @staticmethod
     def boundary_to_geojson(boundary: Dict[str, Any]) -> Dict[str, Any]:
         """
