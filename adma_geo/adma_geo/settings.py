@@ -169,6 +169,12 @@ JD_CLIENT_SECRET = os.environ.get('JD_CLIENT_SECRET')
 JD_REFRESH_TOKEN = os.environ.get('JD_REFRESH_TOKEN')
 JD_ORG_ID = os.environ.get('JD_ORG_ID', '4193081')  # Default organization ID
 
+# John Deere Webhook (Data Subscription Service)
+# The URL John Deere will POST events to, and the Basic Auth creds JD will use.
+JD_WEBHOOK_CALLBACK_URL = os.environ.get('JD_WEBHOOK_CALLBACK_URL')
+JD_WEBHOOK_USERNAME = os.environ.get('JD_WEBHOOK_USERNAME')
+JD_WEBHOOK_PASSWORD = os.environ.get('JD_WEBHOOK_PASSWORD')
+
 # Agent Configuration
 AGENT_IMAGE = os.environ.get('AGENT_IMAGE', 'adma-openclaw-agent:latest')
 AGENT_NETWORK = os.environ.get('AGENT_NETWORK', 'adma_network')
