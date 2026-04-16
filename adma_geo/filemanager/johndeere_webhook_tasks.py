@@ -20,21 +20,115 @@ from typing import Callable, Dict
 
 import requests
 from celery import shared_task
+from django.conf import settings
 from django.utils import timezone
 
-from .models import JohnDeereWebhookEvent
+from .johndeere_client import JohnDeereClient
+from .models import File, Folder, JohnDeereWebhookEvent
 
 logger = logging.getLogger(__name__)
 
 
+def _build_jd_client() -> JohnDeereClient:
+    """Factory for a configured JohnDeereClient. Kept as a function so tests
+    can patch it with one mock."""
+    return JohnDeereClient(
+        client_id=settings.JD_CLIENT_ID,
+        client_secret=settings.JD_CLIENT_SECRET,
+        refresh_token=settings.JD_REFRESH_TOKEN,
+    )
+
+
+def _get_jd_root_folder() -> Folder:
+    return Folder.objects.get(
+        third_party_source='johndeere',
+        third_party_id='johndeere_root',
+    )
+
+
+def _parse_field_id_from_uri(uri: str) -> str:
+    """
+    Given a URI like
+        https://.../organizations/{orgId}/fields/{fieldId}[...optional suffix]
+    return ``{fieldId}``. Returns '' if the URI doesn't match that shape.
+    """
+    if not uri:
+        return ''
+    marker = '/fields/'
+    idx = uri.find(marker)
+    if idx < 0:
+        return ''
+    tail = uri[idx + len(marker):]
+    return tail.split('/', 1)[0]
+
+
+def _archive_folder_recursive(folder: Folder) -> None:
+    """Mark the folder, all descendant folders, and all descendant files as archived."""
+    folder.is_archived = True
+    folder.save(update_fields=['is_archived'])
+    File.objects.filter(folder=folder).update(is_archived=True)
+    for child in folder.subfolders.all():
+        _archive_folder_recursive(child)
+
+
 def handle_field_event(event: JohnDeereWebhookEvent) -> None:
-    """Implemented in Task 6."""
-    raise NotImplementedError("handle_field_event implemented in Task 6")
+    """Fetch the field from JD and upsert its local Folder."""
+    field_id = _parse_field_id_from_uri(event.target_resource_uri or '')
+    if not field_id:
+        logger.warning("JD event %s: could not parse field id from URI %r",
+                       event.jd_event_id, event.target_resource_uri)
+        return
+
+    client = _build_jd_client()
+    data = client.get_resource_by_link(event.target_resource_uri)
+    if data is None:
+        logger.info("JD event %s: field %s returned no data; skipping",
+                    event.jd_event_id, field_id)
+        return
+
+    root = _get_jd_root_folder()
+    name = data.get('name') or field_id
+
+    folder, created = Folder.objects.update_or_create(
+        third_party_source='johndeere',
+        third_party_id=field_id,
+        defaults={
+            'name': name,
+            'parent': root,
+            'owner': root.owner,
+            'is_public': root.is_public,
+            'is_third_party': True,
+            'is_archived': False,  # un-archive if previously archived
+        },
+    )
+
+    event.related_folder = folder
+    event.save(update_fields=['related_folder'])
+    logger.info("JD event %s: field %s %s", event.jd_event_id,
+                field_id, 'created' if created else 'updated')
 
 
 def handle_field_deletion(event: JohnDeereWebhookEvent) -> None:
-    """Implemented in Task 6."""
-    raise NotImplementedError("handle_field_deletion implemented in Task 6")
+    """Soft-delete the field's local Folder and all its descendants."""
+    field_id = _parse_field_id_from_uri(event.target_resource_uri or '')
+    if not field_id:
+        logger.warning("JD event %s: could not parse field id from URI %r",
+                       event.jd_event_id, event.target_resource_uri)
+        return
+
+    try:
+        folder = Folder.objects.get(
+            third_party_source='johndeere',
+            third_party_id=field_id,
+        )
+    except Folder.DoesNotExist:
+        logger.info("JD event %s: field %s has no local folder; no-op",
+                    event.jd_event_id, field_id)
+        return
+
+    _archive_folder_recursive(folder)
+    event.related_folder = folder
+    event.save(update_fields=['related_folder'])
 
 
 def handle_boundary_event(event: JohnDeereWebhookEvent) -> None:
