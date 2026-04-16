@@ -43,6 +43,11 @@ class Folder(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='folders')
     is_public = models.BooleanField(default=False, help_text="Public folders are visible to everyone")
     deletion_in_progress = models.BooleanField(default=False, help_text="True when folder is being deleted asynchronously")
+    is_archived = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Soft-delete flag. When True, folder is hidden from normal listings.",
+    )
     
     # Third-party integration
     is_third_party = models.BooleanField(default=False, help_text="True if this folder is from a third-party platform")
@@ -213,6 +218,11 @@ class File(models.Model):
     mime_type = models.CharField(max_length=100, blank=True)
     is_public = models.BooleanField(default=False, help_text="Public files are visible to everyone")
     deletion_in_progress = models.BooleanField(default=False, help_text="True when file is being deleted asynchronously")
+    is_archived = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Soft-delete flag. When True, file is hidden from normal listings.",
+    )
     
     # Third-party integration
     is_third_party = models.BooleanField(default=False, help_text="True if this file is from a third-party platform")
@@ -1115,3 +1125,73 @@ class AgentMessage(models.Model):
 
     def __str__(self):
         return f"{self.role}: {self.content[:50]}..."
+
+
+class JohnDeereSubscription(models.Model):
+    """
+    Tracks a John Deere Data Subscription Service subscription created by our app.
+
+    One row per active subscription. Remote id returned by JD at creation time
+    is stored in ``jd_subscription_id`` and is the key for remote CRUD.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    jd_subscription_id = models.CharField(max_length=128, unique=True)
+    org_id = models.CharField(max_length=64, db_index=True)
+    event_type_ids = models.JSONField(default=list)
+    client_endpoint = models.URLField(max_length=500)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"JD subscription {self.jd_subscription_id} (org={self.org_id})"
+
+
+class JohnDeereWebhookEvent(models.Model):
+    """Every JD webhook event we receive, for dedup + audit."""
+
+    STATUS_PENDING = 'pending'
+    STATUS_PROCESSING = 'processing'
+    STATUS_COMPLETED = 'completed'
+    STATUS_FAILED = 'failed'
+    STATUS_SKIPPED_DUPLICATE = 'skipped_duplicate'
+    STATUS_SKIPPED_UNKNOWN_TYPE = 'skipped_unknown_type'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_PROCESSING, 'Processing'),
+        (STATUS_COMPLETED, 'Completed'),
+        (STATUS_FAILED, 'Failed'),
+        (STATUS_SKIPPED_DUPLICATE, 'Skipped (duplicate)'),
+        (STATUS_SKIPPED_UNKNOWN_TYPE, 'Skipped (unknown type)'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    jd_event_id = models.CharField(max_length=128, unique=True)
+    event_type_id = models.CharField(max_length=64, db_index=True)
+    org_id = models.CharField(max_length=64, db_index=True)
+    target_resource_uri = models.URLField(max_length=1000, null=True, blank=True)
+    received_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    payload = models.JSONField()
+    status = models.CharField(
+        max_length=32, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True
+    )
+    processing_started_at = models.DateTimeField(null=True, blank=True)
+    processing_completed_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(null=True, blank=True)
+    related_folder = models.ForeignKey(
+        'Folder', null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
+    )
+    related_file = models.ForeignKey(
+        'File', null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
+    )
+
+    class Meta:
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f"{self.event_type_id} {self.jd_event_id} [{self.status}]"
