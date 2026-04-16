@@ -132,19 +132,42 @@ A comprehensive web-based platform for managing, visualizing, and analyzing agri
 
 ### John Deere Operations Center
 
-Syncs field data, boundaries, and operations from John Deere.
+Event-driven sync of field data, boundaries, and operations from John Deere via
+the Data Subscription Service webhook.
 
 **Setup:**
-1. Register application at [John Deere Developer Portal](https://developer.deere.com/)
-2. Configure OAuth2 credentials in `.env`
-3. Set organization ID in settings
+1. Register the application at [John Deere Developer Portal](https://developer.deere.com/).
+2. Configure OAuth2 credentials and organization ID in `.env`:
+   - `JD_CLIENT_ID`, `JD_CLIENT_SECRET`, `JD_REFRESH_TOKEN`, `JD_ORG_ID`
+3. Configure webhook receiver settings:
+   - `JD_WEBHOOK_CALLBACK_URL` — public HTTPS URL for your `/api/v1/webhooks/johndeere/` endpoint
+   - `JD_WEBHOOK_USERNAME`, `JD_WEBHOOK_PASSWORD` — random credentials JD will use to authenticate its POSTs to us
+4. Bootstrap the John Deere root folder:
+   ```
+   docker-compose exec django python manage.py setup_johndeere
+   ```
+5. Optional initial backfill (one-shot):
+   ```
+   docker-compose exec django python manage.py sync_johndeere --once
+   ```
+6. Create the JD subscription so events start flowing:
+   ```
+   docker-compose exec django python manage.py manage_johndeere_webhooks --create
+   ```
 
-**Sync Schedule:** Daily at 3:00 AM
+**Sync model:** event-driven. JD POSTs every field / boundary / field-operation
+change to our webhook; each event triggers a targeted refresh of that one
+resource. No daily poll.
 
 **Data Synced:**
 - Field metadata and boundaries (as shapefiles)
-- Field operations with boundaries
-- Organization hierarchy
+- Field operations (as JSON; can be extended to richer artifacts)
+- Soft-delete: JD archive/delete events mark local folders/files `is_archived=True`
+  (recoverable via Django admin).
+
+**Ops:**
+- List or delete subscriptions: `python manage.py manage_johndeere_webhooks --list` / `--delete <sub_id>`
+- Inspect events: Django admin → John Deere Webhook Events
 
 ### Realm5 Weather Stations
 

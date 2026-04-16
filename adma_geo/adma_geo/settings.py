@@ -148,10 +148,6 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'filemanager.tasks.sync_realm5_task',
         'schedule': crontab(hour=2, minute=0),  # Run at 2:00 AM daily
     },
-    'sync-johndeere-daily': {
-        'task': 'filemanager.tasks.sync_johndeere_task',
-        'schedule': crontab(hour=3, minute=0),  # Run at 3:00 AM daily
-    },
     'cleanup-idle-agents': {
         'task': 'filemanager.tasks.cleanup_idle_agents_task',
         'schedule': crontab(minute='*/5'),  # Every 5 minutes
