@@ -57,9 +57,9 @@ def get_robust_user_statistics(user):
         stale_files.update(deletion_in_progress=False)
         stale_folders.update(deletion_in_progress=False)
     
-    # Calculate accurate statistics based on what actually exists
-    active_files = File.objects.filter(owner=user, deletion_in_progress=False)
-    active_folders = Folder.objects.filter(owner=user, deletion_in_progress=False)
+    # Calculate accurate statistics based on what actually exists (exclude archived)
+    active_files = File.objects.filter(owner=user, deletion_in_progress=False, is_archived=False)
+    active_folders = Folder.objects.filter(owner=user, deletion_in_progress=False, is_archived=False)
     
     stats = {
         'total_files': active_files.count(),

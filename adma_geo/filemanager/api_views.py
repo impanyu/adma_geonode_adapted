@@ -400,10 +400,10 @@ def api_list_files(request):
                 )
             # List files in this folder (user's own files OR public files in public folder)
             if folder.owner == request.user:
-                queryset = File.objects.filter(folder_id=folder_id, owner=request.user)
+                queryset = File.objects.filter(folder_id=folder_id, owner=request.user, is_archived=False)
             else:
                 # For public folders owned by others, only show public files
-                queryset = File.objects.filter(folder_id=folder_id, is_public=True)
+                queryset = File.objects.filter(folder_id=folder_id, is_public=True, is_archived=False)
         except Folder.DoesNotExist:
             return Response(
                 {'error': 'Folder not found'},
@@ -413,10 +413,10 @@ def api_list_files(request):
         # No folder specified - list user's own files
         if include_public:
             # Include user's files AND all public files
-            queryset = File.objects.filter(Q(owner=request.user) | Q(is_public=True))
+            queryset = File.objects.filter(Q(owner=request.user) | Q(is_public=True), is_archived=False)
         else:
             # Only user's own files
-            queryset = File.objects.filter(owner=request.user)
+            queryset = File.objects.filter(owner=request.user, is_archived=False)
     
     # Apply additional filters
     is_public = request.query_params.get('is_public')
@@ -481,10 +481,10 @@ def api_list_folders(request):
                 )
             # List subfolders in this parent folder
             if parent_folder.owner == request.user:
-                queryset = Folder.objects.filter(parent_id=parent_id, owner=request.user)
+                queryset = Folder.objects.filter(parent_id=parent_id, owner=request.user, is_archived=False)
             else:
                 # For public folders owned by others, only show public subfolders
-                queryset = Folder.objects.filter(parent_id=parent_id, is_public=True)
+                queryset = Folder.objects.filter(parent_id=parent_id, is_public=True, is_archived=False)
         except Folder.DoesNotExist:
             return Response(
                 {'error': 'Parent folder not found'},
@@ -494,10 +494,10 @@ def api_list_folders(request):
         # No parent specified - list root folders
         if include_public:
             # Include user's folders AND all public folders
-            queryset = Folder.objects.filter(Q(owner=request.user) | Q(is_public=True)).filter(parent__isnull=True)
+            queryset = Folder.objects.filter(Q(owner=request.user) | Q(is_public=True), is_archived=False).filter(parent__isnull=True)
         else:
             # Only user's own root folders
-            queryset = Folder.objects.filter(owner=request.user, parent__isnull=True)
+            queryset = Folder.objects.filter(owner=request.user, parent__isnull=True, is_archived=False)
     
     # Apply additional filters
     is_public = request.query_params.get('is_public')

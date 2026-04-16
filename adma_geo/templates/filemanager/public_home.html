@@ -257,6 +257,7 @@
                             <tbody>
                                 <!-- Folders first -->
                                 {% for folder in third_party_folders %}
+                                {% if not folder.is_archived %}
                                 <tr>
                                     <td>
                                         <a href="{% url 'filemanager:public_folder_detail' folder.id %}" class="text-decoration-none d-flex align-items-center">
@@ -281,10 +282,12 @@
                                     <td><small>{{ folder.owner.username }}</small></td>
                                     <td><small>{{ folder.created_at|date:"M d, Y" }}</small></td>
                                 </tr>
+                                {% endif %}
                                 {% endfor %}
                                 
                                 <!-- Files second -->
                                 {% for file in third_party_files %}
+                                {% if not file.is_archived %}
                                 <tr>
                                     <td>
                                         <a href="{% url 'filemanager:public_file_detail' file.id %}" class="text-decoration-none d-flex align-items-center">
@@ -314,6 +317,7 @@
                                     <td><small>{{ file.owner.username }}</small></td>
                                     <td><small>{{ file.created_at|date:"M d, Y" }}</small></td>
                                 </tr>
+                                {% endif %}
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -325,6 +329,7 @@
                     <div class="row">
                         <!-- Folders first -->
                         {% for folder in third_party_folders %}
+                        {% if not folder.is_archived %}
                         <div class="col-md-4 col-sm-6 mb-3">
                             <a href="{% url 'filemanager:public_folder_detail' folder.id %}" class="text-decoration-none">
                                 <div class="folder-item">
@@ -348,10 +353,12 @@
                                 </div>
                             </a>
                         </div>
+                        {% endif %}
                         {% endfor %}
                         
                         <!-- Files second -->
                         {% for file in third_party_files %}
+                        {% if not file.is_archived %}
                         <div class="col-md-4 col-sm-6 mb-3">
                             <a href="{% url 'filemanager:public_file_detail' file.id %}" class="text-decoration-none">
                                 <div class="file-item">
@@ -375,6 +382,7 @@
                                 </div>
                             </a>
                         </div>
+                        {% endif %}
                         {% endfor %}
                     </div>
                 </div>
