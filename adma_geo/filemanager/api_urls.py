@@ -5,7 +5,7 @@ Token-based API URLs for file management.
 """
 
 from django.urls import path
-from . import api_views
+from . import api_views, johndeere_webhook
 
 app_name = 'api'
 
@@ -47,4 +47,11 @@ urlpatterns = [
 
     # Search
     path('search/', api_views.api_search, name='search'),
+
+    # John Deere webhook (Basic Auth, not token auth)
+    path(
+        'webhooks/johndeere/',
+        johndeere_webhook.johndeere_webhook_receiver,
+        name='johndeere_webhook',
+    ),
 ]
