@@ -135,13 +135,17 @@ AXES_LOCKOUT_PARAMETERS = [['username', 'ip_address']]  # lock per (user, IP) pa
 AXES_VERBOSE = True                         # log to standard Django logger
 AXES_HANDLER = 'axes.handlers.database.AxesDatabaseHandler'
 
-# These four *_CALLABLE settings must exist (even as None) — django-axes
-# 6.x's startup check uses getattr(settings, name) without a default and
-# crashes if any of them is missing. None = use the built-in default.
+# These *_CALLABLE settings must exist (even as None) — django-axes 6.x's
+# axes_conf_check uses getattr(settings, name) without a default and crashes
+# if any is missing. None = use the built-in default.
 AXES_CLIENT_IP_CALLABLE = None
+AXES_CLIENT_STR_CALLABLE = None
+AXES_CLIENT_USERNAME_CALLABLE = None
+AXES_CLIENT_USER_AGENT_CALLABLE = None
 AXES_USERNAME_CALLABLE = None
 AXES_WHITELIST_CALLABLE = None
 AXES_LOCKOUT_CALLABLE = None
+AXES_HTTP_RESPONSE_CODE = 403
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
