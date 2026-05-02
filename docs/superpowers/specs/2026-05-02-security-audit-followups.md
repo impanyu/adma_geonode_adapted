@@ -11,7 +11,7 @@ This document captures everything still on the security backlog so future sessio
 
 These are the four items the user approved for the immediate next pass.
 
-### 🔴 Critical 1 — Docker socket exposure
+### ✅ Critical 1 — Docker socket exposure
 
 **Where:** `adma_geo/docker-compose-adma.yml` lines 47, 100. Both `django` and `celery` services bind-mount `/run/user/1007/docker.sock` to `/var/run/docker.sock` inside the container.
 
@@ -19,11 +19,11 @@ These are the four items the user approved for the immediate next pass.
 
 **Plan:** Replace the direct socket mount with [Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy). Restrict the proxy to only the API surface the agent manager uses (containers, images:read, networks:read). The django and celery containers point at the proxy URL instead of the raw socket.
 
-**Status:** 🔧 In progress (this session).
+**Status:** ✅ Fixed in commit `025a2f7` — added `docker-socket-proxy` service, removed raw socket mounts from django/celery, added `DOCKER_HOST=tcp://docker-socket-proxy:2375` env var to both services in both `docker-compose-adma.yml` and `docker-compose.yml`.
 
 ---
 
-### 🟠 High 3 — Login brute-force protection
+### ✅ High 3 — Login brute-force protection
 
 **Where:** `adma_geo/adma_geo/settings.py` MIDDLEWARE list and `adma_geo/requirements.txt`. Django's built-in login view has no rate limit or lockout.
 
@@ -31,11 +31,11 @@ These are the four items the user approved for the immediate next pass.
 
 **Plan:** Add `django-axes` to requirements (it's the most mature option). Configure 5 failed attempts → 1 hour lockout per (username, IP) combo. Surface lockout events in admin.
 
-**Status:** 🔧 In progress (this session).
+**Status:** ✅ Fixed in commit `27b286d` — added `django-axes>=6.0.0,<7.0.0` to requirements.txt; configured INSTALLED_APPS, MIDDLEWARE (AxesMiddleware last), AUTHENTICATION_BACKENDS (AxesStandaloneBackend first), and AXES_* settings block. Operator must run `python manage.py migrate` on next deploy.
 
 ---
 
-### 🟠 High 4 — HSTS and SSL redirect
+### ✅ High 4 — HSTS and SSL redirect
 
 **Where:** `adma_geo/adma_geo/settings.py`. `SECURE_SSL_REDIRECT` and `SECURE_HSTS_*` were added as commented stubs in the previous round.
 
@@ -50,11 +50,11 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 ```
 
-**Status:** 🔧 In progress (this session).
+**Status:** ✅ Fixed in commit `01e5029` — replaced the commented-out stubs with live settings. `SECURE_PROXY_SSL_HEADER` was already set, so no infinite-redirect risk behind nginx.
 
 ---
 
-### 🟠 High 5 — Celery tasks don't enforce `requesting_user_id`
+### ✅ High 5 — Celery tasks don't enforce `requesting_user_id`
 
 **Where:** `adma_geo/filemanager/tasks.py` — every `run_*_tool_task` (seeding, si, shape-to-json, yield-summary, valid-yield-extractor) accepts a `file_id` and processes it without verifying it belongs to the calling user.
 
@@ -62,7 +62,7 @@ SECURE_HSTS_PRELOAD = True
 
 **Plan:** Add a `requesting_user_id` parameter to each `run_*_tool_task`. Inside the task, fetch the input File and verify `file.owner_id == requesting_user_id` (with a public-file allowance if appropriate). On mismatch: reject the task with a clear error and log a security event.
 
-**Status:** 🔧 In progress (this session).
+**Status:** ✅ Fixed in commit `c8fac51` — added `requesting_user_id=None` kwarg and ownership check (with public-file allowance) to all 5 tasks: `run_seeding_tool_task`, `run_shape_to_json_task`, `run_si_tool_task` (primary: buffer_shp_id), `run_yield_summary_tool_task` (primary: treatment_file_id), `run_valid_yield_extractor_task` (primary: plots_file_id). Direct view callers pass no `requesting_user_id` so the check is skipped — those callers already authenticate at the view layer.
 
 ---
 
