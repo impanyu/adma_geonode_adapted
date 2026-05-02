@@ -106,11 +106,18 @@ class Command(BaseCommand):
         elif dry_run and updated_count > 0:
             self.stdout.write(f"\n🔍 Dry run complete. Run without --dry-run to apply {updated_count} updates.")
 
+    def _geoserver_auth(self):
+        """Return GeoServer admin credentials from settings (never hardcoded)."""
+        return (
+            settings.GEOSERVER_ADMIN_USER,
+            settings.GEOSERVER_ADMIN_PASSWORD,
+        )
+
     def _verify_datastore_exists(self, workspace, datastore_type, datastore_name):
         """Verify that a datastore exists in GeoServer"""
         try:
             url = f"{settings.GEOSERVER_URL}/rest/workspaces/{workspace}/{datastore_type}/{datastore_name}"
-            response = requests.get(url, auth=('admin', 'geoserver'), timeout=10)
+            response = requests.get(url, auth=self._geoserver_auth(), timeout=10)
             return response.status_code == 200
         except Exception:
             return False
@@ -120,7 +127,7 @@ class Command(BaseCommand):
         try:
             # Get all datastores
             url = f"{settings.GEOSERVER_URL}/rest/workspaces/{workspace}/{datastore_type}"
-            response = requests.get(url, auth=('admin', 'geoserver'), 
+            response = requests.get(url, auth=self._geoserver_auth(),
                                   headers={'Accept': 'application/json'}, timeout=10)
             
             if response.status_code == 200:

@@ -566,7 +566,11 @@ class Map(models.Model):
                     url = f"{settings.GEOSERVER_URL}/rest/workspaces/{file_obj.geoserver_workspace}/datastores/{file_obj.geoserver_datastore_name}/featuretypes/{file_obj.geoserver_layer_name}"
                 
                 headers = {'Accept': 'application/json'} if file_extension not in ['tif', 'tiff', 'geotif', 'geotiff'] else {}
-                response = requests.get(url, auth=HTTPBasicAuth('admin', 'geoserver'), headers=headers, timeout=10)
+                gs_auth = HTTPBasicAuth(
+                    settings.GEOSERVER_ADMIN_USER,
+                    settings.GEOSERVER_ADMIN_PASSWORD,
+                )
+                response = requests.get(url, auth=gs_auth, headers=headers, timeout=10)
                 
                 if response.status_code == 200:
                     if file_extension in ['tif', 'tiff', 'geotif', 'geotiff']:
