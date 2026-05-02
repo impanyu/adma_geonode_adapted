@@ -2,7 +2,9 @@ import json
 import logging
 import magic
 import os
+import unicodedata
 from pathlib import Path
+from urllib.parse import unquote
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -19,6 +21,47 @@ from .tasks import process_gis_file_task
 from .upload_validation import validate_uploaded_file_mime
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_folder_name(name: str) -> str:
+    """
+    Return a safe folder name, or '' if the input is rejected.
+
+    Defends against path-traversal attempts that hide separators behind
+    URL-encoding (%2e%2e%2f), HTML-style decoding, or overlong/decomposed
+    UTF-8 (À®À®À¯ etc.). Also rejects control characters, NULL bytes,
+    pure-dot names, and obvious template/injection delimiters. The
+    returned value is the original (stripped) text — we only reject; we
+    don't transform — so user-intended unicode names are preserved.
+    """
+    if not name:
+        return ''
+
+    # Decode URL-encoding then NFKC-normalize. NFKC turns overlong UTF-8
+    # forms (e.g. À® → .) into canonical form so the substring tests below
+    # catch the trick.
+    decoded = unquote(name)
+    normalized = unicodedata.normalize('NFKC', decoded).strip()
+
+    if not normalized:
+        return ''
+    if len(normalized) > 200:
+        return ''
+    if '/' in normalized or '\\' in normalized:
+        return ''
+    if '..' in normalized:
+        return ''
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in normalized):
+        return ''
+    if set(normalized) <= {'.'}:
+        return ''
+    # Reject characters used in common template/expression injection so we
+    # don't accumulate Burp-collaborator garbage rows in the DB even if
+    # they're harmless at the filesystem layer.
+    if any(ch in normalized for ch in ('<', '>', '\x00')):
+        return ''
+
+    return name.strip()
 
 
 def _internal_error_response(exc, message='An internal error occurred. Please try again.', status=500):
@@ -1259,12 +1302,13 @@ def create_folder(request):
             if not folder_name:
                 return JsonResponse({'error': 'Folder name is required'}, status=400)
 
-            # Strip path separators and traversal sequences to prevent path traversal
-            # if this name ends up embedded in a filesystem path via get_full_path().
-            folder_name = folder_name.replace('/', '').replace('\\', '').replace('..', '')
-            folder_name = folder_name.strip()
-            if not folder_name:
+            # Validate folder name. Rejects URL-encoded / Unicode-normalized
+            # path traversal sequences (e.g. %2e%2e%2f, overlong UTF-8 like
+            # À®À®À¯), control characters, NULL bytes, and pure-dot names.
+            sanitized = sanitize_folder_name(folder_name)
+            if not sanitized:
                 return JsonResponse({'error': 'Folder name contains invalid characters'}, status=400)
+            folder_name = sanitized
             
             # Get parent folder if specified
             parent_folder = None
@@ -1803,8 +1847,10 @@ def upload_folders(request):
                 current_path = ""
                 
                 for folder_name in folder_path:
-                    # Sanitize each folder name component to prevent path traversal
-                    folder_name = folder_name.replace('\\', '').replace('..', '').strip()
+                    # Validate each folder name component. See
+                    # sanitize_folder_name() — rejects encoded path traversal,
+                    # control chars, etc. Skip components that don't pass.
+                    folder_name = sanitize_folder_name(folder_name)
                     if not folder_name:
                         continue
                     current_path = f"{current_path}/{folder_name}" if current_path else folder_name
