@@ -8,6 +8,8 @@ that combine multiple spatial datasets.
 """
 
 import json
+import logging
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -15,15 +17,15 @@ from django.views.generic import ListView, DetailView, CreateView
 from django.http import JsonResponse, HttpResponseForbidden
 from django.db import models
 from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.contrib import messages
 from django.db import transaction, IntegrityError
-from django.db import models
 from django.core.paginator import Paginator
 
 from .models import Map, MapLayer, File
 from .geoserver_layer_group_manager import LayerGroupManager
+
+logger = logging.getLogger(__name__)
 
 
 class MapsListView(LoginRequiredMixin, ListView):
@@ -238,10 +240,12 @@ def create_map_view(request):
             if 'unique constraint' in str(e).lower() and 'name' in str(e).lower():
                 messages.error(request, f'A map named "{map_name}" already exists. Please choose a different name.')
             else:
-                messages.error(request, f'Database error: {str(e)}')
+                logger.exception("Database error creating map for user %s", request.user.id)
+                messages.error(request, 'A database error occurred. Please try again.')
             return redirect('filemanager:create_map')
         except Exception as e:
-            messages.error(request, f'Error creating map: {str(e)}')
+            logger.exception("Error creating map for user %s", request.user.id)
+            messages.error(request, 'An error occurred creating the map. Please try again.')
             return redirect('filemanager:create_map')
 
 
@@ -283,7 +287,8 @@ def add_layer_to_map(request, map_id):
             return JsonResponse({'success': False, 'error': f'GeoServer error: {message}'})
             
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
 
 
 @login_required
@@ -307,7 +312,8 @@ def remove_layer_from_map(request, map_id, layer_id):
             return JsonResponse({'success': False, 'error': f'GeoServer error: {message}'})
             
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
 
 
 @login_required
@@ -340,7 +346,8 @@ def update_layer_order(request, map_id):
             return JsonResponse({'success': False, 'error': f'GeoServer error: {message}'})
             
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
 
 
 @login_required
@@ -386,7 +393,8 @@ def toggle_map_visibility(request, map_id):
         })
         
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
 
 
 @login_required
@@ -444,7 +452,8 @@ def get_available_layers(request, map_id):
         })
         
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
 
 
 @login_required
@@ -526,7 +535,8 @@ def add_layers_to_map(request, map_id):
             })
         
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
 
 
 @login_required
@@ -554,7 +564,8 @@ def update_layer_opacity(request, map_id, layer_id):
         })
         
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
 
 
 @login_required
@@ -579,7 +590,8 @@ def update_layer_visibility(request, map_id, layer_id):
         })
         
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
 
 
 @login_required
@@ -600,7 +612,8 @@ def delete_map(request, map_id):
         return JsonResponse({'success': True, 'message': f'Map "{map_name}" deleted successfully'})
         
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
 
 
 @login_required
@@ -633,6 +646,7 @@ def toggle_map_visibility(request, map_id):
             })
             
         except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
+            logger.exception('Map view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
     
     return JsonResponse({'success': False, 'error': 'Method not allowed'})

@@ -1114,7 +1114,8 @@ def api_agent_session_rename(request):
         cs = manager.rename_chat_session(request.user, cs_id, name)
         return JsonResponse({'ok': True, 'id': str(cs.id), 'name': cs.name})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=400)
+        logger.exception("Error renaming chat session %s for user %s", cs_id, request.user.id)
+        return JsonResponse({'error': 'Could not rename session'}, status=400)
 
 
 @login_required
@@ -1131,7 +1132,8 @@ def api_agent_session_delete(request):
         manager.delete_chat_session(request.user, cs_id)
         return JsonResponse({'ok': True})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=400)
+        logger.exception("Error deleting chat session %s for user %s", cs_id, request.user.id)
+        return JsonResponse({'error': 'Could not delete session'}, status=400)
 
 
 @login_required
