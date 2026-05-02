@@ -34,6 +34,7 @@ from .serializers import (
 import logging
 from .views import generate_unique_name, _internal_error_response
 from .tasks import process_gis_file_task
+from .upload_validation import validate_uploaded_file_mime
 
 logger = logging.getLogger(__name__)
 
@@ -136,10 +137,23 @@ def api_upload_files(request):
             )
     
     uploaded_files = []
-    
+    rejected_count = 0
+
     try:
         with transaction.atomic():
             for uploaded_file in files:
+                # Validate MIME type before saving
+                mime_ok, detected_mime = validate_uploaded_file_mime(uploaded_file)
+                if not mime_ok:
+                    logger.warning(
+                        "MIME validation rejected upload: user=%s filename=%r detected_mime=%s",
+                        request.user.id,
+                        uploaded_file.name,
+                        detected_mime,
+                    )
+                    rejected_count += 1
+                    continue
+
                 # Generate unique filename if duplicate exists
                 unique_filename = generate_unique_name(
                     uploaded_file.name,
@@ -147,7 +161,7 @@ def api_upload_files(request):
                     folder=folder,
                     is_folder=False
                 )
-                
+
                 # Create file object
                 file_obj = File.objects.create(
                     name=unique_filename,
@@ -156,11 +170,11 @@ def api_upload_files(request):
                     owner=request.user,
                     is_public=is_public
                 )
-                
+
                 # Trigger GIS processing for spatial files
                 if file_obj.is_spatial:
                     process_gis_file_task.delay(str(file_obj.id))
-                
+
                 uploaded_files.append({
                     'id': str(file_obj.id),
                     'name': file_obj.name,
@@ -171,13 +185,19 @@ def api_upload_files(request):
                     'url': f'/file/{file_obj.id}/',
                     'download_url': f'/api/v1/files/{file_obj.id}/download/',
                 })
-        
-        return Response({
+
+        response_data = {
             'success': True,
             'files': uploaded_files,
-            'message': f'Successfully uploaded {len(uploaded_files)} files'
-        }, status=status.HTTP_201_CREATED)
-        
+            'message': f'Successfully uploaded {len(uploaded_files)} files',
+        }
+        if rejected_count:
+            response_data['rejected_count'] = rejected_count
+            response_data['rejected_message'] = (
+                f'{rejected_count} file(s) rejected: unsupported file type'
+            )
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
     except Exception as e:
         return _drf_internal_error(e)
 
