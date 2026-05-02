@@ -204,8 +204,12 @@ AGENT_WORKSPACES_DIR = os.environ.get('AGENT_WORKSPACES_DIR', '/opt/adma/agent_w
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
 # File Upload Settings
-FILE_UPLOAD_MAX_MEMORY_SIZE = 500 * 1024 * 1024  # 500MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = 500 * 1024 * 1024  # 500MB
+# In-memory threshold is intentionally low — uploads above this size spool
+# to a temp file on disk instead of being held in the Python process's RAM.
+# This prevents a DoS where N concurrent large uploads exhaust container
+# memory. The hard upload-size cap lives in nginx (client_max_body_size).
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_NUMBER_FILES = 1000  # Allow up to 1000 files per upload for folder uploads
 
 # GeoServer Configuration
