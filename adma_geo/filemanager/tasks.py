@@ -380,10 +380,10 @@ def toggle_file_visibility_task(self, file_id, is_public, file_name):
 
 
 @shared_task(bind=True)
-def run_seeding_tool_task(self, file_id, output_dir_id=None):
+def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=None):
     """
     Run the Seeding Tool on a .shp or .gpkg file.
-    
+
     This task:
     1. Reads the input Point layer
     2. Creates seeding polygons (buffered by swath/boom width)
@@ -391,25 +391,36 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None):
     4. Generates a summary CSV
     5. Saves output files in the specified output directory or creates 'seeding_tool_output' folder
     6. Creates File records for the output files in Django
-    
+
     Args:
         file_id: ID of the input File object
         output_dir_id: Optional ID of the Folder object for output. If not specified,
                        creates a 'seeding_tool_output' subdirectory in the input file's folder.
+        requesting_user_id: If provided, the task verifies the file belongs to this user
+                            (or is public) before processing. Passed by api_run_tool; direct
+                            view callers omit it (None = skip check, already auth'd at view layer).
     """
     from django.conf import settings
     import os
-    
+
     try:
         logger.info(f"Starting Seeding Tool task for file ID: {file_id}")
-        
+
         # Get the file object
         try:
             file_obj = File.objects.get(id=file_id)
         except File.DoesNotExist:
             logger.error(f"File with ID {file_id} not found")
             return {"success": False, "error": f"File with ID {file_id} not found"}
-        
+
+        # BOLA check: verify the requesting user owns the file (or it is public)
+        if requesting_user_id is not None and file_obj.owner_id != requesting_user_id and not file_obj.is_public:
+            logger.warning(
+                "BOLA attempt: user %s tried to run run_seeding_tool_task on file %s owned by %s",
+                requesting_user_id, file_id, file_obj.owner_id,
+            )
+            return {"success": False, "error": "Permission denied"}
+
         # Validate file type
         file_ext = os.path.splitext(file_obj.name)[1].lower()
         if file_ext not in ['.shp', '.gpkg']:
@@ -587,34 +598,45 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None):
 
 
 @shared_task(bind=True)
-def run_shape_to_json_task(self, file_id, output_dir_id=None):
+def run_shape_to_json_task(self, file_id, output_dir_id=None, requesting_user_id=None):
     """
     Convert a shapefile to GeoJSON format.
-    
+
     This task:
     1. Reads the input shapefile
     2. Converts to WGS84 (EPSG:4326) for GeoJSON compatibility
     3. Saves the GeoJSON file
     4. Creates a File record for the output in Django
-    
+
     Args:
         file_id: ID of the input File object
         output_dir_id: Optional ID of the Folder object for output. If not specified,
                        creates a 'geojson_output' subdirectory in the input file's folder.
+        requesting_user_id: If provided, the task verifies the file belongs to this user
+                            (or is public) before processing. Passed by api_run_tool; direct
+                            view callers omit it (None = skip check, already auth'd at view layer).
     """
     from django.conf import settings
     import os
-    
+
     try:
         logger.info(f"Starting Shape to JSON task for file ID: {file_id}")
-        
+
         # Get the file object
         try:
             file_obj = File.objects.get(id=file_id)
         except File.DoesNotExist:
             logger.error(f"File with ID {file_id} not found")
             return {"success": False, "error": f"File with ID {file_id} not found"}
-        
+
+        # BOLA check: verify the requesting user owns the file (or it is public)
+        if requesting_user_id is not None and file_obj.owner_id != requesting_user_id and not file_obj.is_public:
+            logger.warning(
+                "BOLA attempt: user %s tried to run run_shape_to_json_task on file %s owned by %s",
+                requesting_user_id, file_id, file_obj.owner_id,
+            )
+            return {"success": False, "error": "Permission denied"}
+
         # Validate file type
         file_ext = os.path.splitext(file_obj.name)[1].lower()
         if file_ext != '.shp':
@@ -774,6 +796,7 @@ def run_si_tool_task(
     ndre_file_id=None,
     indicator_block_file_id=None,
     output_dir_id=None,
+    requesting_user_id=None,
 ):
     """
     Run the SI (Sufficiency Index) Tool with support for 4 workflow modes:
@@ -781,6 +804,9 @@ def run_si_tool_task(
     - standard_satellite: buffer_shp, nir_tif, rededge_tif, csv, field_column
     - sbf_uav: buffer_shp, indicator_shp, ndre_shp, csv
     - sbf_satellite: buffer_shp, indicator_shp, nir_tif, rededge_tif, csv
+
+    requesting_user_id: If provided, the task verifies the primary input file
+                        (buffer_shp_id) belongs to this user or is public.
     """
     from django.conf import settings
     import os
@@ -808,6 +834,14 @@ def run_si_tool_task(
             buffer_shp_path = buffer_file.file.path
         except File.DoesNotExist:
             return {"success": False, "error": "Buffer sectors shapefile not found"}
+
+        # BOLA check: verify the requesting user owns the primary input file (or it is public)
+        if requesting_user_id is not None and buffer_file.owner_id != requesting_user_id and not buffer_file.is_public:
+            logger.warning(
+                "BOLA attempt: user %s tried to run run_si_tool_task on file %s owned by %s",
+                requesting_user_id, buffer_shp_id, buffer_file.owner_id,
+            )
+            return {"success": False, "error": "Permission denied"}
 
         # CSV file (always required)
         try:
@@ -1917,18 +1951,19 @@ def run_yield_summary_tool_task(
     output_dir_id=None,
     buffer_distance=-30.0,
     corn_price=4.35,
-    n_price=0.50
+    n_price=0.50,
+    requesting_user_id=None,
 ):
     """
     Run the Yield Summary Tool on treatment and yield shapefiles.
-    
+
     This task:
     1. Reads treatment sector and yield shapefiles
     2. Creates buffered treatment polygons
     3. Performs spatial join and statistical analysis
     4. Generates summary shapefiles and Excel reports
     5. Creates File records for the output files in Django
-    
+
     Args:
         treatment_file_id: ID of the treatment sector shapefile File object
         yield_file_id: ID of the yield shapefile File object
@@ -1937,20 +1972,30 @@ def run_yield_summary_tool_task(
         buffer_distance: Buffer distance in meters (default -30)
         corn_price: Corn price per bushel ($/bu, default 4.35)
         n_price: Nitrogen price per lb N ($/lb N, default 0.50)
+        requesting_user_id: If provided, the task verifies the primary input file
+                            (treatment_file_id) belongs to this user or is public.
     """
     from django.conf import settings
     import os
-    
+
     try:
         logger.info(f"Starting Yield Summary Tool task for treatment file ID: {treatment_file_id}, yield file ID: {yield_file_id}")
-        
+
         # Get the treatment file object
         try:
             treatment_file = File.objects.get(id=treatment_file_id)
         except File.DoesNotExist:
             logger.error(f"Treatment file with ID {treatment_file_id} not found")
             return {"success": False, "error": f"Treatment file with ID {treatment_file_id} not found"}
-        
+
+        # BOLA check: verify the requesting user owns the primary input file (or it is public)
+        if requesting_user_id is not None and treatment_file.owner_id != requesting_user_id and not treatment_file.is_public:
+            logger.warning(
+                "BOLA attempt: user %s tried to run run_yield_summary_tool_task on file %s owned by %s",
+                requesting_user_id, treatment_file_id, treatment_file.owner_id,
+            )
+            return {"success": False, "error": "Permission denied"}
+
         # Get the yield file object
         try:
             yield_file = File.objects.get(id=yield_file_id)
@@ -2311,7 +2356,8 @@ def run_valid_yield_extractor_task(
     harv_file_id,
     output_folder_id=None,
     crs="EPSG:26914",
-    rate_tolerance=0.10
+    rate_tolerance=0.10,
+    requesting_user_id=None,
 ):
     """
     Run the Valid Yield Extractor Tool on treatment plots, as-applied, and harvest shapefiles.
@@ -2330,6 +2376,8 @@ def run_valid_yield_extractor_task(
         output_folder_id: Optional ID of the Folder object for output
         crs: Coordinate reference system (default "EPSG:26914")
         rate_tolerance: Rate tolerance for filtering (default 0.10)
+        requesting_user_id: If provided, the task verifies the primary input file
+                            (plots_file_id) belongs to this user or is public.
     """
     from django.conf import settings
     import os
@@ -2344,6 +2392,14 @@ def run_valid_yield_extractor_task(
         except File.DoesNotExist:
             logger.error(f"Plots file with ID {plots_file_id} not found")
             return {"success": False, "error": f"Plots file with ID {plots_file_id} not found"}
+
+        # BOLA check: verify the requesting user owns the primary input file (or it is public)
+        if requesting_user_id is not None and plots_file.owner_id != requesting_user_id and not plots_file.is_public:
+            logger.warning(
+                "BOLA attempt: user %s tried to run run_valid_yield_extractor_task on file %s owned by %s",
+                requesting_user_id, plots_file_id, plots_file.owner_id,
+            )
+            return {"success": False, "error": "Permission denied"}
 
         # Get the app file object
         try:
