@@ -313,13 +313,35 @@ class GeoServerAPI:
             return None
 
 def extract_zip_file(file_path, extract_to):
-    """Extract zip file and return list of extracted files"""
+    """Extract zip file and return list of extracted files.
+
+    Guards against ZIP-slip: any member whose resolved path would escape
+    ``extract_to`` is skipped with a warning rather than extracted.
+    """
+    import os as _os
+    import logging as _logging
+    _logger = _logging.getLogger(__name__)
+
+    extract_to_resolved = _os.path.realpath(extract_to)
     extracted_files = []
-    
+
     with zipfile.ZipFile(file_path, 'r') as zip_ref:
-        zip_ref.extractall(extract_to)
-        extracted_files = zip_ref.namelist()
-    
+        for member in zip_ref.infolist():
+            # Resolve the target path and verify it stays inside extract_to
+            target_path = _os.path.realpath(
+                _os.path.join(extract_to_resolved, member.filename)
+            )
+            if not target_path.startswith(extract_to_resolved + _os.sep) and \
+               target_path != extract_to_resolved:
+                _logger.warning(
+                    "ZIP-slip attempt detected: member %r resolves outside "
+                    "extraction directory — skipping",
+                    member.filename,
+                )
+                continue
+            zip_ref.extract(member, extract_to)
+            extracted_files.append(member.filename)
+
     return extracted_files
 
 def find_shapefile_components(extracted_files):
