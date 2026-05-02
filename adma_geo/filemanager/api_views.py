@@ -1023,8 +1023,12 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
 
+# Temporary access gate — see views.py:agent_user_required for context.
+from .views import agent_user_required
+
 
 @login_required
+@agent_user_required
 @require_POST
 def api_agent_chat(request):
     """
@@ -1050,6 +1054,7 @@ def api_agent_chat(request):
 
 
 @login_required
+@agent_user_required
 @require_GET
 def api_agent_history(request):
     """
@@ -1090,6 +1095,7 @@ def api_agent_history(request):
 
 
 @login_required
+@agent_user_required
 @require_GET
 def api_agent_sessions(request):
     """List all chat sessions for the user."""
@@ -1109,6 +1115,7 @@ def api_agent_sessions(request):
 
 
 @login_required
+@agent_user_required
 @require_POST
 def api_agent_session_create(request):
     """Create a new chat session."""
@@ -1120,6 +1127,7 @@ def api_agent_session_create(request):
 
 
 @login_required
+@agent_user_required
 @require_POST
 def api_agent_session_rename(request):
     """Rename a chat session."""
@@ -1139,6 +1147,7 @@ def api_agent_session_rename(request):
 
 
 @login_required
+@agent_user_required
 @require_POST
 def api_agent_session_delete(request):
     """Permanently delete a chat session and its data."""
@@ -1157,6 +1166,7 @@ def api_agent_session_delete(request):
 
 
 @login_required
+@agent_user_required
 @require_GET
 def api_agent_status(request):
     """Get agent container status."""
@@ -1166,6 +1176,7 @@ def api_agent_status(request):
 
 
 @login_required
+@agent_user_required
 @require_POST
 def api_agent_stop(request):
     """Stop the user's agent container."""

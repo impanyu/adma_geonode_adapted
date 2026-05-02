@@ -275,7 +275,42 @@ class HomeView(TemplateView):
         
         return context
 
+# Temporary access gate for the agent feature. The agent system runs Docker
+# containers on behalf of users and has known security gaps; until those are
+# fixed, restrict access to a single allowlisted username. To re-enable for
+# everyone, delete the AGENT_ALLOWED_USERNAMES check sites (this decorator
+# and `agent_user_required` import in api_views.py) and the {% if %} guard
+# in base.html.
+AGENT_ALLOWED_USERNAMES = frozenset({'Yu'})
+
+
+def agent_user_required(view_func):
+    """Allow only allowlisted usernames; everyone else gets 403."""
+    from functools import wraps
+    from django.http import HttpResponseForbidden, JsonResponse
+
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return HttpResponseForbidden('Authentication required')
+        if user.username not in AGENT_ALLOWED_USERNAMES:
+            # Match Content-Type to the request — JSON for API, HTML for page.
+            accept = request.META.get('HTTP_ACCEPT', '')
+            if 'application/json' in accept or request.path.startswith('/api/'):
+                return JsonResponse(
+                    {'error': 'Agent feature is currently unavailable for your account'},
+                    status=403,
+                )
+            return HttpResponseForbidden(
+                'Agent feature is currently unavailable for your account'
+            )
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
 @login_required
+@agent_user_required
 def agent_chat_page(request):
     """Agent chat page - renders the chat UI."""
     return render(request, 'filemanager/agent_chat.html')
