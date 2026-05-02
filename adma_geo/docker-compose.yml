@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: adma_geo
       POSTGRES_USER: adma_geo
-      POSTGRES_PASSWORD: adma_geo123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     volumes:
       - adma_geo_db:/var/lib/postgresql/data
     ports:
@@ -48,11 +48,11 @@ services:
     ports:
       - "8001:8000"
     environment:
-      DEBUG: "True"
-      SECRET_KEY: "django-secret-key-for-development"
+      DEBUG: "${DEBUG:-False}"
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
       POSTGRES_DB: adma_geo
       POSTGRES_USER: adma_geo
-      POSTGRES_PASSWORD: adma_geo123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       REDIS_URL: redis://redis:6379/0
@@ -61,7 +61,7 @@ services:
       # GeoServer connection settings
       GEOSERVER_URL: http://geoserver:8080/geoserver
       GEOSERVER_ADMIN_USER: admin
-      GEOSERVER_ADMIN_PASSWORD: geoserver123
+      GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_ADMIN_PASSWORD:?GEOSERVER_ADMIN_PASSWORD must be set in .env}
       # Agent configuration
       RUNNING_IN_DOCKER: "true"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -99,11 +99,11 @@ services:
       - adma_agent_workspaces:/opt/adma/agent_workspaces
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      DEBUG: "True"
-      SECRET_KEY: "django-secret-key-for-development"
+      DEBUG: "${DEBUG:-False}"
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
       POSTGRES_DB: adma_geo
       POSTGRES_USER: adma_geo
-      POSTGRES_PASSWORD: adma_geo123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       REDIS_URL: redis://redis:6379/0
@@ -112,7 +112,7 @@ services:
       # GeoServer connection settings
       GEOSERVER_URL: http://geoserver:8080/geoserver
       GEOSERVER_ADMIN_USER: admin
-      GEOSERVER_ADMIN_PASSWORD: geoserver123
+      GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_ADMIN_PASSWORD:?GEOSERVER_ADMIN_PASSWORD must be set in .env}
       # Agent configuration
       RUNNING_IN_DOCKER: "true"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -147,11 +147,11 @@ services:
     volumes:
       - .:/app
     environment:
-      DEBUG: "True"
-      SECRET_KEY: "django-secret-key-for-development"
+      DEBUG: "${DEBUG:-False}"
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
       POSTGRES_DB: adma_geo
       POSTGRES_USER: adma_geo
-      POSTGRES_PASSWORD: adma_geo123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       REDIS_URL: redis://redis:6379/0
@@ -191,7 +191,7 @@ services:
     container_name: adma_geo_geoserver
     environment:
       GEOSERVER_ADMIN_USER: admin
-      GEOSERVER_ADMIN_PASSWORD: geoserver123
+      GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_ADMIN_PASSWORD:?GEOSERVER_ADMIN_PASSWORD must be set in .env}
       GEOSERVER_DATA_DIR: /opt/geoserver/data_dir
       ENABLE_JSONP: "true"
       MAX_FILTER_RULES: 20
