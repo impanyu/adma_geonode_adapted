@@ -115,6 +115,11 @@ services:
       JD_CLIENT_SECRET: ${JD_CLIENT_SECRET}
       JD_REFRESH_TOKEN: ${JD_REFRESH_TOKEN}
       JD_ORG_ID: ${JD_ORG_ID}
+      # JD webhook (Basic Auth that JD uses when posting events to us).
+      # Empty/unset = webhook endpoint returns 500 by design until configured.
+      JD_WEBHOOK_USERNAME: ${JD_WEBHOOK_USERNAME:-}
+      JD_WEBHOOK_PASSWORD: ${JD_WEBHOOK_PASSWORD:-}
+      JD_WEBHOOK_CALLBACK_URL: ${JD_WEBHOOK_CALLBACK_URL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -169,6 +174,11 @@ services:
       JD_CLIENT_SECRET: ${JD_CLIENT_SECRET}
       JD_REFRESH_TOKEN: ${JD_REFRESH_TOKEN}
       JD_ORG_ID: ${JD_ORG_ID}
+      # JD webhook (Basic Auth that JD uses when posting events to us).
+      # Empty/unset = webhook endpoint returns 500 by design until configured.
+      JD_WEBHOOK_USERNAME: ${JD_WEBHOOK_USERNAME:-}
+      JD_WEBHOOK_PASSWORD: ${JD_WEBHOOK_PASSWORD:-}
+      JD_WEBHOOK_CALLBACK_URL: ${JD_WEBHOOK_CALLBACK_URL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -215,6 +225,11 @@ services:
       JD_CLIENT_SECRET: ${JD_CLIENT_SECRET}
       JD_REFRESH_TOKEN: ${JD_REFRESH_TOKEN}
       JD_ORG_ID: ${JD_ORG_ID}
+      # JD webhook (Basic Auth that JD uses when posting events to us).
+      # Empty/unset = webhook endpoint returns 500 by design until configured.
+      JD_WEBHOOK_USERNAME: ${JD_WEBHOOK_USERNAME:-}
+      JD_WEBHOOK_PASSWORD: ${JD_WEBHOOK_PASSWORD:-}
+      JD_WEBHOOK_CALLBACK_URL: ${JD_WEBHOOK_CALLBACK_URL:-}
     depends_on:
       db:
         condition: service_healthy
