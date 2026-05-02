@@ -620,7 +620,7 @@ def folder_detail(request, folder_id):
                                 'variables': realm5_all_variables,
                             }
                 except Exception as e:
-                    print(f"Error loading all.json for Realm5 device: {e}")
+                    logger.warning("Error loading all.json for Realm5 device: %s", type(e).__name__)
 
     # Pre-escape spatial_extent strings (raw JSON strings from DB) so that
     # </script> sequences cannot break out of JS context (XSS A-6/A-7 fix).
@@ -873,7 +873,7 @@ def public_folder_detail(request, folder_id):
                                 'variables': realm5_all_variables,
                             }
                 except Exception as e:
-                    print(f"Error loading all.json for Realm5 device: {e}")
+                    logger.warning("Error loading all.json for Realm5 device: %s", type(e).__name__)
 
     # Pre-escape spatial_extent strings (raw JSON strings from DB) so that
     # </script> sequences cannot break out of JS context (XSS A-6/A-7 fix).
@@ -980,7 +980,7 @@ def file_detail(request, file_id):
                     else:
                         break
         except Exception as e:
-            print(f"Error processing Excel file: {e}")
+            logger.warning("Error processing Excel file: %s", type(e).__name__)
             csv_data = None
             csv_headers = None
     
@@ -1046,7 +1046,7 @@ def file_detail(request, file_id):
                     }
                     is_realm5_observation = True
         except Exception as e:
-            print(f"Error parsing Realm5 observation JSON: {e}")
+            logger.warning("Error parsing Realm5 observation JSON: %s", type(e).__name__)
             realm5_observation_data = None
             realm5_all_data = None
     
@@ -1123,7 +1123,7 @@ def public_file_detail(request, file_id):
                     else:
                         break
         except Exception as e:
-            print(f"Error processing Excel file: {e}")
+            logger.warning("Error processing Excel file: %s", type(e).__name__)
             csv_data = None
             csv_headers = None
     
@@ -1189,7 +1189,7 @@ def public_file_detail(request, file_id):
                     }
                     is_realm5_observation = True
         except Exception as e:
-            print(f"Error parsing Realm5 observation JSON: {e}")
+            logger.warning("Error parsing Realm5 observation JSON: %s", type(e).__name__)
             realm5_observation_data = None
             realm5_all_data = None
     
@@ -1380,9 +1380,9 @@ def delete_file_complete(file_obj):
                         # For vector files, delete datastore
                         geoserver.delete_datastore(workspace, file_obj.geoserver_datastore_name)
                         
-                print(f"Deleted GeoServer resources for {file_obj.name}")
+                logger.info("Deleted GeoServer resources for file %s", file_obj.id)
             except Exception as e:
-                print(f"Error deleting GeoServer resources for {file_obj.name}: {e}")
+                logger.warning("Error deleting GeoServer resources for file %s: %s", file_obj.id, e)
         
         # 2. Remove from all maps (this will trigger MapLayer deletion due to CASCADE)
         # Update affected maps to remove this layer from their Layer Groups
@@ -1393,7 +1393,7 @@ def delete_file_complete(file_obj):
         # 3. Remove ChromaDB embeddings
         # ChromaDB embeddings removal - DISABLED (no longer using ChromaDB)
         # NOTE: ChromaDB and embedding service removed in favor of PostgreSQL search
-        print(f"Skipping ChromaDB embedding cleanup for {file_obj.name} (no longer using ChromaDB)")
+        logger.debug("Skipping ChromaDB embedding cleanup for file %s (not using ChromaDB)", file_obj.id)
         
         # 4. Remove physical file from disk
         try:
@@ -1401,13 +1401,13 @@ def delete_file_complete(file_obj):
                 import os
                 if os.path.exists(file_obj.file.path):
                     os.remove(file_obj.file.path)
-                    print(f"Deleted physical file: {file_obj.file.path}")
+                    logger.info("Deleted physical file for file %s", file_obj.id)
         except Exception as e:
-            print(f"Error deleting physical file for {file_obj.name}: {e}")
+            logger.warning("Error deleting physical file for file %s: %s", file_obj.id, e)
         
         # 5. Remove from PostgreSQL database (this will cascade to MapLayers)
         file_obj.delete()
-        print(f"Deleted file {file_obj.name} from database")
+        logger.info("Deleted file %s from database", file_obj.id)
         
         # 6. Update affected maps' Layer Groups in GeoServer
         for map_obj in affected_maps:
@@ -1415,12 +1415,12 @@ def delete_file_complete(file_obj):
                 from .geoserver_manager import LayerGroupManager
                 layer_group_manager = LayerGroupManager()
                 layer_group_manager.update_layer_group(map_obj)
-                print(f"Updated Layer Group for map {map_obj.name}")
+                logger.info("Updated Layer Group for map %s", map_obj.id)
             except Exception as e:
-                print(f"Error updating Layer Group for map {map_obj.name}: {e}")
+                logger.warning("Error updating Layer Group for map %s: %s", map_obj.id, e)
                 
     except Exception as e:
-        print(f"Error in delete_file_complete for {file_obj.name}: {e}")
+        logger.exception("Error in delete_file_complete for file %s", file_obj.id)
         raise
 
 
@@ -1433,28 +1433,28 @@ def delete_folder_complete(folder_obj):
     4. Remove from PostgreSQL database
     """
     try:
-        print(f"Starting complete deletion of folder: {folder_obj.name}")
+        logger.info("Starting complete deletion of folder %s", folder_obj.id)
         
         # 1. Recursively delete all files in this folder
         for file_obj in folder_obj.files.all():
-            print(f"Deleting file {file_obj.name} in folder {folder_obj.name}")
+            logger.debug("Deleting file %s in folder %s", file_obj.id, folder_obj.id)
             delete_file_complete(file_obj)
         
         # 2. Recursively delete all subfolders
         for subfolder in folder_obj.subfolders.all():
-            print(f"Deleting subfolder {subfolder.name} in folder {folder_obj.name}")
+            logger.debug("Deleting subfolder %s in folder %s", subfolder.id, folder_obj.id)
             delete_folder_complete(subfolder)
         
         # 3. ChromaDB embeddings removal - DISABLED (no longer using ChromaDB)
         # NOTE: ChromaDB and embedding service removed in favor of PostgreSQL search
-        print(f"Skipping ChromaDB embedding cleanup for folder {folder_obj.name} (no longer using ChromaDB)")
+        logger.debug("Skipping ChromaDB embedding cleanup for folder %s (not using ChromaDB)", folder_obj.id)
         
         # 4. Remove from PostgreSQL database
         folder_obj.delete()
-        print(f"Deleted folder {folder_obj.name} from database")
+        logger.info("Deleted folder %s from database", folder_obj.id)
         
     except Exception as e:
-        print(f"Error in delete_folder_complete for {folder_obj.name}: {e}")
+        logger.exception("Error in delete_folder_complete for folder %s", folder_obj.id)
         raise
 
 
