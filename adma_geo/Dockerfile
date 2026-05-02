@@ -47,8 +47,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /app/media/uploads /app/staticfiles
+# Create necessary directories and a non-root application user.
+# Running as root inside a container is a privilege-escalation risk when the
+# Docker socket is mounted (which this project does for the agent feature).
+RUN mkdir -p /app/media/uploads /app/staticfiles && \
+    groupadd --gid 1000 appgroup && \
+    useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser && \
+    chown -R appuser:appgroup /app
+
+USER appuser
 
 # Collect static files (initial collection during build).
 # DJANGO_DEV_FALLBACK=1 lets settings.py boot with a placeholder SECRET_KEY
