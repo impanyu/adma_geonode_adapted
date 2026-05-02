@@ -550,6 +550,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ tree_data|json_script:"treeData-data" }}
 <script>
 // CSRF token setup
 function getCookie(name) {
@@ -570,7 +571,7 @@ function getCookie(name) {
 const csrftoken = getCookie('csrftoken');
 
 // Data from Django context
-const treeData = {{ tree_data|safe }};
+const treeData = JSON.parse(document.getElementById("treeData-data").textContent);
 
 // Initialize tooltips
 document.addEventListener('DOMContentLoaded', function() {

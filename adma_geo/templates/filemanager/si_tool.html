@@ -485,6 +485,10 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ shp_tree_data|json_script:"shpTreeData-data" }}
+{{ csv_tree_data|json_script:"csvTreeData-data" }}
+{{ tif_tree_data|json_script:"tifTreeData-data" }}
+{{ folder_tree_data|json_script:"folderTreeData-data" }}
 <script>
 // CSRF token setup
 function getCookie(name) {
@@ -505,10 +509,10 @@ function getCookie(name) {
 const csrftoken = getCookie('csrftoken');
 
 // Data from Django context
-const shpTreeData = {{ shp_tree_data|safe }};
-const csvTreeData = {{ csv_tree_data|safe }};
-const tifTreeData = {{ tif_tree_data|safe }};
-const folderTreeData = {{ folder_tree_data|safe }};
+const shpTreeData = JSON.parse(document.getElementById("shpTreeData-data").textContent);
+const csvTreeData = JSON.parse(document.getElementById("csvTreeData-data").textContent);
+const tifTreeData = JSON.parse(document.getElementById("tifTreeData-data").textContent);
+const folderTreeData = JSON.parse(document.getElementById("folderTreeData-data").textContent);
 
 // Current selections
 let currentTreatment = 'STANDARD';

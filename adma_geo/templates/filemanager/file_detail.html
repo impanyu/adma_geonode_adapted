@@ -481,6 +481,12 @@
 
 
 {% block extra_js %}
+{{ csv_data|json_script:"csvData-data" }}
+{{ csv_headers|json_script:"csvHeaders-data" }}
+{{ realm5_observation_data|json_script:"realm5Data-data" }}
+{{ realm5_variables|json_script:"realm5Variables-data" }}
+{{ realm5_all_data|json_script:"realm5AllData-data" }}
+{{ realm5_all_variables|json_script:"realm5AllVariables-data" }}
 <script>
 // CSRF token setup
 function getCookie(name) {
@@ -897,8 +903,8 @@ if (!window.Chart) {
 }
 
 // CSV data for visualization
-const csvData = {{ csv_data|default:"null"|safe }};
-const csvHeaders = {{ csv_headers|default:"null"|safe }};
+const csvData = JSON.parse(document.getElementById("csvData-data").textContent);
+const csvHeaders = JSON.parse(document.getElementById("csvHeaders-data").textContent);
 
 // Populate CSV table
 function populateCSVTable() {
@@ -1130,8 +1136,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Realm5 observation data
-const realm5Data = {{ realm5_observation_data|safe }};
-const realm5Variables = {{ realm5_variables|safe }};
+const realm5Data = JSON.parse(document.getElementById("realm5Data-data").textContent);
+const realm5Variables = JSON.parse(document.getElementById("realm5Variables-data").textContent);
 
 // Color palette for multiple variables
 const chartColors = [
@@ -1355,8 +1361,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Realm5 all.json data
-const realm5AllData = {{ realm5_all_data|safe }};
-const realm5AllVariables = {{ realm5_all_variables|safe }};
+const realm5AllData = JSON.parse(document.getElementById("realm5AllData-data").textContent);
+const realm5AllVariables = JSON.parse(document.getElementById("realm5AllVariables-data").textContent);
 
 // Color palette for multiple variables (same as daily observations)
 const allChartColors = [

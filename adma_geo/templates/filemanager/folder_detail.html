@@ -1738,7 +1738,7 @@ document.addEventListener('DOMContentLoaded', function() {
         {
             name: "{{ field.name|escapejs }}",
             folder_id: "{{ field.folder_id }}",
-            extent: {{ field.extent|safe }}
+            extent: {{ field.extent_safe|safe }}
         }{% if not forloop.last %},{% endif %}
         {% endfor %}
     ];
@@ -1771,7 +1771,7 @@ let jdFieldBaseLayer = null;
 document.addEventListener('DOMContentLoaded', function() {
     const result = createBoundaryMap(
         'jdFieldMap',
-        {{ jd_field_boundary_file.spatial_extent|safe }},
+        {{ jd_field_extent_safe|safe }},
         '{{ folder.name }}',
         '#d00000'
     );
@@ -1799,7 +1799,7 @@ let jdOperationBaseLayer = null;
 document.addEventListener('DOMContentLoaded', function() {
     const result = createBoundaryMap(
         'jdOperationMap',
-        {{ jd_operation_boundary_file.spatial_extent|safe }},
+        {{ jd_operation_extent_safe|safe }},
         '{{ folder.name }}',
         '#28a745'
     );
@@ -2084,12 +2084,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- Realm5 Device Daily Averages Chart Script -->
 {% if is_realm5_device and realm5_all_data %}
+{{ realm5_all_data|json_script:"realm5DeviceData-data" }}
+{{ realm5_all_variables|json_script:"realm5DeviceVariables-data" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script>
 // Realm5 device data
-const realm5DeviceData = {{ realm5_all_data|safe }};
-const realm5DeviceVariables = {{ realm5_all_variables|safe }};
+const realm5DeviceData = JSON.parse(document.getElementById("realm5DeviceData-data").textContent);
+const realm5DeviceVariables = JSON.parse(document.getElementById("realm5DeviceVariables-data").textContent);
 
 // Color palette for multiple variables
 const realm5ChartColors = [

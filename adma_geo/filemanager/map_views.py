@@ -71,7 +71,7 @@ class MapsListView(LoginRequiredMixin, ListView):
                     'layer_count': map_obj.layer_count,
                 })
         
-        context['maps_with_locations'] = json.dumps(all_maps_with_locations)
+        context['maps_with_locations'] = all_maps_with_locations
         context['has_maps_with_locations'] = len(all_maps_with_locations) > 0
         
         return context

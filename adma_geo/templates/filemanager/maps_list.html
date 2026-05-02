@@ -370,13 +370,14 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ maps_with_locations|json_script:"mapsWithLocations-data" }}
 <!-- OpenLayers JS -->
 <script src="https://cdn.jsdelivr.net/npm/ol@v7.4.0/dist/ol.js"></script>
 <script>
 // Navigation Map initialization with spiderfier for overlapping markers
 {% if has_maps_with_locations %}
 (function() {
-    const mapsWithLocations = {{ maps_with_locations|safe }};
+    const mapsWithLocations = JSON.parse(document.getElementById("mapsWithLocations-data").textContent);
     
     if (mapsWithLocations.length === 0) return;
     

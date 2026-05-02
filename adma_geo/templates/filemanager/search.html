@@ -637,13 +637,32 @@ document.addEventListener('DOMContentLoaded', function() {
                             data.suggestions.forEach(suggestion => {
                                 const item = document.createElement('div');
                                 item.className = 'suggestion-item';
-                                item.innerHTML = `
-                                    <i class="${suggestion.icon} suggestion-icon"></i>
-                                    <div class="flex-grow-1">
-                                        <div class="fw-bold">${suggestion.name}</div>
-                                        <small class="text-muted">${suggestion.type}${suggestion.similarity !== undefined ? ' • Similarity: ' + suggestion.similarity : ''}</small>
-                                    </div>
-                                `;
+
+                                const iconEl = document.createElement('i');
+                                // suggestion.icon is a CSS class string, set as
+                                // className (not innerHTML) to avoid injection.
+                                iconEl.className = (suggestion.icon || '') + ' suggestion-icon';
+
+                                const wrapEl = document.createElement('div');
+                                wrapEl.className = 'flex-grow-1';
+
+                                const nameEl = document.createElement('div');
+                                nameEl.className = 'fw-bold';
+                                nameEl.textContent = suggestion.name || '';
+
+                                const metaEl = document.createElement('small');
+                                metaEl.className = 'text-muted';
+                                let metaText = suggestion.type || '';
+                                if (suggestion.similarity !== undefined) {
+                                    metaText += ' • Similarity: ' + suggestion.similarity;
+                                }
+                                metaEl.textContent = metaText;
+
+                                wrapEl.appendChild(nameEl);
+                                wrapEl.appendChild(metaEl);
+                                item.appendChild(iconEl);
+                                item.appendChild(wrapEl);
+
                                 item.onclick = () => {
                                     window.location.href = suggestion.url;
                                 };

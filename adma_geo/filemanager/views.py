@@ -608,7 +608,24 @@ def folder_detail(request, folder_id):
                             }
                 except Exception as e:
                     print(f"Error loading all.json for Realm5 device: {e}")
-    
+
+    # Pre-escape spatial_extent strings (raw JSON strings from DB) so that
+    # </script> sequences cannot break out of JS context (XSS A-6/A-7 fix).
+    def _escape_extent(extent_str):
+        if not extent_str:
+            return None
+        return extent_str.replace('&', '\\u0026').replace('<', '\\u003c').replace('>', '\\u003e')
+
+    for boundary in jd_all_field_boundaries:
+        boundary['extent_safe'] = _escape_extent(boundary.get('extent'))
+
+    jd_field_extent_safe = _escape_extent(
+        jd_field_boundary_file.spatial_extent if jd_field_boundary_file else None
+    )
+    jd_operation_extent_safe = _escape_extent(
+        jd_operation_boundary_file.spatial_extent if jd_operation_boundary_file else None
+    )
+
     return render(request, 'filemanager/folder_detail.html', {
         'folder': folder,
         'subfolders': subfolders,
@@ -623,13 +640,15 @@ def folder_detail(request, folder_id):
         'jd_all_field_boundaries': jd_all_field_boundaries,
         'is_jd_field': is_jd_field,
         'jd_field_boundary_file': jd_field_boundary_file,
+        'jd_field_extent_safe': jd_field_extent_safe,
         'is_jd_operation': is_jd_operation,
         'jd_operation_boundary_file': jd_operation_boundary_file,
+        'jd_operation_extent_safe': jd_operation_extent_safe,
         'is_realm5_root': is_realm5_root,
         'realm5_device_locations': realm5_device_locations,
         'is_realm5_device': is_realm5_device,
-        'realm5_all_data': json.dumps(realm5_all_data) if realm5_all_data else None,
-        'realm5_all_variables': json.dumps(realm5_all_variables) if realm5_all_variables else None,
+        'realm5_all_data': realm5_all_data,
+        'realm5_all_variables': realm5_all_variables,
     })
 
 def public_folder_detail(request, folder_id):
@@ -842,7 +861,24 @@ def public_folder_detail(request, folder_id):
                             }
                 except Exception as e:
                     print(f"Error loading all.json for Realm5 device: {e}")
-    
+
+    # Pre-escape spatial_extent strings (raw JSON strings from DB) so that
+    # </script> sequences cannot break out of JS context (XSS A-6/A-7 fix).
+    def _escape_extent(extent_str):
+        if not extent_str:
+            return None
+        return extent_str.replace('&', '\\u0026').replace('<', '\\u003c').replace('>', '\\u003e')
+
+    for boundary in jd_all_field_boundaries:
+        boundary['extent_safe'] = _escape_extent(boundary.get('extent'))
+
+    jd_field_extent_safe = _escape_extent(
+        jd_field_boundary_file.spatial_extent if jd_field_boundary_file else None
+    )
+    jd_operation_extent_safe = _escape_extent(
+        jd_operation_boundary_file.spatial_extent if jd_operation_boundary_file else None
+    )
+
     # Reuse the same template as private folder detail, but with public view context
     return render(request, 'filemanager/folder_detail.html', {
         'folder': folder,
@@ -859,13 +895,15 @@ def public_folder_detail(request, folder_id):
         'jd_all_field_boundaries': jd_all_field_boundaries,
         'is_jd_field': is_jd_field,
         'jd_field_boundary_file': jd_field_boundary_file,
+        'jd_field_extent_safe': jd_field_extent_safe,
         'is_jd_operation': is_jd_operation,
         'jd_operation_boundary_file': jd_operation_boundary_file,
+        'jd_operation_extent_safe': jd_operation_extent_safe,
         'is_realm5_root': is_realm5_root,
         'realm5_device_locations': realm5_device_locations,
         'is_realm5_device': is_realm5_device,
-        'realm5_all_data': json.dumps(realm5_all_data) if realm5_all_data else None,
-        'realm5_all_variables': json.dumps(realm5_all_variables) if realm5_all_variables else None,
+        'realm5_all_data': realm5_all_data,
+        'realm5_all_variables': realm5_all_variables,
     })
 
 @login_required
@@ -1002,15 +1040,15 @@ def file_detail(request, file_id):
     return render(request, 'filemanager/file_detail.html', {
         'file': file_obj,
         'file_content': file_content,
-        'csv_data': json.dumps(csv_data) if csv_data else None,
-        'csv_headers': json.dumps(csv_headers) if csv_headers else None,
+        'csv_data': csv_data,
+        'csv_headers': csv_headers,
         'can_edit': file_obj.owner == request.user,
         'is_realm5_observation': is_realm5_observation,
-        'realm5_observation_data': json.dumps(realm5_observation_data) if realm5_observation_data else None,
-        'realm5_variables': json.dumps(realm5_variables) if realm5_variables else None,
+        'realm5_observation_data': realm5_observation_data,
+        'realm5_variables': realm5_variables,
         'is_realm5_all': is_realm5_all,
-        'realm5_all_data': json.dumps(realm5_all_data) if realm5_all_data else None,
-        'realm5_all_variables': json.dumps(realm5_all_variables) if realm5_all_variables else None,
+        'realm5_all_data': realm5_all_data,
+        'realm5_all_variables': realm5_all_variables,
     })
 
 def public_file_detail(request, file_id):
@@ -1146,17 +1184,17 @@ def public_file_detail(request, file_id):
     return render(request, 'filemanager/file_detail.html', {
         'file': file_obj,
         'file_content': file_content,
-        'csv_data': json.dumps(csv_data) if csv_data else None,
-        'csv_headers': json.dumps(csv_headers) if csv_headers else None,
+        'csv_data': csv_data,
+        'csv_headers': csv_headers,
         'can_edit': False,  # Public users can't edit
         'is_public_view': True,  # Flag to adjust breadcrumbs and navigation
         'public_breadcrumbs': file_obj.get_public_breadcrumbs(),  # Add public breadcrumbs
         'is_realm5_observation': is_realm5_observation,
-        'realm5_observation_data': json.dumps(realm5_observation_data) if realm5_observation_data else None,
-        'realm5_variables': json.dumps(realm5_variables) if realm5_variables else None,
+        'realm5_observation_data': realm5_observation_data,
+        'realm5_variables': realm5_variables,
         'is_realm5_all': is_realm5_all,
-        'realm5_all_data': json.dumps(realm5_all_data) if realm5_all_data else None,
-        'realm5_all_variables': json.dumps(realm5_all_variables) if realm5_all_variables else None,
+        'realm5_all_data': realm5_all_data,
+        'realm5_all_variables': realm5_all_variables,
     })
 
 @login_required
@@ -1880,7 +1918,7 @@ class SeedingToolView(LoginRequiredMixin, TemplateView):
         # Build hierarchical tree data structure for the file browser
         tree_data = self._build_tree_data(user)
         
-        context['tree_data'] = json.dumps(tree_data)
+        context['tree_data'] = tree_data
         context['page_title'] = 'Seeding Tool'
         
         return context
@@ -1984,7 +2022,7 @@ class YieldSummaryToolView(LoginRequiredMixin, TemplateView):
         # Build hierarchical tree data structure for the file browser
         tree_data = self._build_tree_data(user)
         
-        context['tree_data'] = json.dumps(tree_data)
+        context['tree_data'] = tree_data
         context['page_title'] = 'Yield Summary Tool'
         
         # Default parameter values
@@ -2218,7 +2256,7 @@ class ShapeToJsonToolView(LoginRequiredMixin, TemplateView):
         # Build hierarchical tree data structure for the file browser
         tree_data = self._build_tree_data(user)
         
-        context['tree_data'] = json.dumps(tree_data)
+        context['tree_data'] = tree_data
         context['page_title'] = 'Shape to JSON Tool'
         
         return context
@@ -2326,10 +2364,10 @@ class SIToolView(LoginRequiredMixin, TemplateView):
         tif_tree_data = self._build_tree_data(user, file_extensions=['.tif', '.tiff'])
         folder_tree_data = self._build_folder_tree(user)
 
-        context['shp_tree_data'] = json.dumps(shp_tree_data)
-        context['csv_tree_data'] = json.dumps(csv_tree_data)
-        context['tif_tree_data'] = json.dumps(tif_tree_data)
-        context['folder_tree_data'] = json.dumps(folder_tree_data)
+        context['shp_tree_data'] = shp_tree_data
+        context['csv_tree_data'] = csv_tree_data
+        context['tif_tree_data'] = tif_tree_data
+        context['folder_tree_data'] = folder_tree_data
         context['page_title'] = 'SI Tool'
         
         return context
@@ -3186,7 +3224,7 @@ class ValidYieldExtractorToolView(LoginRequiredMixin, TemplateView):
         # Build hierarchical tree data structure for the file browser
         tree_data = self._build_tree_data(user)
 
-        context['tree_data'] = json.dumps(tree_data)
+        context['tree_data'] = tree_data
         context['page_title'] = 'Valid Yield Extractor'
 
         # Default parameter values

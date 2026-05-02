@@ -343,6 +343,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ map_config|json_script:"mapConfig-data" }}
 <!-- OpenLayers JavaScript -->
 <script src="https://cdn.jsdelivr.net/npm/ol@v8.2.0/dist/ol.js"></script>
 
@@ -352,7 +353,7 @@ let layerGroupLayer;
 let baseLayer;
 
 // Map configuration from Django
-const mapConfig = {{ map_config|safe }};
+const mapConfig = JSON.parse(document.getElementById("mapConfig-data").textContent);
 
 // Initialize map when page loads
 document.addEventListener('DOMContentLoaded', function() {
