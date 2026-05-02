@@ -23,7 +23,7 @@ These are the four items the user approved for the immediate next pass.
 
 ---
 
-### ✅ High 3 — Login brute-force protection
+### ❌ High 3 — Login brute-force protection (REVERTED)
 
 **Where:** `adma_geo/adma_geo/settings.py` MIDDLEWARE list and `adma_geo/requirements.txt`. Django's built-in login view has no rate limit or lockout.
 
@@ -31,7 +31,21 @@ These are the four items the user approved for the immediate next pass.
 
 **Plan:** Add `django-axes` to requirements (it's the most mature option). Configure 5 failed attempts → 1 hour lockout per (username, IP) combo. Surface lockout events in admin.
 
-**Status:** ✅ Fixed in commit `27b286d` — added `django-axes>=6.0.0,<7.0.0` to requirements.txt; configured INSTALLED_APPS, MIDDLEWARE (AxesMiddleware last), AUTHENTICATION_BACKENDS (AxesStandaloneBackend first), and AXES_* settings block. Operator must run `python manage.py migrate` on next deploy.
+**Status:** ❌ Reverted in commit `41a0454`. django-axes 6.x had too many
+`getattr(settings, X)` calls without defaults — login/logout kept surfacing
+new missing AXES_* attributes (AXES_ACCESS_FAILURE_LOG_PER_USER_LIMIT,
+AXES_SENSITIVE_PARAMETERS, AXES_PASSWORD_FORM_FIELD, AXES_IP_BLACKLIST,
+AXES_ONLY_WHITELIST, ...). Module-level __getattr__ fallback didn't help
+because Django copies module attrs into the Settings object once at startup.
+
+**Better paths to revisit:**
+- `django-ratelimit` decorator on the login view only — small surface area
+- `fail2ban` watching nginx logs + iptables — at the host layer
+- UNL network-edge WAF, if available
+
+`django-axes>=6.0.0,<7.0.0` is still in requirements.txt but unused. Remove
+on next requirements.txt cleanup, or leave it pinned in case axes 7.x fixes
+the settings-default issue.
 
 ---
 
