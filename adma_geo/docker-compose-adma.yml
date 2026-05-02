@@ -143,7 +143,9 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: adma_geo_celery_beat
-    command: celery -A adma_geo beat -l info
+    # -s explicitly sets the schedule file path; some Celery versions don't
+    # provide a default for app.conf.beat_schedule_filename and crash without it.
+    command: celery -A adma_geo beat -l info -s /tmp/celerybeat-schedule
     volumes:
       - .:/app
     environment:
