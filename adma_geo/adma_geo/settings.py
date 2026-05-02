@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'rest_framework_simplejwt',
+    'axes',
 
     # Local apps
     'filemanager',
@@ -63,6 +64,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # axes must come after AuthenticationMiddleware
+    'axes.middleware.AxesMiddleware',
 ]
 
 ROOT_URLCONF = 'adma_geo.urls'
@@ -112,6 +115,25 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+AUTHENTICATION_BACKENDS = [
+    # axes must be first so it can intercept locked-out accounts before
+    # Django's backend even attempts password verification.
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+# ---------------------------------------------------------------------------
+# django-axes brute-force protection (High 3 security fix)
+# ---------------------------------------------------------------------------
+# Run `python manage.py migrate` on next deploy to create axes tables.
+AXES_FAILURE_LIMIT = 5                      # 5 failed attempts triggers lockout
+AXES_COOLOFF_TIME = 1                       # locked out for 1 hour
+AXES_LOCK_OUT_AT_FAILURE = True
+AXES_RESET_ON_SUCCESS = True
+AXES_LOCKOUT_PARAMETERS = [['username', 'ip_address']]  # lock per (user, IP) pair
+AXES_VERBOSE = True                         # log to standard Django logger
+AXES_HANDLER = 'axes.handlers.database.AxesDatabaseHandler'
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
