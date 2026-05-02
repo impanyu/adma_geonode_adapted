@@ -625,8 +625,10 @@ def api_download_folder(request, folder_id):
         response['Content-Disposition'] = f'attachment; filename="{zip_filename}"'
         response['Content-Length'] = len(zip_buffer.getvalue())
         
-        # Add custom headers with folder info
-        response['X-Folder-Name'] = folder.name
+        # Add custom headers with folder info.
+        # Strip CR/LF from folder.name to prevent HTTP header injection.
+        safe_folder_name = folder.name.replace('\r', '').replace('\n', '')
+        response['X-Folder-Name'] = safe_folder_name
         response['X-File-Count'] = str(file_count)
         response['X-Total-Size'] = str(total_size)
         
@@ -898,17 +900,25 @@ def api_run_tool(request, tool_slug):
 
     POST /api/v1/tools/<slug>/run/
     Body varies by tool - typically includes file_id, output_folder_id, etc.
+
+    Security: file ownership is enforced inside each Celery task via
+    ``requesting_user_id``.  We inject that field here so callers cannot
+    bypass it by omitting it from the request body.
     """
     tool = get_object_or_404(Tool, slug=tool_slug, is_active=True)
 
-    # Map slugs to their Celery tasks
-    from celery import current_app
     task_name = tool.celery_task_name
     if not task_name:
         return Response({'error': 'Tool has no execution task configured'}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Build kwargs from the request body but always override requesting_user_id
+    # so the Celery task can enforce file ownership.
+    from celery import current_app
+    task_kwargs = dict(request.data)
+    task_kwargs['requesting_user_id'] = request.user.id
+
     try:
-        task = current_app.send_task(task_name, kwargs=request.data)
+        task = current_app.send_task(task_name, kwargs=task_kwargs)
         tool.increment_usage()
         return Response({'success': True, 'task_id': task.id})
     except Exception as e:
@@ -925,7 +935,11 @@ def api_tool_status(request, tool_slug, task_id):
     if result.status == 'SUCCESS':
         response['result'] = result.result
     elif result.status == 'FAILURE':
-        response['error'] = str(result.result)
+        # Log the full exception server-side; only return a generic message
+        # to the caller so internal stack traces / exception text are not
+        # disclosed to API consumers.
+        logger.error("api_tool_status: task %s failed: %s", task_id, result.result)
+        response['error'] = 'Task failed (see server logs for details)'
     return Response(response)
 
 
