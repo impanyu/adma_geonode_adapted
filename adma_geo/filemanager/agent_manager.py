@@ -181,9 +181,9 @@ class AgentContainerManager:
             return session
 
         except Exception as e:
-            logger.error(f'Failed to start agent for {user.username}: {e}')
+            logger.exception('Failed to start agent for user %s (session %s)', user.username, session.id)
             session.status = 'error'
-            session.error_message = str(e)
+            session.error_message = 'Agent failed to start. Please contact support if this persists.'
             session.save(update_fields=['status', 'error_message'])
             raise
 
