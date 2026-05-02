@@ -157,6 +157,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # GeoServer connection settings (settings.py imports these even though
+      # beat itself doesn't talk to GeoServer)
+      GEOSERVER_URL: http://geoserver:8080/geoserver
+      GEOSERVER_ADMIN_USER: admin
+      GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_ADMIN_PASSWORD:?GEOSERVER_ADMIN_PASSWORD must be set in .env}
       # Realm5 API (loaded from .env file)
       REALM5_API_KEY: ${REALM5_API_KEY}
       # John Deere API (loaded from .env file)
