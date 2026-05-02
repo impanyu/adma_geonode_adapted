@@ -88,12 +88,14 @@ class MapDetailView(LoginRequiredMixin, DetailView):
 
     def get_object(self, queryset=None):
         """Get map with permission check"""
+        from django.core.exceptions import PermissionDenied
         map_obj = get_object_or_404(Map, id=self.kwargs['map_id'])
-        
-        # Check permissions
+
+        # Check permissions — raise PermissionDenied (an exception) not
+        # HttpResponseForbidden (a response object, which cannot be raised).
         if not map_obj.is_public and map_obj.owner != self.request.user:
-            raise HttpResponseForbidden("You don't have permission to view this map.")
-        
+            raise PermissionDenied("You don't have permission to view this map.")
+
         return map_obj
 
     def get_context_data(self, **kwargs):
