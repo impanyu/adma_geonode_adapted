@@ -46,15 +46,15 @@ def process_gis_file_task(self, file_id):
     except File.DoesNotExist:
         return f"File with ID {file_id} not found"
     except Exception as e:
-        logger.error(f"Error in process_gis_file_task: {str(e)}")
+        logger.exception("Error in process_gis_file_task for file %s", file_id)
         try:
             file_obj = File.objects.get(id=file_id)
             file_obj.gis_status = 'error'
-            file_obj.processing_log += f"\n✗ Task error: {str(e)}"
+            file_obj.processing_log += f"\n✗ Task error (see server logs for file {file_id})"
             file_obj.save()
-        except:
+        except Exception:
             pass
-        return f"Error processing GIS file: {str(e)}"
+        return f"Error processing GIS file {file_id} (see server logs)"
 
 @shared_task(bind=True)
 def publish_to_geoserver_task(self, file_id):
@@ -91,15 +91,15 @@ def publish_to_geoserver_task(self, file_id):
     except File.DoesNotExist:
         return f"File with ID {file_id} not found"
     except Exception as e:
-        logger.error(f"Error in publish_to_geoserver_task: {str(e)}")
+        logger.exception("Error in publish_to_geoserver_task for file %s", file_id)
         try:
             file_obj = File.objects.get(id=file_id)
             file_obj.gis_status = 'error'
-            file_obj.processing_log += f"\n✗ Publishing error: {str(e)}"
+            file_obj.processing_log += f"\n✗ Publishing error (see server logs for file {file_id})"
             file_obj.save()
-        except:
+        except Exception:
             pass
-        return f"Error publishing to GeoServer: {str(e)}"
+        return f"Error publishing to GeoServer for file {file_id} (see server logs)"
 
 @shared_task
 def process_folder_gis_files(folder_id):
@@ -582,8 +582,8 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None):
         return result
         
     except Exception as e:
-        logger.exception(f"Error in Seeding Tool task for file {file_id}")
-        return {"success": False, "error": str(e)}
+        logger.exception("Error in Seeding Tool task for file %s", file_id)
+        return {"success": False, "error": f"Seeding Tool task failed (see server logs for file {file_id})"}
 
 
 @shared_task(bind=True)
@@ -750,8 +750,8 @@ def run_shape_to_json_task(self, file_id, output_dir_id=None):
         return result
         
     except Exception as e:
-        logger.exception(f"Error in Shape to JSON task for file {file_id}")
-        return {"success": False, "error": str(e)}
+        logger.exception("Error in Shape to JSON task for file %s", file_id)
+        return {"success": False, "error": f"Shape to JSON task failed (see server logs for file {file_id})"}
 
 
 @shared_task(bind=True)
@@ -999,8 +999,8 @@ def run_si_tool_task(
         return result
 
     except Exception as e:
-        logger.exception("Error in SI Tool task")
-        return {"success": False, "error": str(e)}
+        logger.exception("Error in SI Tool task for buffer_shp %s", buffer_shp_id)
+        return {"success": False, "error": "SI Tool task failed (see server logs)"}
 
 
 def _generate_all_json_for_device(device_folder, dev_eui, device_name, device_type, owner):
@@ -2296,11 +2296,11 @@ def run_agent_message_task(user_id, session_id, message_text, chat_session_id=No
                 session=session,
                 chat_session=chat_session,
                 role='assistant',
-                content=f"Sorry, I encountered an error: {e}",
+                content="Sorry, I encountered an error processing your request. Please try again.",
             )
         except Exception:
             pass
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Agent message task failed (see server logs)"}
 
 
 @shared_task(bind=True)

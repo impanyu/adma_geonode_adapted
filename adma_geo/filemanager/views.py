@@ -1518,13 +1518,23 @@ def check_deletion_status(request, task_id):
         
         task_result = AsyncResult(task_id)
         
+        ready = task_result.ready()
+        successful = task_result.successful() if ready else None
+        failed = task_result.failed() if ready else None
+        # Never expose raw task result/exception text to the client
+        result_payload = None
+        if ready and successful:
+            result_payload = task_result.result
+        elif ready and failed:
+            logger.error("Deletion task %s failed: %s", task_id, task_result.result)
+            result_payload = 'Task failed (see server logs)'
         return JsonResponse({
             'task_id': task_id,
             'status': task_result.status,
-            'result': task_result.result if task_result.ready() else None,
-            'ready': task_result.ready(),
-            'successful': task_result.successful() if task_result.ready() else None,
-            'failed': task_result.failed() if task_result.ready() else None
+            'result': result_payload,
+            'ready': ready,
+            'successful': successful,
+            'failed': failed,
         })
     except Exception as e:
         return _internal_error_response(e)
@@ -2771,7 +2781,8 @@ def check_seeding_tool_status(request, task_id):
             if result.successful():
                 response['result'] = result.result
             else:
-                response['error'] = str(result.result)
+                logger.error("Task %s failed: %s", task_id, result.result)
+                response['error'] = 'Task failed (see server logs for details)'
         
         return JsonResponse(response)
         
@@ -2875,7 +2886,8 @@ def check_shape_to_json_status(request, task_id):
             if result.successful():
                 response['result'] = result.result
             else:
-                response['error'] = str(result.result)
+                logger.error("Task %s failed: %s", task_id, result.result)
+                response['error'] = 'Task failed (see server logs for details)'
         
         return JsonResponse(response)
         
@@ -3049,7 +3061,8 @@ def check_si_tool_status(request, task_id):
             if result.successful():
                 response['result'] = result.result
             else:
-                response['error'] = str(result.result)
+                logger.error("Task %s failed: %s", task_id, result.result)
+                response['error'] = 'Task failed (see server logs for details)'
         
         return JsonResponse(response)
         
@@ -3194,7 +3207,8 @@ def check_yield_summary_tool_status(request, task_id):
             if result.successful():
                 response['result'] = result.result
             else:
-                response['error'] = str(result.result)
+                logger.error("Task %s failed: %s", task_id, result.result)
+                response['error'] = 'Task failed (see server logs for details)'
         
         return JsonResponse(response)
         
@@ -3458,7 +3472,8 @@ def check_valid_yield_extractor_status(request, task_id):
             if result.successful():
                 response['result'] = result.result
             else:
-                response['error'] = str(result.result)
+                logger.error("Task %s failed: %s", task_id, result.result)
+                response['error'] = 'Task failed (see server logs for details)'
 
         return JsonResponse(response)
 
