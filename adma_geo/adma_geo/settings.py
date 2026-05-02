@@ -230,6 +230,29 @@ ALL_SPATIAL_EXTENSIONS = [
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
 
+# ---------------------------------------------------------------------------
+# Security headers
+# ---------------------------------------------------------------------------
+# Cookie flags — prevent JS/network theft of session and CSRF tokens.
+SESSION_COOKIE_SECURE = True       # Only send over HTTPS
+SESSION_COOKIE_HTTPONLY = True     # Not accessible via JS (default True, be explicit)
+SESSION_COOKIE_SAMESITE = 'Lax'   # Blocks cross-site POST CSRF for session cookie
+
+CSRF_COOKIE_SECURE = True          # Only send CSRF cookie over HTTPS
+CSRF_COOKIE_HTTPONLY = True        # Not accessible via JS
+CSRF_COOKIE_SAMESITE = 'Lax'      # Matches SameSite session policy
+
+# Response headers
+SECURE_CONTENT_TYPE_NOSNIFF = True  # X-Content-Type-Options: nosniff
+X_FRAME_OPTIONS = 'DENY'           # Clickjacking protection
+
+# HSTS — intentionally NOT set to True here; enable once you have confirmed
+# the domain is 100 % HTTPS. Set SECURE_HSTS_SECONDS = 31536000 and
+# SECURE_SSL_REDIRECT = True in a separate ops config after that verification.
+# SECURE_HSTS_SECONDS = 31536000
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# SECURE_SSL_REDIRECT = True
+
 # Django REST Framework Configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
