@@ -280,12 +280,13 @@ def add_layer_to_map(request, map_id):
         # Update GeoServer Layer Group
         layer_group_manager = LayerGroupManager()
         success, message = layer_group_manager.update_layer_group(map_obj)
-        
+
         if success:
             return JsonResponse({'success': True, 'message': 'Layer added successfully'})
         else:
-            return JsonResponse({'success': False, 'error': f'GeoServer error: {message}'})
-            
+            logger.warning("GeoServer operation failed for map %s (add layer): %s", map_id, message)
+            return JsonResponse({'success': False, 'error': 'Map layer operation failed'})
+
     except Exception as e:
         logger.exception('Map view error')
         return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
@@ -309,8 +310,12 @@ def remove_layer_from_map(request, map_id, layer_id):
         if success:
             return JsonResponse({'success': True, 'message': 'Layer removed successfully'})
         else:
-            return JsonResponse({'success': False, 'error': f'GeoServer error: {message}'})
-            
+            logger.warning(
+                "GeoServer operation failed for map %s (remove layer %s): %s",
+                map_id, layer_id, message,
+            )
+            return JsonResponse({'success': False, 'error': 'Map layer operation failed'})
+
     except Exception as e:
         logger.exception('Map view error')
         return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
@@ -343,8 +348,9 @@ def update_layer_order(request, map_id):
         if success:
             return JsonResponse({'success': True, 'message': 'Layer order updated'})
         else:
-            return JsonResponse({'success': False, 'error': f'GeoServer error: {message}'})
-            
+            logger.warning("GeoServer operation failed for map %s (reorder layers): %s", map_id, message)
+            return JsonResponse({'success': False, 'error': 'Map layer operation failed'})
+
     except Exception as e:
         logger.exception('Map view error')
         return JsonResponse({'success': False, 'error': 'An error occurred. Please try again.'})
