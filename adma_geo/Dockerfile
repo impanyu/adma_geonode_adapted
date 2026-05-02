@@ -50,8 +50,15 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p /app/media/uploads /app/staticfiles
 
-# Collect static files (initial collection during build)
-RUN python manage.py collectstatic --noinput
+# Collect static files (initial collection during build).
+# DJANGO_DEV_FALLBACK=1 lets settings.py boot with a placeholder SECRET_KEY
+# for this command only; runtime still requires SECRET_KEY in env.
+# Same for POSTGRES_PASSWORD and GEOSERVER_ADMIN_PASSWORD — collectstatic
+# doesn't actually connect to the DB or GeoServer, so any value works here.
+RUN DJANGO_DEV_FALLBACK=1 \
+    POSTGRES_PASSWORD=build-noop \
+    GEOSERVER_ADMIN_PASSWORD=build-noop \
+    python manage.py collectstatic --noinput
 
 # Expose port
 EXPOSE 8000
