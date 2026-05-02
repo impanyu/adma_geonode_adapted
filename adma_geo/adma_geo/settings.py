@@ -150,6 +150,22 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
+# Explicit celery defaults — namespace='CELERY' loading in celery.py drops
+# celery's built-in defaults for these, so we declare them here. Without
+# them, `celery beat` / `celery worker` raise AttributeError on startup
+# trying to read app.conf.<attr>.
+CELERY_WORKER_LOG_FORMAT = (
+    '[%(asctime)s: %(levelname)s/%(processName)s] %(message)s'
+)
+CELERY_WORKER_TASK_LOG_FORMAT = (
+    '[%(asctime)s: %(levelname)s/%(processName)s] '
+    '[%(task_name)s(%(task_id)s)] %(message)s'
+)
+CELERY_BEAT_SCHEDULE_FILENAME = '/tmp/celerybeat-schedule'
+CELERY_BEAT_SCHEDULER = 'celery.beat:PersistentScheduler'
+CELERY_BEAT_MAX_LOOP_INTERVAL = 300
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
 # Celery Beat Schedule (for periodic tasks)
 from celery.schedules import crontab
 
