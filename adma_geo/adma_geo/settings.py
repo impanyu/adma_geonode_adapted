@@ -127,6 +127,7 @@ AUTHENTICATION_BACKENDS = [
 # django-axes brute-force protection (High 3 security fix)
 # ---------------------------------------------------------------------------
 # Run `python manage.py migrate` on next deploy to create axes tables.
+AXES_ENABLED = True                         # master on/off switch
 AXES_FAILURE_LIMIT = 5                      # 5 failed attempts triggers lockout
 AXES_COOLOFF_TIME = 1                       # locked out for 1 hour
 AXES_LOCK_OUT_AT_FAILURE = True
