@@ -1,0 +1,48 @@
+# Secrets — must never be baked into images
+.env
+.env.*
+*.env
+cookies.txt
+
+# Local data / state — should be mounted at runtime, not copied
+chromadb/
+media/
+celerybeat-schedule
+celerybeat-schedule.*
+*.sqlite3
+
+# Build / cache artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+
+# Source control
+.git/
+.gitignore
+
+# Docker — avoid recursive copies
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Local venvs
+venv/
+.venv/
+env/

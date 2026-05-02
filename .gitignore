@@ -77,3 +77,8 @@ Vagrantfile
 .env
 *.env
 src/celerybeat-schedule
+
+# Cookie jars (libcurl, etc.) — never commit
+cookies.txt
+*.cookies
+**/cookies.txt

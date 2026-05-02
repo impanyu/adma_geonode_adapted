@@ -5,12 +5,22 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-this-in-production')
+# No default — production must set SECRET_KEY in env. Dev can fall back to a
+# clearly-marked placeholder via the DJANGO_DEV_FALLBACK env var if desired.
+SECRET_KEY = os.environ.get('SECRET_KEY') or (
+    'django-insecure-dev-only-do-not-use-in-prod'
+    if os.environ.get('DJANGO_DEV_FALLBACK') == '1'
+    else None
+)
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY env var is required. Set DJANGO_DEV_FALLBACK=1 only for local dev."
+    )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', 'adma.unl.edu', '*']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', 'adma.unl.edu']
 
 # CSRF and CORS settings for production
 CSRF_TRUSTED_ORIGINS = [
@@ -81,7 +91,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',  # Regular PostgreSQL backend
         'NAME': os.environ.get('POSTGRES_DB', 'adma_geo'),
         'USER': os.environ.get('POSTGRES_USER', 'adma_geo'),
-        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'adma_geo123'),
+        'PASSWORD': os.environ['POSTGRES_PASSWORD'],
         'HOST': os.environ.get('POSTGRES_HOST', 'db'),
         'PORT': os.environ.get('POSTGRES_PORT', '5432'),
     }
@@ -185,7 +195,7 @@ DATA_UPLOAD_MAX_NUMBER_FILES = 1000  # Allow up to 1000 files per upload for fol
 # GeoServer Configuration
 GEOSERVER_URL = os.environ.get('GEOSERVER_URL', 'http://geoserver:8080/geoserver')
 GEOSERVER_ADMIN_USER = os.environ.get('GEOSERVER_ADMIN_USER', 'admin')
-GEOSERVER_ADMIN_PASSWORD = os.environ.get('GEOSERVER_ADMIN_PASSWORD', 'geoserver123')
+GEOSERVER_ADMIN_PASSWORD = os.environ['GEOSERVER_ADMIN_PASSWORD']
 GEOSERVER_WORKSPACE = 'adma_geo'
 
 # Supported GIS file formats
