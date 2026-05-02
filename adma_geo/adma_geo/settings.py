@@ -284,11 +284,19 @@ CSRF_COOKIE_SAMESITE = 'Lax'      # Matches SameSite session policy
 SECURE_CONTENT_TYPE_NOSNIFF = True  # X-Content-Type-Options: nosniff
 X_FRAME_OPTIONS = 'DENY'           # Clickjacking protection
 
-# HTTPS enforcement (High 4 security fix — user confirmed prod is fully HTTPS)
-# SECURE_SSL_REDIRECT works correctly here because SECURE_PROXY_SSL_HEADER is
-# already set above (HTTP_X_FORWARDED_PROTO / https) so Django reads the
-# X-Forwarded-Proto header set by nginx and will not infinite-loop.
-SECURE_SSL_REDIRECT = True
+# HTTPS enforcement (High 4 security fix).
+# SECURE_SSL_REDIRECT is intentionally disabled because there are TWO
+# nginx layers in front of Django:
+#   browser → outer nginx (terminates HTTPS) → inner nginx (port 80, plain
+#   HTTP) → django
+# The inner nginx's $scheme is "http" (it listens on port 80), so even when
+# the request is genuinely HTTPS at the outer layer, Django sees
+# X-Forwarded-Proto: http and would redirect to HTTPS — but the redirect
+# comes back through the same chain, so $scheme is still "http", and Django
+# redirects again, forever. The outer (UNL) nginx already redirects HTTP to
+# HTTPS, so the browser will never reach Django over plain HTTP anyway.
+# HSTS below still works — it's a response header, not a redirect.
+SECURE_SSL_REDIRECT = False
 SECURE_HSTS_SECONDS = 31536000          # 1 year
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
