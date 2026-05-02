@@ -143,9 +143,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: adma_geo_celery_beat
-    # -s explicitly sets the schedule file path; some Celery versions don't
-    # provide a default for app.conf.beat_schedule_filename and crash without it.
-    command: celery -A adma_geo beat -l info -s /tmp/celerybeat-schedule
+    # Some Celery versions (5.6.x) have multiple missing defaults in
+    # app.conf when config_from_object uses namespace='CELERY'. Click
+    # callbacks that read those attrs crash with AttributeError on
+    # startup. Passing -s and -S explicitly skips the broken lookups.
+    command: celery -A adma_geo beat -l info -s /tmp/celerybeat-schedule -S celery.beat:PersistentScheduler
     volumes:
       - .:/app
     environment:

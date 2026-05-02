@@ -143,7 +143,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: adma_geo_celery_beat
-    command: celery -A adma_geo beat -l info -s /tmp/celerybeat-schedule
+    command: celery -A adma_geo beat -l info -s /tmp/celerybeat-schedule -S celery.beat:PersistentScheduler
     volumes:
       - .:/app
     environment:
