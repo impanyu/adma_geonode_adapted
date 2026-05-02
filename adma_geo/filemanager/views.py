@@ -1219,9 +1219,16 @@ def create_folder(request):
             folder_name = data.get('name', '').strip()
             parent_id = data.get('parent_id')
             is_public = data.get('is_public', False)
-            
+
             if not folder_name:
                 return JsonResponse({'error': 'Folder name is required'}, status=400)
+
+            # Strip path separators and traversal sequences to prevent path traversal
+            # if this name ends up embedded in a filesystem path via get_full_path().
+            folder_name = folder_name.replace('/', '').replace('\\', '').replace('..', '')
+            folder_name = folder_name.strip()
+            if not folder_name:
+                return JsonResponse({'error': 'Folder name contains invalid characters'}, status=400)
             
             # Get parent folder if specified
             parent_folder = None
@@ -1741,8 +1748,12 @@ def upload_folders(request):
                 current_path = ""
                 
                 for folder_name in folder_path:
+                    # Sanitize each folder name component to prevent path traversal
+                    folder_name = folder_name.replace('\\', '').replace('..', '').strip()
+                    if not folder_name:
+                        continue
                     current_path = f"{current_path}/{folder_name}" if current_path else folder_name
-                    
+
                     if current_path not in created_folders:
                         # Create new folder (no need to check for existing since we already made names unique)
                         folder = Folder.objects.create(
