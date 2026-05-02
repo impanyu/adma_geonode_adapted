@@ -31,8 +31,17 @@ from .serializers import (
     FileDetailSerializer, FolderDetailSerializer, MapSerializer, ToolSerializer,
     AgentMessageSerializer, AgentStatusSerializer,
 )
-from .views import generate_unique_name
+import logging
+from .views import generate_unique_name, _internal_error_response
 from .tasks import process_gis_file_task
+
+logger = logging.getLogger(__name__)
+
+
+def _drf_internal_error(exc, message='An internal error occurred. Please try again.'):
+    """DRF-compatible variant of _internal_error_response. Logs exc server-side."""
+    logger.exception("Internal error: %s", exc)
+    return Response({'error': message}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -170,10 +179,7 @@ def api_upload_files(request):
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
-        return Response(
-            {'error': f'Upload failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return _drf_internal_error(e)
 
 
 @api_view(['POST'])
@@ -303,10 +309,7 @@ def api_upload_folders(request):
             }, status=status.HTTP_201_CREATED)
             
     except Exception as e:
-        return Response(
-            {'error': f'Folder upload failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return _drf_internal_error(e)
 
 
 @api_view(['GET'])
@@ -343,14 +346,11 @@ def api_download_file(request, file_id):
         
     except File.DoesNotExist:
         return Response(
-            {'error': 'File not found'}, 
+            {'error': 'File not found'},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
-        return Response(
-            {'error': f'Download failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return _drf_internal_error(e)
 
 
 @api_view(['GET'])
@@ -614,14 +614,11 @@ def api_download_folder(request, folder_id):
         
     except Folder.DoesNotExist:
         return Response(
-            {'error': 'Folder not found'}, 
+            {'error': 'Folder not found'},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
-        return Response(
-            {'error': f'Download failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return _drf_internal_error(e)
 
 
 @api_view(['GET'])
@@ -684,14 +681,11 @@ def api_folder_info(request, folder_id):
         
     except Folder.DoesNotExist:
         return Response(
-            {'error': 'Folder not found'}, 
+            {'error': 'Folder not found'},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
-        return Response(
-            {'error': f'Failed to get folder info: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return _drf_internal_error(e)
 
 
 def _format_file_size(size_bytes):
@@ -898,7 +892,7 @@ def api_run_tool(request, tool_slug):
         tool.increment_usage()
         return Response({'success': True, 'task_id': task.id})
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return _drf_internal_error(e)
 
 
 @api_view(['GET'])
@@ -1032,7 +1026,7 @@ def api_agent_chat(request):
         )
         return JsonResponse({'ok': True, 'user_message_id': user_msg_id, 'chat_session_id': cs_id})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required

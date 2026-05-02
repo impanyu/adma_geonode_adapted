@@ -1158,6 +1158,13 @@
 
 {% block extra_js %}
 <script>
+// XSS-safe HTML escaping helper
+function escapeHtml(text) {
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+}
+
 // CSRF token setup
 function getCookie(name) {
     let cookieValue = null;
@@ -1264,8 +1271,8 @@ function handleFiles(files) {
         const li = document.createElement('li');
         li.className = 'list-group-item d-flex justify-content-between align-items-center';
         li.innerHTML = `
-            <span><i class="fas fa-file me-2"></i>${file.name}</span>
-            <span class="badge bg-secondary">${(file.size / 1024 / 1024).toFixed(2)} MB</span>
+            <span><i class="fas fa-file me-2"></i>${escapeHtml(file.name)}</span>
+            <span class="badge bg-secondary">${escapeHtml((file.size / 1024 / 1024).toFixed(2))} MB</span>
         `;
         fileList.appendChild(li);
     }

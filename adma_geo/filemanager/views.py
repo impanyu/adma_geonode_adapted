@@ -1,4 +1,5 @@
 import json
+import logging
 import magic
 import os
 from pathlib import Path
@@ -15,6 +16,18 @@ from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from .models import Folder, File, Map, Tool
 from .forms import RegistrationForm, FolderForm, FileUploadForm
 from .tasks import process_gis_file_task
+
+logger = logging.getLogger(__name__)
+
+
+def _internal_error_response(exc, message='An internal error occurred. Please try again.', status=500):
+    """
+    Standard 500-error response that logs the full exception server-side
+    but returns only a generic message to the client. Use this everywhere
+    instead of putting str(exc) into a JsonResponse.
+    """
+    logger.exception("Internal error: %s", exc)
+    return JsonResponse({'error': message}, status=status)
 
 def get_robust_user_statistics(user):
     """
@@ -1245,8 +1258,8 @@ def create_folder(request):
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON data'}, status=400)
         except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-    
+            return _internal_error_response(e)
+
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 @login_required
@@ -1307,8 +1320,8 @@ def upload_files(request):
             })
             
         except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-    
+            return _internal_error_response(e)
+
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 @login_required
@@ -1492,8 +1505,8 @@ def delete_item(request):
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON data'}, status=400)
         except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-    
+            return _internal_error_response(e)
+
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 
@@ -1514,7 +1527,7 @@ def check_deletion_status(request, task_id):
             'failed': task_result.failed() if task_result.ready() else None
         })
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -1798,8 +1811,8 @@ def upload_folders(request):
             })
             
         except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-    
+            return _internal_error_response(e)
+
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 @login_required
@@ -1866,8 +1879,8 @@ def toggle_visibility(request):
         except json.JSONDecodeError:
             return JsonResponse({'success': False, 'error': 'Invalid JSON'})
         except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
-    
+            return _internal_error_response(e)
+
     return JsonResponse({'success': False, 'error': 'Method not allowed'})
 
 @login_required
@@ -2729,10 +2742,7 @@ def run_seeding_tool(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error running Seeding Tool: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -2766,10 +2776,7 @@ def check_seeding_tool_status(request, task_id):
         return JsonResponse(response)
         
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error checking Seeding Tool status: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -2839,10 +2846,7 @@ def run_shape_to_json(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error running Shape to JSON: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -2876,10 +2880,7 @@ def check_shape_to_json_status(request, task_id):
         return JsonResponse(response)
         
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error checking Shape to JSON status: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -3019,10 +3020,7 @@ def run_si_tool(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error running SI Tool: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -3056,10 +3054,7 @@ def check_si_tool_status(request, task_id):
         return JsonResponse(response)
         
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error checking SI Tool status: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -3170,10 +3165,7 @@ def run_yield_summary_tool(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error running Yield Summary Tool: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -3207,10 +3199,7 @@ def check_yield_summary_tool_status(request, task_id):
         return JsonResponse(response)
         
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error checking Yield Summary Tool status: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 class ValidYieldExtractorToolView(LoginRequiredMixin, TemplateView):
@@ -3440,10 +3429,7 @@ def run_valid_yield_extractor(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error running Valid Yield Extractor: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -3477,10 +3463,7 @@ def check_valid_yield_extractor_status(request, task_id):
         return JsonResponse(response)
 
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error checking Valid Yield Extractor status: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
 
 
 @login_required
@@ -3563,7 +3546,4 @@ def rename_file(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error renaming file: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return _internal_error_response(e)
