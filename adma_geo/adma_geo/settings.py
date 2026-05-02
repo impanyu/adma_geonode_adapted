@@ -135,6 +135,14 @@ AXES_LOCKOUT_PARAMETERS = [['username', 'ip_address']]  # lock per (user, IP) pa
 AXES_VERBOSE = True                         # log to standard Django logger
 AXES_HANDLER = 'axes.handlers.database.AxesDatabaseHandler'
 
+# These four *_CALLABLE settings must exist (even as None) — django-axes
+# 6.x's startup check uses getattr(settings, name) without a default and
+# crashes if any of them is missing. None = use the built-in default.
+AXES_CLIENT_IP_CALLABLE = None
+AXES_USERNAME_CALLABLE = None
+AXES_WHITELIST_CALLABLE = None
+AXES_LOCKOUT_CALLABLE = None
+
 # Internationalization
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'America/Chicago'  # Central Time (Nebraska)
