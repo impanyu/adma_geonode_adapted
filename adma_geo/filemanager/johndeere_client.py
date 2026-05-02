@@ -411,11 +411,20 @@ class JohnDeereClient:
         """
         Follow an absolute URI returned in an event's ``targetResource`` field
         and return the parsed JSON. Returns None on non-200.
+
+        SSRF guard: only URIs whose origin matches API_BASE_URL are allowed.
+        Any other URI is rejected with a warning — this prevents a compromised
+        JD account from redirecting us to internal services (e.g. metadata
+        endpoints at 169.254.169.254 or Docker-internal hosts).
         """
-        if uri.startswith(self.API_BASE_URL):
-            endpoint = uri[len(self.API_BASE_URL):]
-        else:
-            endpoint = uri
+        if not uri.startswith(self.API_BASE_URL):
+            logger.warning(
+                "get_resource_by_link: rejecting URI %r — does not match "
+                "allowed origin %r (SSRF guard)",
+                uri, self.API_BASE_URL,
+            )
+            return None
+        endpoint = uri[len(self.API_BASE_URL):]
         response = self._make_request('GET', endpoint)
         if response.status_code != 200:
             logger.error(
