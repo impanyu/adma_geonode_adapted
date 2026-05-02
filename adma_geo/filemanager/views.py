@@ -372,13 +372,21 @@ def dashboard(request):
         is_third_party=False  # Exclude third-party folders
     ).order_by('name')
     
-    # Get public root folders from OTHER users only (not current user's folders, exclude third-party)
+    # Get public root folders from OTHER users only (not current user's folders, exclude third-party).
+    # Apply the same "non-empty" filter as HomeView so that other users
+    # creating empty public folders can't spam every logged-in user's
+    # dashboard with their folder names (phishing / harassment vector).
     public_folders_from_others = Folder.objects.filter(
-        is_public=True, 
+        is_public=True,
         deletion_in_progress=False,
         parent=None,  # Only top-level folders
         is_third_party=False  # Exclude third-party folders
-    ).exclude(owner=user).order_by('name')
+    ).exclude(owner=user).annotate(
+        public_file_count=Count('files', filter=Q(files__is_public=True)),
+        public_subfolder_count=Count('subfolders', filter=Q(subfolders__is_public=True)),
+    ).filter(
+        Q(public_file_count__gt=0) | Q(public_subfolder_count__gt=0)
+    ).order_by('name')
     
     # Combine user's folders with public folders from others
     # User's folders first, then public folders from others
