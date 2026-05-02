@@ -430,6 +430,7 @@
 {% block extra_js %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
 <script>
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
@@ -530,6 +531,21 @@
         const d = document.createElement('div');
         d.textContent = text;
         return d.innerHTML;
+    }
+
+    // Allow only http(s) absolute URLs or relative paths starting with '/'.
+    // Anything else (javascript:, data:, vbscript:, etc.) becomes '#'.
+    function safeUrl(url) {
+        if (typeof url !== 'string') return '#';
+        const trimmed = url.trim();
+        if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+        if (/^https?:\/\//i.test(trimmed)) return trimmed;
+        return '#';
+    }
+
+    function isValidUuid(s) {
+        return typeof s === 'string' &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim());
     }
 
     async function switchSession(sessionId) {
@@ -693,48 +709,66 @@
     }
 
     function renderAssistantContent(text) {
-        // Process ADMA-specific markers
+        // Process ADMA-specific markers. Each replacement validates its
+        // user-controlled inputs: URLs are scheme-checked via safeUrl(),
+        // UUIDs are format-checked, and any text that goes into the page
+        // is run through escapeHtml().
         let processed = text;
 
         // [adma-link:/path/to/resource/] -> clickable card
         processed = processed.replace(
             /\[adma-link:([^\]]+)\]/g,
-            (_, path) => {
-                const label = path.replace(/\/$/, '').split('/').pop() || path;
-                return `<a class="adma-resource-card" href="${path}" target="_blank"><i class="fas fa-external-link-alt"></i> ${label}</a>`;
+            (_, raw) => {
+                const href = safeUrl(raw);
+                const label = escapeHtml(
+                    (raw.replace(/\/$/, '').split('/').pop()) || raw
+                );
+                return `<a class="adma-resource-card" href="${href}" target="_blank"><i class="fas fa-external-link-alt"></i> ${label}</a>`;
             }
         );
 
-        // [adma-map:UUID] -> embedded map iframe
+        // [adma-map:UUID] -> embedded map iframe (UUID format-checked)
         processed = processed.replace(
             /\[adma-map:([^\]]+)\]/g,
-            (_, uuid) => `<iframe class="adma-map-embed" src="/file/${uuid}/map/" frameborder="0"></iframe>`
+            (_, raw) => {
+                if (!isValidUuid(raw)) return '';
+                return `<iframe class="adma-map-embed" src="/file/${raw.trim()}/map/" frameborder="0" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
+            }
         );
 
         // [adma-redirect:URL] -> action button
         processed = processed.replace(
             /\[adma-redirect:([^\]]+)\]/g,
-            (_, url) => `<a class="btn btn-sm btn-outline-danger mt-1 mb-1" href="${url}" target="_blank"><i class="fas fa-external-link-alt me-1"></i>Open in ADMA</a>`
+            (_, raw) => {
+                const href = safeUrl(raw);
+                return `<a class="btn btn-sm btn-outline-danger mt-1 mb-1" href="${href}" target="_blank"><i class="fas fa-external-link-alt me-1"></i>Open in ADMA</a>`;
+            }
         );
 
-        // Render markdown
+        // Render markdown, then strip anything dangerous. We allow our two
+        // iframe variants explicitly; DOMPurify's default URL filter blocks
+        // javascript:/data:/vbscript: schemes on src/href.
         let html = marked.parse(processed);
+        html = DOMPurify.sanitize(html, {
+            ADD_TAGS: ['iframe'],
+            ADD_ATTR: ['sandbox', 'frameborder', 'allow', 'allowfullscreen', 'target'],
+        });
 
-        // Post-process: find ```html code blocks and render them as live iframes
-        // marked.js wraps them as <pre><code class="language-html">...</code></pre>
+        // Post-process: turn ```html code blocks into sandboxed iframes.
+        // The sandbox is `allow-scripts` only — `allow-same-origin` is NOT
+        // included, otherwise the sandbox is effectively disabled and the
+        // iframe could read parent cookies / DOM.
         const div = document.createElement('div');
         div.innerHTML = html;
         div.querySelectorAll('pre code.language-html').forEach(codeEl => {
             const htmlContent = codeEl.textContent;
-            // Only render as iframe if it looks like a full HTML document or has <script>/<canvas>/<svg>
             if (htmlContent.includes('<script') || htmlContent.includes('<canvas') ||
                 htmlContent.includes('<svg') || htmlContent.includes('<!DOCTYPE') ||
                 htmlContent.includes('Chart(') || htmlContent.includes('plotly')) {
                 const iframe = document.createElement('iframe');
                 iframe.className = 'adma-html-embed';
-                iframe.sandbox = 'allow-scripts allow-same-origin';
+                iframe.sandbox = 'allow-scripts';
                 iframe.srcdoc = htmlContent;
-                // Replace the <pre> with the iframe
                 codeEl.closest('pre').replaceWith(iframe);
             }
         });
