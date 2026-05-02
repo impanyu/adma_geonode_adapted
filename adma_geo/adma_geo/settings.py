@@ -272,12 +272,14 @@ CSRF_COOKIE_SAMESITE = 'Lax'      # Matches SameSite session policy
 SECURE_CONTENT_TYPE_NOSNIFF = True  # X-Content-Type-Options: nosniff
 X_FRAME_OPTIONS = 'DENY'           # Clickjacking protection
 
-# HSTS — intentionally NOT set to True here; enable once you have confirmed
-# the domain is 100 % HTTPS. Set SECURE_HSTS_SECONDS = 31536000 and
-# SECURE_SSL_REDIRECT = True in a separate ops config after that verification.
-# SECURE_HSTS_SECONDS = 31536000
-# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-# SECURE_SSL_REDIRECT = True
+# HTTPS enforcement (High 4 security fix — user confirmed prod is fully HTTPS)
+# SECURE_SSL_REDIRECT works correctly here because SECURE_PROXY_SSL_HEADER is
+# already set above (HTTP_X_FORWARDED_PROTO / https) so Django reads the
+# X-Forwarded-Proto header set by nginx and will not infinite-loop.
+SECURE_SSL_REDIRECT = True
+SECURE_HSTS_SECONDS = 31536000          # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
 
 # Django REST Framework Configuration
 REST_FRAMEWORK = {
