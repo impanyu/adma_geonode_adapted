@@ -148,21 +148,17 @@ AXES_WHITELIST_CALLABLE = None
 AXES_LOCKOUT_CALLABLE = None
 AXES_HTTP_RESPONSE_CODE = 403
 
-# Additional axes 6.x settings that have no defaults in the package and crash
-# at import time when missing (Optional[int] = settings.X type annotations
-# evaluated when the AxesDatabaseHandler class is loaded).
+# axes 6.x settings without package-level defaults — getattr(settings, X)
+# without a default crashes if any are missing. Defining them here.
 AXES_ACCESS_FAILURE_LOG_PER_USER_LIMIT = 1000
+AXES_SENSITIVE_PARAMETERS = []
 AXES_ALLOWED_CORS_ORIGINS = '*'
 AXES_DISABLE_ACCESS_LOG = False
 AXES_ENABLE_ACCESS_FAILURE_LOG = True
 AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = True
-AXES_PROXY_COUNT = None
-AXES_META_PRECEDENCE_ORDER = ('HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR')
 AXES_NEVER_LOCKOUT_GET = False
 AXES_NEVER_LOCKOUT_WHITELIST = False
 AXES_ONLY_ADMIN_SITE = False
-AXES_ONLY_USER_FAILURES = False
-AXES_USE_USER_AGENT = False
 AXES_USERNAME_FORM_FIELD = 'username'
 AXES_LOCKOUT_TEMPLATE = None
 AXES_LOCKOUT_URL = None
@@ -172,7 +168,6 @@ AXES_LOCKOUT_FAILURE_RESPONSE = None
 AXES_IPWARE_PROXY_COUNT = None
 AXES_IPWARE_META_PRECEDENCE_ORDER = ('HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR')
 AXES_CACHE = 'default'
-AXES_DISABLE_SUCCESS_ACCESS_LOG = False
 AXES_LOCKOUT_FORM_TEMPLATE = None
 AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT_FORM = True
 
