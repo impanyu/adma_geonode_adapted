@@ -301,7 +301,7 @@
                     until its security gaps are fixed. See views.py
                     AGENT_ALLOWED_USERNAMES.
                     {% endcomment %}
-                    {% if user.username == "Yu" %}
+                    {% if user.username == "Yu" or user.username == "impanyu" %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'filemanager:agent_chat' %}">
                             <i class="fas fa-robot me-1"></i>Agent

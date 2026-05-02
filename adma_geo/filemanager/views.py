@@ -324,7 +324,7 @@ class HomeView(TemplateView):
 # everyone, delete the AGENT_ALLOWED_USERNAMES check sites (this decorator
 # and `agent_user_required` import in api_views.py) and the {% if %} guard
 # in base.html.
-AGENT_ALLOWED_USERNAMES = frozenset({'Yu'})
+AGENT_ALLOWED_USERNAMES = frozenset({'Yu', 'impanyu'})
 
 
 def agent_user_required(view_func):
