@@ -296,9 +296,11 @@
                             <i class="fas fa-tools me-1"></i>Tools
                         </a>
                     </li>
-                    {# Temporary: agent feature is gated to a single user
-                       until its security gaps are fixed. See views.py
-                       AGENT_ALLOWED_USERNAMES. #}
+                    {% comment %}
+                    Temporary: agent feature is gated to a single user
+                    until its security gaps are fixed. See views.py
+                    AGENT_ALLOWED_USERNAMES.
+                    {% endcomment %}
                     {% if user.username == "Yu" %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'filemanager:agent_chat' %}">
