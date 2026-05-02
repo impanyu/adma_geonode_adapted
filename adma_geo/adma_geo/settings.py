@@ -4,6 +4,17 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+# Module-level __getattr__: catch any AXES_* attribute that isn't explicitly
+# defined below and return None. django-axes 6.x uses getattr(settings, X)
+# without defaults across many call sites; every minor version adds new
+# settings, so an explicit list goes stale. None is the safe sentinel for
+# every AXES_* setting we don't actively configure.
+def __getattr__(name):
+    if name.startswith('AXES_'):
+        return None
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 # SECURITY WARNING: keep the secret key used in production secret!
 # No default — production must set SECRET_KEY in env. Dev can fall back to a
 # clearly-marked placeholder via the DJANGO_DEV_FALLBACK env var if desired.
