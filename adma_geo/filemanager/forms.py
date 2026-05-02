@@ -33,7 +33,12 @@ class RegistrationForm(UserCreationForm):
     def clean_email(self):
         email = self.cleaned_data['email']
         if User.objects.filter(email=email).exists():
-            raise forms.ValidationError("A user with that email already exists.")
+            # Use a generic message to avoid disclosing whether the email
+            # is registered (account enumeration via registration form).
+            raise forms.ValidationError(
+                "Unable to create an account with this email address. "
+                "Please use a different email or contact support."
+            )
         return email
 
 class FolderForm(forms.ModelForm):
