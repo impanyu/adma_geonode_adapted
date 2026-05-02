@@ -361,8 +361,8 @@ def process_gis_file(file_obj):
             raise ValueError(f"Unsupported file format: {file_ext}")
             
     except Exception as e:
-        logger.error(f"Error processing GIS file {file_obj.name}: {str(e)}")
-        return False, str(e)
+        logger.exception("Error processing GIS file %s: %s", file_obj.name, e)
+        return False, "GIS file processing failed (see server logs)"
 
 def process_zip_file(file_obj, file_path):
     """Process ZIP file (likely containing shapefile)"""
@@ -382,7 +382,8 @@ def process_zip_file(file_obj, file_path):
             return process_vector_file(file_obj, shp_path)
             
         except Exception as e:
-            return False, f"Error processing ZIP file: {str(e)}"
+            logger.exception("Error processing ZIP file for %s", file_obj.name)
+            return False, "GIS file processing failed (see server logs)"
 
 def process_vector_file(file_obj, file_path):
     """Process vector file (GeoJSON, Shapefile, GeoPackage) - simplified version"""
@@ -402,7 +403,8 @@ def process_vector_file(file_obj, file_path):
         return True, "Processed vector file (basic processing)"
         
     except Exception as e:
-        return False, f"Error processing vector file: {str(e)}"
+        logger.exception("Error processing vector file for %s", file_obj.name)
+        return False, "GIS file processing failed (see server logs)"
 
 def process_raster_file(file_obj, file_path):
     """Process raster file (GeoTIFF, TIFF)"""
@@ -448,7 +450,8 @@ def process_raster_file(file_obj, file_path):
         return True, f"Raster file processed with CRS {file_obj.crs}"
         
     except Exception as e:
-        return False, f"Error processing raster file: {str(e)}"
+        logger.exception("Error processing raster file for %s", file_obj.name)
+        return False, "GIS file processing failed (see server logs)"
 
 def process_csv_file(file_obj, file_path):
     """Process CSV file (assuming it has lat/lon columns) - simplified version"""
@@ -468,7 +471,8 @@ def process_csv_file(file_obj, file_path):
         return True, "Processed CSV with geographic data (basic processing)"
         
     except Exception as e:
-        return False, f"Error processing CSV file: {str(e)}"
+        logger.exception("Error processing CSV file for %s", file_obj.name)
+        return False, "GIS file processing failed (see server logs)"
 
 def publish_to_geoserver(file_obj):
     """Publish processed GIS file to GeoServer with systematic naming"""
@@ -482,7 +486,8 @@ def publish_to_geoserver(file_obj):
         
         return success, message
     except Exception as e:
-        return False, f"Error publishing to GeoServer: {str(e)}"
+        logger.exception("Error publishing file %s to GeoServer", file_obj.name)
+        return False, "Failed to publish layer to GeoServer (see server logs)"
 
 
 def publish_to_geoserver_legacy(file_obj):
@@ -603,7 +608,8 @@ def publish_to_geoserver_legacy(file_obj):
             return False, f"Unsupported file type for GeoServer: {file_ext}"
             
     except Exception as e:
-        return False, f"Error publishing to GeoServer: {str(e)}"
+        logger.exception("Error publishing file %s to GeoServer (legacy)", file_obj.name)
+        return False, "Failed to publish layer to GeoServer (see server logs)"
 
 def bundle_and_publish_shapefile(shp_file_obj):
     """
@@ -620,10 +626,10 @@ def bundle_and_publish_shapefile(shp_file_obj):
         success, message, layer_name = geoserver_manager.publish_file_to_geoserver(shp_file_obj)
         
         return success, message
-            
+
     except Exception as e:
-        logger.error(f"Error bundling shapefile: {str(e)}")
-        return False, f"Error bundling shapefile: {str(e)}"
+        logger.exception("Error bundling/publishing shapefile %s", shp_file_obj.name)
+        return False, "Failed to publish layer to GeoServer (see server logs)"
 
 
 def bundle_and_publish_shapefile_legacy(shp_file_obj):
@@ -766,5 +772,5 @@ def bundle_and_publish_shapefile_legacy(shp_file_obj):
                 return False, "Failed to upload bundled shapefile to GeoServer"
             
     except Exception as e:
-        logger.error(f"Error bundling shapefile: {str(e)}")
-        return False, f"Error bundling shapefile: {str(e)}"
+        logger.exception("Error bundling/publishing shapefile %s (legacy)", shp_file_obj.name)
+        return False, "Failed to publish layer to GeoServer (see server logs)"
