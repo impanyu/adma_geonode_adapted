@@ -5,15 +5,6 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Module-level __getattr__: catch any AXES_* attribute that isn't explicitly
-# defined below and return None. django-axes 6.x uses getattr(settings, X)
-# without defaults across many call sites; every minor version adds new
-# settings, so an explicit list goes stale. None is the safe sentinel for
-# every AXES_* setting we don't actively configure.
-def __getattr__(name):
-    if name.startswith('AXES_'):
-        return None
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # No default — production must set SECRET_KEY in env. Dev can fall back to a
@@ -61,7 +52,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'rest_framework_simplejwt',
-    'axes',
+    # 'axes',  # disabled — see comment block near AXES_* settings below
 
     # Local apps
     'filemanager',
@@ -75,8 +66,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    # axes must come after AuthenticationMiddleware
-    'axes.middleware.AxesMiddleware',
+    # 'axes.middleware.AxesMiddleware',  # disabled
 ]
 
 ROOT_URLCONF = 'adma_geo.urls'
@@ -128,66 +118,24 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 AUTHENTICATION_BACKENDS = [
-    # axes must be first so it can intercept locked-out accounts before
-    # Django's backend even attempts password verification.
-    'axes.backends.AxesStandaloneBackend',
+    # 'axes.backends.AxesStandaloneBackend',  # disabled along with axes app
     'django.contrib.auth.backends.ModelBackend',
 ]
 
 # ---------------------------------------------------------------------------
-# django-axes brute-force protection (High 3 security fix)
+# django-axes — DISABLED. The 6.x version has design issues with how it reads
+# settings (dozens of getattr(settings, X) without defaults, scattered across
+# the codebase). Each new axes-using code path needed yet another setting
+# defined or it would crash at runtime. We retreated to the unprotected
+# state pending a different rate-limit / brute-force solution (e.g.
+# django-ratelimit on the login view, or fail2ban at the host level).
+#
+# Audit findings file: docs/superpowers/specs/2026-05-02-security-audit-followups.md
+# Reopen High 3 there and reflect this status when revisiting.
 # ---------------------------------------------------------------------------
-# Run `python manage.py migrate` on next deploy to create axes tables.
-AXES_ENABLED = True                         # master on/off switch
-AXES_FAILURE_LIMIT = 5                      # 5 failed attempts triggers lockout
-AXES_COOLOFF_TIME = 1                       # locked out for 1 hour
-AXES_LOCK_OUT_AT_FAILURE = True
-AXES_RESET_ON_SUCCESS = True
-AXES_LOCKOUT_PARAMETERS = [['username', 'ip_address']]  # lock per (user, IP) pair
-AXES_VERBOSE = True                         # log to standard Django logger
-AXES_HANDLER = 'axes.handlers.database.AxesDatabaseHandler'
-
-# These *_CALLABLE settings must exist (even as None) — django-axes 6.x's
-# axes_conf_check uses getattr(settings, name) without a default and crashes
-# if any is missing. None = use the built-in default.
-AXES_CLIENT_IP_CALLABLE = None
-AXES_CLIENT_STR_CALLABLE = None
-AXES_CLIENT_USERNAME_CALLABLE = None
-AXES_CLIENT_USER_AGENT_CALLABLE = None
-AXES_USERNAME_CALLABLE = None
-AXES_WHITELIST_CALLABLE = None
-AXES_LOCKOUT_CALLABLE = None
-AXES_HTTP_RESPONSE_CODE = 403
-
-# axes 6.x settings without package-level defaults — getattr(settings, X)
-# without a default crashes if any are missing. Defining them here.
-AXES_ACCESS_FAILURE_LOG_PER_USER_LIMIT = 1000
-AXES_SENSITIVE_PARAMETERS = []
-AXES_ALLOWED_CORS_ORIGINS = '*'
-AXES_DISABLE_ACCESS_LOG = False
-AXES_ENABLE_ACCESS_FAILURE_LOG = True
-AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = True
-AXES_NEVER_LOCKOUT_GET = False
-AXES_NEVER_LOCKOUT_WHITELIST = False
-AXES_ONLY_ADMIN_SITE = False
-AXES_USERNAME_FORM_FIELD = 'username'
-AXES_PASSWORD_FORM_FIELD = 'password'
-AXES_IP_BLACKLIST = []
-AXES_IP_WHITELIST = None
-AXES_LOCK_OUT_BY_USER_OR_IP = False
-AXES_LOCK_OUT_BY_COMBINATION_USER_AND_IP = False
-AXES_LOCK_OUT_USER_AGENT_AND_IP = False
-AXES_USERNAME_FORM_FIELD_FALLBACK = None
-AXES_LOCKOUT_TEMPLATE = None
-AXES_LOCKOUT_URL = None
-AXES_PERMALOCK_ENABLED = False
-AXES_RESET_COOL_OFF_ON_FAILURE = True
-AXES_LOCKOUT_FAILURE_RESPONSE = None
-AXES_IPWARE_PROXY_COUNT = None
-AXES_IPWARE_META_PRECEDENCE_ORDER = ('HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR')
-AXES_CACHE = 'default'
-AXES_LOCKOUT_FORM_TEMPLATE = None
-AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT_FORM = True
+# (All AXES_* settings removed; reactivate them along with re-adding 'axes'
+# to INSTALLED_APPS, AxesMiddleware to MIDDLEWARE, and AxesStandaloneBackend
+# to AUTHENTICATION_BACKENDS.)
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
