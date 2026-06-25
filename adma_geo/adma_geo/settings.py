@@ -267,7 +267,13 @@ SESSION_COOKIE_HTTPONLY = True     # Not accessible via JS (default True, be exp
 SESSION_COOKIE_SAMESITE = 'Lax'   # Blocks cross-site POST CSRF for session cookie
 
 CSRF_COOKIE_SECURE = True          # Only send CSRF cookie over HTTPS
-CSRF_COOKIE_HTTPONLY = True        # Not accessible via JS
+# Must stay False: the frontend AJAX layer reads this cookie via JavaScript
+# (getCookie('csrftoken') in every template) to send the X-CSRFToken header.
+# HttpOnly=True hides the cookie from JS, so the header goes out empty and every
+# POST (create folder, uploads, maps, tools) is rejected with a 403 CSRF page,
+# which the client's response.json() then fails to parse. The CSRF token is not
+# a secret credential; SameSite=Lax + Secure provide the cross-site protection.
+CSRF_COOKIE_HTTPONLY = False       # MUST be readable by JS for AJAX CSRF header
 CSRF_COOKIE_SAMESITE = 'Lax'      # Matches SameSite session policy
 
 # Response headers
