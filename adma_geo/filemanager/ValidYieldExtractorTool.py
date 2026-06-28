@@ -116,7 +116,39 @@ def pick_column(df, candidates):
     raise ValueError(f"None of the expected columns found. Looked for: {candidates}")
 
 
-#  Geoprocessing 
+PLOT_ID_CANDIDATES = ["Plot_Number", "Plot_Num", "Plot_Numbe", "Plot No",
+                      "PlotNo", "PlotID", "Plot_ID", "Plot", "plot_number"]
+
+
+def resolve_plot_id_column(plots, override=None):
+    """Return the plots column to use as plot_id.
+
+    A truthy ``override`` wins (and must be a real column); otherwise fall back
+    to synonym auto-detection.
+    """
+    if override:
+        if override not in plots.columns:
+            raise ValueError(
+                f"Plot ID column '{override}' not found in plots layer. "
+                f"Available columns: {list(plots.columns)}"
+            )
+        return override
+    return pick_column(plots, PLOT_ID_CANDIDATES)
+
+
+def apply_column_override(gdf, std_key, override_col):
+    """If ``override_col`` is set, copy it into the standardized ``std_key`` column."""
+    if override_col:
+        if override_col not in gdf.columns:
+            raise ValueError(
+                f"Column '{override_col}' (for '{std_key}') not found in layer. "
+                f"Available columns: {list(gdf.columns)}"
+            )
+        gdf[std_key] = gdf[override_col]
+    return gdf
+
+
+#  Geoprocessing
 
 def join_points_to_plots(points: gpd.GeoDataFrame, plots: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     joined = gpd.sjoin(points, plots[["plot_id", "geometry"]], how="left", predicate="within")
@@ -286,8 +318,7 @@ def run(args: argparse.Namespace) -> None:
         plots = load_any(args.plots, crs_out=args.crs)
     plots = standardize_columns(plots, PLOTS_MAP)
 
-    plot_id_col = pick_column(plots, ["Plot_Number", "Plot_Num", "Plot_Numbe", "Plot No",
-                                       "PlotNo", "PlotID", "Plot_ID", "Plot", "plot_number"])
+    plot_id_col = resolve_plot_id_column(plots, getattr(args, "plot_id_col", None))
     print(f"Using plots ID column: {plot_id_col}")
     plots = plots.rename(columns={plot_id_col: "plot_id"})
     plots["plot_id"] = plots["plot_id"].astype(str).str.strip()
@@ -302,6 +333,8 @@ def run(args: argparse.Namespace) -> None:
     else:
         app = load_any(args.app, crs_out=args.crs)
     app = standardize_columns(app, APP_MAP)
+    app = apply_column_override(app, "applied", getattr(args, "applied_col", None))
+    app = apply_column_override(app, "rxTarget", getattr(args, "target_col", None))
 
     # Load harvest
     if Path(args.harv).suffix.lower() in {".csv", ".txt"}:
@@ -311,6 +344,7 @@ def run(args: argparse.Namespace) -> None:
     else:
         harv = load_any(args.harv, crs_out=args.crs)
     harv = standardize_columns(harv, HARV_MAP)
+    harv = apply_column_override(harv, "clnYield", getattr(args, "yield_col", None))
 
     print(f"✔ Plots: {len(plots)} polygons | ✔ App pts: {len(app)} | ✔ Harvest pts: {len(harv)}")
     if plots.empty or app.empty or harv.empty:
