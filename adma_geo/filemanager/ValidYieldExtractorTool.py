@@ -42,7 +42,7 @@ APP_MAP = {
 }
 
 HARV_MAP = {
-    "clnYield": ["clnyield", "yield", "yld", "clean_yield", "yld_buac", "Yield"],
+    "yield": ["clnyield", "yield", "yld", "clean_yield", "yld_buac", "Yield"],
     "moisture": ["moisture", "Moist_", "Moisture", "grain_moisture", "moist_", "moist"]
 }
 
@@ -344,7 +344,7 @@ def run(args: argparse.Namespace) -> None:
     else:
         harv = load_any(args.harv, crs_out=args.crs)
     harv = standardize_columns(harv, HARV_MAP)
-    harv = apply_column_override(harv, "clnYield", getattr(args, "yield_col", None))
+    harv = apply_column_override(harv, "yield", getattr(args, "yield_col", None))
 
     print(f"✔ Plots: {len(plots)} polygons | ✔ App pts: {len(app)} | ✔ Harvest pts: {len(harv)}")
     if plots.empty or app.empty or harv.empty:
