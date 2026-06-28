@@ -346,6 +346,49 @@
                         </div>
                     </div>
 
+                    <!-- Column Mapping Section -->
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="fw-bold mb-3">
+                                <i class="fas fa-columns me-2 text-secondary"></i>
+                                Column mapping
+                                <small class="text-muted fw-normal">(auto-detected if left as default)</small>
+                            </h6>
+                            <div class="parameter-section">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="plotIdColumn" class="form-label"><strong>Plot ID</strong>
+                                            <small class="text-muted">(from treatment plots)</small></label>
+                                        <select class="form-select" id="plotIdColumn" name="plot_id_col">
+                                            <option value="">— auto-detect —</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="targetRateColumn" class="form-label"><strong>Target rate</strong>
+                                            <small class="text-muted">(from application data)</small></label>
+                                        <select class="form-select" id="targetRateColumn" name="target_rate_col">
+                                            <option value="">— auto-detect —</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="appliedRateColumn" class="form-label"><strong>Applied rate</strong>
+                                            <small class="text-muted">(from application data)</small></label>
+                                        <select class="form-select" id="appliedRateColumn" name="applied_rate_col">
+                                            <option value="">— auto-detect —</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="yieldColumn" class="form-label"><strong>Yield</strong>
+                                            <small class="text-muted">(from harvest data)</small></label>
+                                        <select class="form-select" id="yieldColumn" name="yield_col">
+                                            <option value="">— auto-detect —</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Parameters Section -->
                     <div class="row">
                         <div class="col-12">
@@ -847,19 +890,46 @@ function selectInputFile(element, mode) {
         document.getElementById('selectedPlotsFileName').textContent = fileName;
         document.getElementById('selectedPlotsDisplay').classList.add('show');
         document.getElementById('summaryPlots').textContent = fileName;
+        loadColumnsForFile(fileId, ['plotIdColumn']);
     } else if (mode === 'app') {
         document.getElementById('selectedAppFileId').value = fileId;
         document.getElementById('selectedAppFileName').textContent = fileName;
         document.getElementById('selectedAppDisplay').classList.add('show');
         document.getElementById('summaryApp').textContent = fileName;
+        loadColumnsForFile(fileId, ['targetRateColumn', 'appliedRateColumn']);
     } else if (mode === 'harv') {
         document.getElementById('selectedHarvFileId').value = fileId;
         document.getElementById('selectedHarvFileName').textContent = fileName;
         document.getElementById('selectedHarvDisplay').classList.add('show');
         document.getElementById('summaryHarv').textContent = fileName;
+        loadColumnsForFile(fileId, ['yieldColumn']);
     }
 
     updateSubmitButton();
+}
+
+// Populate column-mapping dropdown(s) from a selected shapefile's columns.
+async function loadColumnsForFile(fileId, selectIds) {
+    // Reset to just the auto-detect option while loading.
+    selectIds.forEach(id => {
+        document.getElementById(id).innerHTML = '<option value="">— auto-detect —</option>';
+    });
+    try {
+        const resp = await fetch(`/api/valid-yield-extractor/columns/${fileId}/`);
+        const data = await resp.json();
+        if (!data.success) { return; }
+        selectIds.forEach(id => {
+            const sel = document.getElementById(id);
+            data.columns.forEach(col => {
+                const opt = document.createElement('option');
+                opt.value = col;
+                opt.textContent = col;   // textContent is XSS-safe
+                sel.appendChild(opt);
+            });
+        });
+    } catch (e) {
+        console.error('Failed to load columns', e);
+    }
 }
 
 // Select output folder
@@ -1151,7 +1221,11 @@ document.getElementById('validYieldExtractorForm').addEventListener('submit', as
                 harv_file_id: harvFileId,
                 output_folder_id: folderId || null,
                 crs: crs,
-                rate_tolerance: rateTolerance
+                rate_tolerance: rateTolerance,
+                plot_id_col: document.getElementById('plotIdColumn').value || null,
+                target_rate_col: document.getElementById('targetRateColumn').value || null,
+                applied_rate_col: document.getElementById('appliedRateColumn').value || null,
+                yield_col: document.getElementById('yieldColumn').value || null
             })
         });
 
