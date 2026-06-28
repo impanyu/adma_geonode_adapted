@@ -73,3 +73,63 @@ class ColumnsEndpointTests(TestCase):
         f = self._make_file("plots.shp", owner=self.other, is_public=True)
         resp = self.client.get(self._url(f.id))
         self.assertEqual(resp.status_code, 200)
+
+
+import json
+
+
+@override_settings(MEDIA_ROOT=_MEDIA)
+class RunForwardsColumnOverridesTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="ru", password="x")
+        self.client.force_login(self.user)
+
+    def _mk(self, name):
+        return File.objects.create(
+            name=name, owner=self.user,
+            file=SimpleUploadedFile(name, b"dummy"),
+        )
+
+    @mock.patch("filemanager.views.run_valid_yield_extractor_task")
+    def test_run_forwards_column_fields_to_task(self, mock_task):
+        mock_task.delay.return_value = mock.Mock(id="task-123")
+        plots, app, harv = self._mk("p.shp"), self._mk("a.shp"), self._mk("h.shp")
+        body = {
+            "plots_file_id": str(plots.id),
+            "app_file_id": str(app.id),
+            "harv_file_id": str(harv.id),
+            "plot_id_col": "Plot_Number",
+            "target_rate_col": "Tgt",
+            "applied_rate_col": "Act",
+            "yield_col": "Yld",
+        }
+        resp = self.client.post(
+            "/api/valid-yield-extractor/run/",
+            data=json.dumps(body), content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(resp.json()["success"])
+        _, kwargs = mock_task.delay.call_args
+        self.assertEqual(kwargs["plot_id_col"], "Plot_Number")
+        self.assertEqual(kwargs["target_rate_col"], "Tgt")
+        self.assertEqual(kwargs["applied_rate_col"], "Act")
+        self.assertEqual(kwargs["yield_col"], "Yld")
+
+    @mock.patch("filemanager.views.run_valid_yield_extractor_task")
+    def test_blank_column_fields_forward_as_none(self, mock_task):
+        mock_task.delay.return_value = mock.Mock(id="task-1")
+        plots, app, harv = self._mk("p.shp"), self._mk("a.shp"), self._mk("h.shp")
+        body = {
+            "plots_file_id": str(plots.id),
+            "app_file_id": str(app.id),
+            "harv_file_id": str(harv.id),
+            "plot_id_col": "",
+        }
+        resp = self.client.post(
+            "/api/valid-yield-extractor/run/",
+            data=json.dumps(body), content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        _, kwargs = mock_task.delay.call_args
+        self.assertIsNone(kwargs["plot_id_col"])
+        self.assertIsNone(kwargs["yield_col"])

@@ -2357,6 +2357,10 @@ def run_valid_yield_extractor_task(
     output_folder_id=None,
     crs="EPSG:26914",
     rate_tolerance=0.10,
+    plot_id_col=None,
+    target_rate_col=None,
+    applied_rate_col=None,
+    yield_col=None,
     requesting_user_id=None,
 ):
     """
@@ -2489,6 +2493,10 @@ def run_valid_yield_extractor_task(
         args = argparse.Namespace(
             plots=plots_path, app=app_path, harv=harv_path,
             crs=crs, out=output_dir,
+            plot_id_col=plot_id_col,
+            applied_col=applied_rate_col,
+            target_col=target_rate_col,
+            yield_col=yield_col,
             plots_wkt=None, plots_easting=None, plots_northing=None,
             plots_lat=None, plots_lon=None, plots_crs_in='EPSG:4326',
             app_wkt=None, app_easting=None, app_northing=None,

@@ -17,7 +17,7 @@ from django.conf import settings
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from .models import Folder, File, Map, Tool
 from .forms import RegistrationForm, FolderForm, FileUploadForm
-from .tasks import process_gis_file_task
+from .tasks import process_gis_file_task, run_valid_yield_extractor_task
 from .upload_validation import validate_uploaded_file_mime
 
 logger = logging.getLogger(__name__)
@@ -3510,6 +3510,10 @@ def run_valid_yield_extractor(request):
         output_folder_id = data.get('output_folder_id')
         crs = data.get('crs', 'EPSG:26914')
         rate_tolerance = data.get('rate_tolerance', 0.10)
+        plot_id_col = data.get('plot_id_col') or None
+        target_rate_col = data.get('target_rate_col') or None
+        applied_rate_col = data.get('applied_rate_col') or None
+        yield_col = data.get('yield_col') or None
 
         if not plots_file_id:
             return JsonResponse({'success': False, 'error': 'plots_file_id is required'}, status=400)
@@ -3577,14 +3581,17 @@ def run_valid_yield_extractor(request):
             }, status=400)
 
         # Trigger the Celery task
-        from .tasks import run_valid_yield_extractor_task
         task = run_valid_yield_extractor_task.delay(
             str(plots_file_id),
             str(app_file_id),
             str(harv_file_id),
             output_folder_id,
             crs,
-            rate_tolerance
+            rate_tolerance,
+            plot_id_col=plot_id_col,
+            target_rate_col=target_rate_col,
+            applied_rate_col=applied_rate_col,
+            yield_col=yield_col,
         )
 
         return JsonResponse({
