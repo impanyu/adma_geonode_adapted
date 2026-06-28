@@ -3444,6 +3444,39 @@ class ValidYieldExtractorToolView(LoginRequiredMixin, TemplateView):
         return tree_data
 
 
+def read_shapefile_columns(shp_path):
+    """Return a shapefile's attribute field names (no geometry, no row load)."""
+    import fiona
+    with fiona.open(shp_path) as src:
+        return list(src.schema["properties"].keys())
+
+
+@login_required
+def valid_yield_extractor_columns(request, file_id):
+    """Return the attribute column names of a selected .shp for the column-mapping UI."""
+    try:
+        file_obj = File.objects.get(id=file_id)
+    except File.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'File not found'}, status=404)
+
+    if file_obj.owner != request.user and not file_obj.is_public:
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    ext = os.path.splitext(file_obj.name)[1].lower()
+    if ext != '.shp':
+        return JsonResponse(
+            {'success': False, 'error': f'File must be a .shp file. Got: {ext}'},
+            status=400,
+        )
+
+    try:
+        columns = read_shapefile_columns(file_obj.file.path)
+    except Exception as e:
+        return _internal_error_response(e)
+
+    return JsonResponse({'success': True, 'columns': columns})
+
+
 @login_required
 def run_valid_yield_extractor(request):
     """

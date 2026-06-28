@@ -70,7 +70,8 @@ urlpatterns = [
     path('tools/valid-yield-extractor/', views.ValidYieldExtractorToolView.as_view(), name='valid_yield_extractor_tool'),
     path('api/valid-yield-extractor/run/', views.run_valid_yield_extractor, name='run_valid_yield_extractor'),
     path('api/valid-yield-extractor/status/<str:task_id>/', views.check_valid_yield_extractor_status, name='check_valid_yield_extractor_status'),
-    
+    path('api/valid-yield-extractor/columns/<str:file_id>/', views.valid_yield_extractor_columns, name='valid_yield_extractor_columns'),
+
     # File management endpoints
     path('api/file/rename/', views.rename_file, name='rename_file'),
     
