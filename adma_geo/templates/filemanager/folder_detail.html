@@ -131,23 +131,13 @@
                     Created by {{ folder.owner.username }} on {{ folder.created_at|date:"M d, Y" }}
                 </p>
             </div>
-            {% if can_edit %}
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-primary" onclick="showCreateFolderModal()">
-                    <i class="fas fa-folder-plus me-2"></i>New Folder
-                </button>
-                <button class="btn btn-outline-success" onclick="showUploadFoldersModal()">
-                    <i class="fas fa-folder-open me-2"></i>Upload Folders
-                </button>
-                <button class="btn btn-primary" onclick="showUploadModal()">
-                    <i class="fas fa-upload me-2"></i>Upload Files
-                </button>
-            </div>
-            {% endif %}
         </div>
     </div>
 </div>
 
+<!-- Main content + Actions sidebar (two columns; sidebar only when folder is owned by current user) -->
+<div class="row">
+    <div class="{% if can_edit %}col-lg-8{% else %}col-12{% endif %}">
 <!-- Folder Metadata Panel -->
 <div class="row mb-4">
     <div class="col-12">
@@ -761,6 +751,72 @@
     </div>
 </div>
 
+    </div>
+    {% if can_edit %}
+    <!-- Actions panel: only shown when folder is owned by current user -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    {% if folder.parent %}
+                        {% if is_public_view %}
+                            <a href="{% url 'filemanager:public_folder_detail' folder.parent.id %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-folder me-2"></i>Go to Parent Folder
+                            </a>
+                        {% else %}
+                            <a href="{% url 'filemanager:folder_detail' folder.parent.id %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-folder me-2"></i>Go to Parent Folder
+                            </a>
+                        {% endif %}
+                    {% else %}
+                        {% if is_public_view %}
+                            <a href="{% url 'filemanager:home' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-home me-2"></i>Back to Home
+                            </a>
+                        {% else %}
+                            <a href="{% url 'filemanager:dashboard' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-home me-2"></i>Back to Dashboard
+                            </a>
+                        {% endif %}
+                    {% endif %}
+                    <button type="button" class="btn btn-outline-primary" onclick="showCreateFolderModal()">
+                        <i class="fas fa-folder-plus me-2"></i>New Folder
+                    </button>
+                    <button type="button" class="btn btn-outline-success" onclick="showUploadFoldersModal()">
+                        <i class="fas fa-folder-open me-2"></i>Upload Folders
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="showUploadModal()">
+                        <i class="fas fa-upload me-2"></i>Upload Files
+                    </button>
+                    <button type="button" class="btn btn-outline-primary" onclick="toggleVisibility()">
+                        <i class="fas fa-exchange-alt me-2"></i>Toggle Visibility
+                    </button>
+                    <button type="button" class="btn btn-danger" onclick="deleteFolder()">
+                        <i class="fas fa-trash me-2"></i>Delete Folder
+                    </button>
+                </div>
+                <div class="mt-4">
+                    <h6>Folder Details</h6>
+                    <ul class="list-unstyled">
+                        <li><i class="fas fa-folder me-2"></i>{{ total_subfolders|default:subfolders.count }} folders, {{ total_files|default:files.count }} files</li>
+                        <li><i class="fas fa-database me-2"></i>{% if folder.get_total_size > 0 %}{{ folder.get_total_size|filesizeformat }}{% else %}0 bytes{% endif %}</li>
+                        <li><i class="fas fa-user me-2"></i>{{ folder.owner.username }}</li>
+                        {% if folder.is_public %}
+                        <li><i class="fas fa-globe me-2"></i>Public</li>
+                        {% else %}
+                        <li><i class="fas fa-lock me-2"></i>Private</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
 <!-- Include modals if user can edit -->
 {% if can_edit %}
 <!-- Create Folder Modal -->
@@ -1351,6 +1407,44 @@ async function toggleVisibility() {
         // Re-enable button
         button.disabled = false;
         button.innerHTML = '<i class="fas fa-exchange-alt me-1"></i>Toggle';
+    }
+}
+
+async function deleteFolder() {
+    if (!confirm('Are you sure you want to delete "{{ folder.name }}" and all its contents? This cannot be undone.')) return;
+    try {
+        const response = await fetch('{% url "filemanager:delete_item" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                type: 'folder',
+                id: '{{ folder.id }}'
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast('success', data.message || 'Folder deletion started');
+            {% if folder.parent %}
+                {% if is_public_view %}
+                    window.location.href = '{% url "filemanager:public_folder_detail" folder.parent.id %}';
+                {% else %}
+                    window.location.href = '{% url "filemanager:folder_detail" folder.parent.id %}';
+                {% endif %}
+            {% else %}
+                {% if is_public_view %}
+                    window.location.href = '{% url "filemanager:home" %}';
+                {% else %}
+                    window.location.href = '{% url "filemanager:dashboard" %}';
+                {% endif %}
+            {% endif %}
+        } else {
+            alert(data.error || 'Error deleting folder');
+        }
+    } catch (error) {
+        alert('Error deleting folder: ' + error.message);
     }
 }
 

@@ -57,7 +57,7 @@
                 <div class="mb-4">
                     {% if file.file_type == 'image' %}
                     <div class="text-center">
-                        <img src="{{ file.file.url }}" class="img-fluid rounded" style="max-height: 400px;" alt="{{ file.name }}">
+                        <img src="{{ file.preview_url }}" class="img-fluid rounded" style="max-height: 400px;" alt="{{ file.name }}">
                     </div>
                     {% elif file.file_type == 'text' and file_content %}
                     <div class="bg-light p-3 rounded">
@@ -439,7 +439,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body text-center">
-                <img src="{{ file.file.url }}" class="img-fluid" alt="{{ file.name }}">
+                <img src="{{ file.preview_url }}" class="img-fluid" alt="{{ file.name }}">
             </div>
         </div>
     </div>

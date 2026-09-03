@@ -609,6 +609,7 @@ def folder_detail(request, folder_id):
         'files': files,
         'breadcrumbs': folder.get_breadcrumbs(),
         'can_edit': folder.owner == request.user,
+        'is_public_view': False,
         'page_obj': page_obj,
         'total_items': total_items,
         'total_subfolders': total_subfolders,
@@ -879,7 +880,7 @@ def file_detail(request, file_id):
     
     if file_obj.file_type == 'text' and file_obj.file_size < 1024 * 1024:  # Max 1MB for preview
         try:
-            with file_obj.file.open('r') as f:
+            with file_obj.open_content('r') as f:
                 file_content = f.read()
         except (UnicodeDecodeError, FileNotFoundError):
             file_content = None
@@ -888,7 +889,7 @@ def file_detail(request, file_id):
     elif file_obj.file_type == 'csv' and file_obj.file_size < 5 * 1024 * 1024:  # Max 5MB for CSV
         import csv
         try:
-            with file_obj.file.open('r') as f:
+            with file_obj.open_content('r') as f:
                 csv_reader = csv.reader(f)
                 csv_headers = next(csv_reader, None)  # Get headers
                 if csv_headers:
@@ -909,8 +910,8 @@ def file_detail(request, file_id):
         try:
             import pandas as pd
             # Read Excel file using pandas
-            with file_obj.file.open('rb') as f:
-                df = pd.read_excel(f, engine='openpyxl' if file_obj.file.name.endswith('.xlsx') else 'xlrd')
+            with file_obj.open_content('rb') as f:
+                df = pd.read_excel(f, engine='openpyxl' if file_obj.name.endswith('.xlsx') else 'xlrd')
                 
                 # Convert to list format similar to CSV
                 csv_headers = ['row_number'] + df.columns.tolist()
@@ -1022,7 +1023,7 @@ def public_file_detail(request, file_id):
     
     if file_obj.file_type == 'text' and file_obj.file_size < 1024 * 1024:  # Max 1MB for preview
         try:
-            with file_obj.file.open('r') as f:
+            with file_obj.open_content('r') as f:
                 file_content = f.read()
         except (UnicodeDecodeError, FileNotFoundError):
             file_content = None
@@ -1031,7 +1032,7 @@ def public_file_detail(request, file_id):
     elif file_obj.file_type == 'csv' and file_obj.file_size < 5 * 1024 * 1024:  # Max 5MB for CSV
         import csv
         try:
-            with file_obj.file.open('r') as f:
+            with file_obj.open_content('r') as f:
                 csv_reader = csv.reader(f)
                 csv_headers = next(csv_reader, None)  # Get headers
                 if csv_headers:
@@ -1052,8 +1053,8 @@ def public_file_detail(request, file_id):
         try:
             import pandas as pd
             # Read Excel file using pandas
-            with file_obj.file.open('rb') as f:
-                df = pd.read_excel(f, engine='openpyxl' if file_obj.file.name.endswith('.xlsx') else 'xlrd')
+            with file_obj.open_content('rb') as f:
+                df = pd.read_excel(f, engine='openpyxl' if file_obj.name.endswith('.xlsx') else 'xlrd')
                 
                 # Convert to list format similar to CSV
                 csv_headers = ['row_number'] + df.columns.tolist()
@@ -1276,12 +1277,18 @@ def download_file(request, file_id):
     if file_obj.owner != request.user and not file_obj.is_public:
         raise Http404("File not found")
     
+    # Referenced files have no media URL, so previews come back through this view
+    # asking for inline disposition instead of a download.
+    inline = request.GET.get('disposition') == 'inline'
+
     try:
         response = FileResponse(
-            file_obj.file.open('rb'),
-            as_attachment=True,
+            file_obj.open_content('rb'),
+            as_attachment=not inline,
             filename=file_obj.name
         )
+        if inline and file_obj.mime_type:
+            response['Content-Type'] = file_obj.mime_type
         return response
     except FileNotFoundError:
         raise Http404("File not found on disk")

@@ -1,0 +1,39 @@
+# ADAPT share overlay.
+#
+# The ADAPT warehouse is an SMB share, not a local directory, and the deployment
+# host is Windows Server running Docker Desktop. A bind mount of a host path
+# cannot reach it: an absolute path resolves inside the Docker Desktop VM rather
+# than on the Windows host, and a UNC path or a mapped drive letter is not
+# visible to the VM at all. So Docker mounts the share itself over CIFS.
+#
+# This lives in an overlay rather than the base compose file so that a machine
+# without access to the share still gets a working stack.
+#
+# Usage, from adma_geo/, with ADAPT_USER, ADAPT_PASS and ADAPT_DOMAIN set in .env:
+#
+#     docker compose -f docker-compose.yml -f docker-compose.adapt.yml up -d
+#
+# See .env.adapt.example.
+
+services:
+  django:
+    volumes:
+      - adma_geo_adapt:/adapt:ro
+
+  celery:
+    volumes:
+      - adma_geo_adapt:/adapt:ro
+
+  celery-beat:
+    volumes:
+      - adma_geo_adapt:/adapt:ro
+
+volumes:
+  adma_geo_adapt:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//${ADAPT_HOST:-snr18}/${ADAPT_SHARE:-Adapt}"
+      # ro is deliberate and belongs here as well as on the mount above: the share
+      # is a system of record we read and never write.
+      o: "username=${ADAPT_USER},password=${ADAPT_PASS},domain=${ADAPT_DOMAIN},ro,vers=${ADAPT_SMB_VERSION:-3.0},uid=0,gid=0,file_mode=0444,dir_mode=0555"

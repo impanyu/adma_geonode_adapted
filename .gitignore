@@ -77,3 +77,13 @@ Vagrantfile
 .env
 *.env
 src/celerybeat-schedule
+
+# macOS
+.DS_Store
+
+# Claude Code (local tooling)
+.claude/
+CLAUDE.md
+
+# Local / AI instruction docs (do not commit)
+FOLDER_ACTION_PANEL_TASKS.md

@@ -325,7 +325,7 @@ def api_download_file(request, file_id):
         
         # Return file response
         response = FileResponse(
-            file_obj.file.open('rb'),
+            file_obj.open_content('rb'),
             as_attachment=True,
             filename=file_obj.name
         )
@@ -556,7 +556,7 @@ def api_download_folder(request, folder_id):
                             file_path_in_zip = file_obj.name
                         
                         # Add file to ZIP
-                        with file_obj.file.open('rb') as f:
+                        with file_obj.open_content('rb') as f:
                             zip_file.writestr(file_path_in_zip, f.read())
                         
                         file_count += 1
