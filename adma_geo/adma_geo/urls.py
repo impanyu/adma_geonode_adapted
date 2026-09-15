@@ -6,6 +6,11 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('django.contrib.auth.urls')),
+    # Mounted after contrib.auth on purpose: Django takes the first match, so
+    # /accounts/login/ and friends stay with the existing password views and
+    # allauth only serves what they do not define (/accounts/google/login/
+    # and its callback).
+    path('accounts/', include('allauth.urls')),
     path('api/v1/', include('filemanager.api_urls')),  # Token-based APIs
     path('', include('filemanager.urls')),  # Web interface
 ]

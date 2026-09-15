@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load crispy_forms_tags %}
+{% load socialaccount %}
 
 {% block title %}Login - ADMA{% endblock %}
 
@@ -24,6 +25,18 @@
                         </button>
                     </div>
                 </form>
+
+                <div class="d-flex align-items-center my-3">
+                    <hr class="flex-grow-1">
+                    <span class="mx-3 text-muted small">or</span>
+                    <hr class="flex-grow-1">
+                </div>
+
+                <div class="d-grid">
+                    <a href="{% provider_login_url 'google' %}" class="btn btn-outline-secondary btn-lg">
+                        <i class="fab fa-google me-2"></i>Sign in with Google
+                    </a>
+                </div>
 
                 <hr class="my-4">
 

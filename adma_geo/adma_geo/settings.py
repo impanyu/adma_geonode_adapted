@@ -54,6 +54,14 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     # 'axes',  # disabled — see comment block near AXES_* settings below
 
+    # Google sign-in. allauth needs the sites framework; SITE_ID below pins it
+    # to the single site this project serves.
+    'django.contrib.sites',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+
     # Local apps
     'filemanager',
 ]
@@ -66,6 +74,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Required by allauth (>=0.56); it rejects requests otherwise.
+    'allauth.account.middleware.AccountMiddleware',
     # 'axes.middleware.AxesMiddleware',  # disabled
 ]
 
@@ -119,7 +129,10 @@ AUTH_PASSWORD_VALIDATORS = [
 
 AUTHENTICATION_BACKENDS = [
     # 'axes.backends.AxesStandaloneBackend',  # disabled along with axes app
+    # ModelBackend stays first so existing username/password logins — including
+    # the superuser used for /admin/ — keep working untouched.
     'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
 # ---------------------------------------------------------------------------
@@ -161,6 +174,43 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/'
+
+# ---------------------------------------------------------------------------
+# Google sign-in (django-allauth)
+# ---------------------------------------------------------------------------
+# allauth is mounted in urls.py *after* django.contrib.auth.urls, so the
+# existing password login, registration and password-reset views keep serving
+# /accounts/login/ etc. allauth only picks up the paths contrib.auth does not
+# define — /accounts/google/login/ and its callback.
+SITE_ID = 1
+
+# Any Google account may sign in and gets an ADMA account created on first
+# login; no separate signup step.
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+
+# Deliberately NOT auto-linking a Google login to an existing account with the
+# same address. Registration on this site does not verify email, so anyone can
+# register under someone else's address; auto-linking would then hand that
+# person's Google login straight into the squatter's account. A colliding
+# login is refused and the user is told to sign in with their password and
+# connect the account instead.
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = False
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = False
+
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APP': {
+            'client_id': os.environ.get('GOOGLE_OAUTH_CLIENT_ID', ''),
+            'secret': os.environ.get('GOOGLE_OAUTH_SECRET', ''),
+            'key': '',
+        },
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'},
+    }
+}
 
 # Crispy Forms
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
