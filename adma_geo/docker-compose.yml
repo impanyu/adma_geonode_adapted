@@ -108,6 +108,10 @@ services:
       AGENT_WORKSPACES_VOLUME: adma_geo_adma_agent_workspaces
       # Docker access via restricted proxy (Critical 1 security fix)
       DOCKER_HOST: tcp://docker-socket-proxy:2375
+      # Google sign-in. Only django serves the OAuth flow, so the celery
+      # services below do not need these.
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_SECRET: ${GOOGLE_OAUTH_SECRET:-}
       # Realm5 API (loaded from .env file)
       REALM5_API_KEY: ${REALM5_API_KEY}
       # John Deere API (loaded from .env file)
