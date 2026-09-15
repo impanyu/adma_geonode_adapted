@@ -41,6 +41,49 @@ class RegistrationForm(UserCreationForm):
             )
         return email
 
+class ProfileForm(forms.ModelForm):
+    """
+    Edit the parts of a user's account they own.
+
+    username is deliberately absent: it is the login identifier for password
+    accounts, so renaming would lock people out of their own credentials.
+
+    email is editable only for password accounts. For accounts that sign in
+    through a social provider it is rendered read-only, because the address
+    is supplied and verified by that provider — letting it drift here would
+    leave the page showing one address while the user signs in with another,
+    and would desynchronise allauth's own EmailAddress record.
+    """
+
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name', 'email')
+
+    def __init__(self, *args, email_locked=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.email_locked = email_locked
+        if email_locked:
+            self.fields['email'].disabled = True
+            self.fields['email'].help_text = (
+                'Provided by the account you sign in with, so it cannot be '
+                'changed here.'
+            )
+
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+        # A disabled field always returns its initial value, so there is
+        # nothing to re-validate for social accounts.
+        if self.email_locked:
+            return self.instance.email
+        if email and User.objects.filter(email=email).exclude(pk=self.instance.pk).exists():
+            # RegistrationForm rejects duplicate addresses; without the same
+            # check here a profile edit would be a way around it.
+            raise forms.ValidationError(
+                "Unable to use this email address. Please use a different one."
+            )
+        return email
+
+
 class FolderForm(forms.ModelForm):
     class Meta:
         model = Folder

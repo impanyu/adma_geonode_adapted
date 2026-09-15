@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Profile - ADMA{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+
+        <div class="d-flex align-items-center mb-4">
+            <i class="fas fa-user-circle me-3" style="font-size: 2.5rem; color: #d00000;"></i>
+            <div>
+                <h2 class="mb-0">{{ user.get_full_name|default:user.username }}</h2>
+                <p class="text-muted mb-0">{{ user.username }}</p>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-id-card me-2"></i>Account details</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="save">
+                    {{ form|crispy }}
+
+                    <div class="row text-muted small mb-3">
+                        <div class="col-sm-6">
+                            <strong>Username</strong><br>{{ user.username }}
+                        </div>
+                        <div class="col-sm-6">
+                            <strong>Joined</strong><br>{{ user.date_joined|date:"F j, Y" }}
+                        </div>
+                    </div>
+
+                    <div class="row text-muted small mb-4">
+                        <div class="col-sm-6">
+                            <strong>Sign-in method</strong><br>
+                            {% for account in social_accounts %}
+                                <i class="fab fa-{{ account.provider }} me-1"></i>{{ account.provider|title }}
+                            {% empty %}
+                                <i class="fas fa-key me-1"></i>Username and password
+                            {% endfor %}
+                        </div>
+                        {% if user.last_login %}
+                        <div class="col-sm-6">
+                            <strong>Last sign-in</strong><br>{{ user.last_login|date:"F j, Y, g:i a" }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>Save changes
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-key me-2"></i>API token</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    Send this as <code>Authorization: Token &lt;your token&gt;</code> to use the
+                    <a href="{% url 'filemanager:documentation' %}">ADMA API</a>. It identifies
+                    you as surely as your password does, so treat it the same way.
+                </p>
+
+                {% if api_token %}
+                    <div class="input-group mb-3">
+                        <input type="password" id="api-token" class="form-control font-monospace"
+                               value="{{ api_token.key }}" readonly>
+                        <button class="btn btn-outline-secondary" type="button" id="toggle-token">
+                            <i class="fas fa-eye"></i> Show
+                        </button>
+                        <button class="btn btn-outline-secondary" type="button" id="copy-token">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                    <p class="text-muted small">Created {{ api_token.created|date:"F j, Y" }}</p>
+
+                    <form method="post"
+                          onsubmit="return confirm('Regenerate the token? Anything using the current one stops working immediately.');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="regenerate_token">
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="fas fa-sync-alt me-2"></i>Regenerate
+                        </button>
+                    </form>
+                {% else %}
+                    <p class="text-muted">You do not have an API token yet.</p>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="create_token">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="fas fa-plus me-2"></i>Create token
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% if api_token %}
+<script>
+// The token starts masked: this page is as likely to be open on a shared
+// screen as any other, and the value is a credential.
+(function () {
+    const field = document.getElementById('api-token');
+    const toggle = document.getElementById('toggle-token');
+    const copy = document.getElementById('copy-token');
+
+    toggle.addEventListener('click', function () {
+        const hidden = field.type === 'password';
+        field.type = hidden ? 'text' : 'password';
+        toggle.innerHTML = hidden
+            ? '<i class="fas fa-eye-slash"></i> Hide'
+            : '<i class="fas fa-eye"></i> Show';
+    });
+
+    copy.addEventListener('click', function () {
+        navigator.clipboard.writeText(field.value).then(function () {
+            copy.innerHTML = '<i class="fas fa-check"></i> Copied';
+            setTimeout(function () {
+                copy.innerHTML = '<i class="fas fa-copy"></i> Copy';
+            }, 2000);
+        });
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -16,7 +16,7 @@ from django.urls import reverse_lazy
 from django.conf import settings
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from .models import Folder, File, Map, Tool
-from .forms import RegistrationForm, FolderForm, FileUploadForm
+from .forms import RegistrationForm, FolderForm, FileUploadForm, ProfileForm
 from .tasks import process_gis_file_task, run_valid_yield_extractor_task
 from .upload_validation import validate_uploaded_file_mime
 
@@ -357,6 +357,50 @@ def agent_user_required(view_func):
 def agent_chat_page(request):
     """Agent chat page - renders the chat UI."""
     return render(request, 'filemanager/agent_chat.html')
+
+
+@login_required
+def profile(request):
+    """
+    The signed-in user's own account page: editable name (and email, for
+    password accounts) plus their API token.
+
+    The token lives here because /api/v1/auth/token/ mints one by exchanging
+    a username and password, which accounts created through a social provider
+    do not have — without this page those users could never obtain a token at
+    all.
+    """
+    from rest_framework.authtoken.models import Token
+
+    # A social account's address is owned by the provider; see ProfileForm.
+    email_locked = request.user.socialaccount_set.exists()
+
+    if request.method == 'POST':
+        action = request.POST.get('action', 'save')
+        if action in ('create_token', 'regenerate_token'):
+            Token.objects.filter(user=request.user).delete()
+            Token.objects.create(user=request.user)
+            messages.success(
+                request,
+                'API token regenerated. The previous token no longer works.'
+                if action == 'regenerate_token' else 'API token created.'
+            )
+            return redirect('filemanager:profile')
+
+        form = ProfileForm(request.POST, instance=request.user, email_locked=email_locked)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Profile updated.')
+            return redirect('filemanager:profile')
+    else:
+        form = ProfileForm(instance=request.user, email_locked=email_locked)
+
+    return render(request, 'filemanager/profile.html', {
+        'form': form,
+        'api_token': Token.objects.filter(user=request.user).first(),
+        'email_locked': email_locked,
+        'social_accounts': request.user.socialaccount_set.all(),
+    })
 
 
 @login_required

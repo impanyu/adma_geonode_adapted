@@ -20,6 +20,7 @@ urlpatterns = [
     path('agent/', views.agent_chat_page, name='agent_chat'),
 
     # Authenticated URLs
+    path('profile/', views.profile, name='profile'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('tools/', views.ToolsListView.as_view(), name='tools_list'),
     path('tools/seeding/', views.SeedingToolView.as_view(), name='seeding_tool'),
