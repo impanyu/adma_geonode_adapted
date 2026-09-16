@@ -37,12 +37,12 @@ class TestHandleFieldOperationEvent(TestCase):
         )
         return JohnDeereWebhookEvent.objects.create(
             jd_event_id=f'evt-op-{operation_id}',
-            event_type_id='fieldOperationUpdated',
+            event_type_id='fieldOperation',
             org_id='4193081',
             target_resource_uri=uri,
             payload={
                 'eventId': f'evt-op-{operation_id}',
-                'eventTypeId': 'fieldOperationUpdated',
+                'eventTypeId': 'fieldOperation',
                 'orgId': '4193081',
                 'targetResource': uri,
             },
@@ -114,7 +114,7 @@ class TestHandleFieldOperationEvent(TestCase):
         )
         evt = JohnDeereWebhookEvent.objects.create(
             jd_event_id='evt-op-qstring',
-            event_type_id='fieldOperationUpdated',
+            event_type_id='fieldOperation',
             org_id='4193081',
             target_resource_uri=uri,
             payload={'eventId': 'evt-op-qstring'},

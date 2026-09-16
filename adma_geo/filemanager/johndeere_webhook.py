@@ -1,11 +1,28 @@
 """
 John Deere Data Subscription Service webhook receiver.
 
+The wire format is fixed by JD's Consumer API (developer.deere.com → Operations
+Center - Webhook → Getting Started). Three of its rules drive this module:
+
+  * The body is a JSON *array* of events — DSS batches up to ``maxBatchSize``
+    (10 by default) events into one POST.
+  * The response must be ``204 No Content``, and must arrive within 5 seconds.
+    Anything else counts as a failed delivery: on subscription creation it
+    fails validation outright, and afterwards it makes DSS retry and eventually
+    expire the subscription.
+  * Authentication is a single ``Authorization`` header value configured
+    per-client via ``PATCH /eventSubscriptionDelivery``. DSS has no notion of a
+    username/password pair on the subscription itself, so we register
+    ``Basic base64(user:pass)`` there and check it here.
+
 Flow:
   1. Check HTTP Basic Auth against JD_WEBHOOK_USERNAME/JD_WEBHOOK_PASSWORD.
-  2. Parse the JSON payload; require an ``eventId`` field.
-  3. Create a JohnDeereWebhookEvent row (unique ``jd_event_id`` gives dedup).
-  4. Enqueue process_johndeere_event_task.delay(event.id) and ack 200.
+  2. Parse the JSON array of events.
+  3. Ack ``subscriptionVerification`` events without persisting them — they are
+     DSS probing the endpoint, not data.
+  4. Create a JohnDeereWebhookEvent row per remaining event and enqueue
+     process_johndeere_event_task.delay(event.id).
+  5. Return 204.
 
 Unknown exceptions return 500 so JD retries. Auth/format errors return 4xx so
 JD does NOT retry them.
@@ -16,10 +33,11 @@ import base64
 import binascii
 import json
 import logging
+import uuid
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -30,6 +48,8 @@ from .models import JohnDeereWebhookEvent
 logger = logging.getLogger(__name__)
 
 MAX_BODY_BYTES = 100_000  # JD DSS payloads are typically <10KB
+
+VERIFICATION_EVENT_TYPE = 'subscriptionVerification'
 
 
 class WebhookValidationError(Exception):
@@ -68,7 +88,8 @@ def _check_basic_auth(request):
         raise WebhookValidationError("invalid credentials", status_code=401)
 
 
-def _parse_event(request):
+def _parse_events(request):
+    """Return the list of event dicts carried by this request."""
     content_length_header = request.META.get('CONTENT_LENGTH') or '0'
     try:
         content_length = int(content_length_header)
@@ -84,14 +105,63 @@ def _parse_event(request):
     except (ValueError, UnicodeDecodeError):
         raise WebhookValidationError("invalid JSON", status_code=400)
 
-    if not isinstance(payload, dict):
-        raise WebhookValidationError("payload must be a JSON object", status_code=400)
+    # DSS always sends an array. A bare object is accepted too so that manual
+    # curl probes of this endpoint behave the way people expect.
+    if isinstance(payload, dict):
+        payload = [payload]
+    if not isinstance(payload, list):
+        raise WebhookValidationError("payload must be a JSON array", status_code=400)
 
-    event_id = payload.get('eventId')
-    if not event_id or not isinstance(event_id, str):
-        raise WebhookValidationError("missing eventId", status_code=400)
+    for event in payload:
+        if not isinstance(event, dict):
+            raise WebhookValidationError("each event must be a JSON object",
+                                         status_code=400)
+        if not event.get('eventTypeId'):
+            raise WebhookValidationError("missing eventTypeId", status_code=400)
 
     return payload
+
+
+def _org_id_from_event(event):
+    """DSS carries the org id in the ``metadata`` key/value list, not at top level."""
+    for entry in event.get('metadata') or []:
+        if isinstance(entry, dict) and entry.get('key') == 'orgId':
+            return str(entry.get('value') or '')
+    return str(getattr(settings, 'JD_ORG_ID', '') or '')
+
+
+def _persist_and_enqueue(event):
+    """Store one event and hand it to Celery. Returns False on a DB/dispatch failure."""
+    # DSS events carry no id of their own, so we mint one. Re-delivery of the
+    # same event therefore creates a second row; the handlers upsert by
+    # resource id, so processing an event twice is a no-op, while dropping a
+    # genuine second change would lose data.
+    jd_event_id = uuid.uuid4().hex
+    org_id = _org_id_from_event(event)
+
+    try:
+        with transaction.atomic():
+            row = JohnDeereWebhookEvent.objects.create(
+                jd_event_id=jd_event_id,
+                event_type_id=event.get('eventTypeId', ''),
+                org_id=org_id,
+                target_resource_uri=event.get('targetResource') or None,
+                payload=event,
+            )
+    except IntegrityError:
+        logger.info("JD webhook duplicate event id=%s (skipped)", jd_event_id)
+        return True
+    except Exception:
+        logger.exception("JD webhook DB persistence failed")
+        return False
+
+    try:
+        process_johndeere_event_task.delay(str(row.id))
+    except Exception:
+        logger.exception("JD webhook Celery dispatch failed for id=%s", jd_event_id)
+        return False
+
+    return True
 
 
 @csrf_exempt
@@ -103,7 +173,7 @@ def johndeere_webhook_receiver(request):
 
     try:
         _check_basic_auth(request)
-        payload = _parse_event(request)
+        events = _parse_events(request)
     except WebhookValidationError as err:
         # Auth/format failures — do not retry. Do not log credentials.
         logger.info("JD webhook rejected: %s (status=%s)", err, err.status_code)
@@ -112,38 +182,14 @@ def johndeere_webhook_receiver(request):
             response['WWW-Authenticate'] = 'Basic realm="JD Webhook"'
         return response
 
-    jd_event_id = payload['eventId']
-    event_type_id = payload.get('eventTypeId', '') or ''
-    # JD events use either 'orgId' or the org id embedded in targetResource; fall back to settings.
-    org_id = payload.get('orgId') or getattr(settings, 'JD_ORG_ID', '') or ''
-    target_resource_uri = payload.get('targetResource')
+    for event in events:
+        if event.get('eventTypeId') == VERIFICATION_EVENT_TYPE:
+            # DSS probing the endpoint during subscription creation. Nothing to
+            # store or process; the 204 below is the whole point of the call.
+            logger.info("JD webhook: subscriptionVerification acknowledged")
+            continue
+        if not _persist_and_enqueue(event):
+            # Let JD retry the batch rather than silently losing events.
+            return JsonResponse({"error": "internal error"}, status=500)
 
-    try:
-        with transaction.atomic():
-            event = JohnDeereWebhookEvent.objects.create(
-                jd_event_id=jd_event_id,
-                event_type_id=event_type_id,
-                org_id=str(org_id),
-                target_resource_uri=target_resource_uri,
-                payload=payload,
-            )
-    except IntegrityError:
-        # Duplicate delivery — JD must stop retrying.
-        # The savepoint is rolled back; outer transaction is still usable.
-        JohnDeereWebhookEvent.objects.filter(jd_event_id=jd_event_id).update(
-            status=JohnDeereWebhookEvent.STATUS_SKIPPED_DUPLICATE,
-        )
-        logger.info("JD webhook duplicate event id=%s (skipped)", jd_event_id)
-        return JsonResponse({"status": "skipped_duplicate", "event_id": jd_event_id})
-    except Exception:
-        # DB failure or other — return 500 so JD retries.
-        logger.exception("JD webhook DB persistence failed for id=%s", jd_event_id)
-        return JsonResponse({"error": "internal error"}, status=500)
-
-    try:
-        process_johndeere_event_task.delay(str(event.id))
-    except Exception:
-        logger.exception("JD webhook Celery dispatch failed for id=%s", jd_event_id)
-        return JsonResponse({"error": "internal error"}, status=500)
-
-    return JsonResponse({"status": "accepted", "event_id": str(event.id)})
+    return HttpResponse(status=204)

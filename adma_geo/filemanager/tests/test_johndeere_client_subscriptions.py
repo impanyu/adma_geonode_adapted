@@ -18,10 +18,8 @@ class TestSubscriptionClient(TestCase):
             text='',
         )
         result = self.client.create_subscription(
-            client_endpoint='https://example.test/api/v1/webhooks/johndeere/',
-            username='u',
-            password='p',
-            event_type_ids=['fieldCreated', 'fieldUpdated'],
+            event_type_id='field',
+            target_uri='https://example.test/api/v1/webhooks/johndeere/',
             org_id='4193081',
         )
         self.assertEqual(result['id'], 'SUB-123')
@@ -29,16 +27,37 @@ class TestSubscriptionClient(TestCase):
         self.assertEqual(args[0], 'POST')
         self.assertEqual(args[1], '/eventSubscriptions')
         body = kwargs['json']
-        self.assertEqual(body['clientEndpoint']['uri'],
-                         'https://example.test/api/v1/webhooks/johndeere/')
-        self.assertEqual(body['clientEndpoint']['username'], 'u')
-        self.assertEqual(body['clientEndpoint']['password'], 'p')
-        self.assertEqual(
-            sorted(t for t in body['eventTypeIds']),
-            ['fieldCreated', 'fieldUpdated'],
+        # DSS takes one event type per subscription, an https targetEndpoint,
+        # and orgId as a filter — not a list of types with embedded credentials.
+        self.assertEqual(body['eventTypeId'], 'field')
+        self.assertEqual(body['targetEndpoint'],
+                         {'targetType': 'https',
+                          'uri': 'https://example.test/api/v1/webhooks/johndeere/'})
+        self.assertEqual(body['filters'],
+                         [{'key': 'orgId', 'values': ['4193081']}])
+        self.assertEqual(body['status'], 'Active')
+        self.assertNotIn('clientEndpoint', body)
+
+    @patch.object(JohnDeereClient, '_make_request')
+    def test_update_delivery_patches_authorization_header(self, mock_req):
+        mock_req.return_value = Mock(
+            status_code=200,
+            json=lambda: {'authorizationHeaderValue': 'Basic abc'},
+            content=b'{}',
+            text='',
         )
-        self.assertEqual(body['scopes'][0]['objectType'], 'organization')
-        self.assertEqual(body['scopes'][0]['objectId'], '4193081')
+        result = self.client.update_delivery(authorizationHeaderValue='Basic abc')
+        args, kwargs = mock_req.call_args
+        self.assertEqual(args[0], 'PATCH')
+        self.assertEqual(args[1], '/eventSubscriptionDelivery')
+        self.assertEqual(kwargs['json'], {'authorizationHeaderValue': 'Basic abc'})
+        self.assertEqual(result['authorizationHeaderValue'], 'Basic abc')
+
+    @patch.object(JohnDeereClient, '_make_request')
+    def test_update_delivery_raises_on_error(self, mock_req):
+        mock_req.return_value = Mock(status_code=400, text='bad', content=b'bad')
+        with self.assertRaises(Exception):
+            self.client.update_delivery(authorizationHeaderValue='Basic abc')
 
     @patch.object(JohnDeereClient, '_make_request')
     def test_list_subscriptions_handles_pagination(self, mock_req):

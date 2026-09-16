@@ -31,14 +31,14 @@ class TestJohnDeereSubscription(TestCase):
         JohnDeereSubscription.objects.create(
             jd_subscription_id='sub-1',
             org_id='4193081',
-            event_type_ids=['fieldCreated'],
+            event_type_ids=['field'],
             client_endpoint='https://example.test/api/v1/webhooks/johndeere/',
         )
         with self.assertRaises(IntegrityError):
             JohnDeereSubscription.objects.create(
                 jd_subscription_id='sub-1',
                 org_id='4193081',
-                event_type_ids=['fieldUpdated'],
+                event_type_ids=['field'],
                 client_endpoint='https://example.test/api/v1/webhooks/johndeere/',
             )
 
@@ -46,7 +46,7 @@ class TestJohnDeereSubscription(TestCase):
         sub = JohnDeereSubscription.objects.create(
             jd_subscription_id='sub-2',
             org_id='4193081',
-            event_type_ids=['fieldCreated'],
+            event_type_ids=['field'],
             client_endpoint='https://example.test/api/v1/webhooks/johndeere/',
         )
         self.assertTrue(sub.is_active)
@@ -56,14 +56,14 @@ class TestJohnDeereWebhookEvent(TestCase):
     def test_unique_jd_event_id(self):
         JohnDeereWebhookEvent.objects.create(
             jd_event_id='evt-1',
-            event_type_id='fieldCreated',
+            event_type_id='field',
             org_id='4193081',
             payload={'eventId': 'evt-1'},
         )
         with self.assertRaises(IntegrityError):
             JohnDeereWebhookEvent.objects.create(
                 jd_event_id='evt-1',
-                event_type_id='fieldCreated',
+                event_type_id='field',
                 org_id='4193081',
                 payload={'eventId': 'evt-1'},
             )
@@ -71,7 +71,7 @@ class TestJohnDeereWebhookEvent(TestCase):
     def test_defaults(self):
         evt = JohnDeereWebhookEvent.objects.create(
             jd_event_id='evt-2',
-            event_type_id='fieldUpdated',
+            event_type_id='field',
             org_id='4193081',
             payload={'eventId': 'evt-2'},
         )

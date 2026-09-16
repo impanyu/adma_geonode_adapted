@@ -10,9 +10,9 @@ Per-resource handlers (``handle_field_event``, ``handle_boundary_event``,
 Tasks 6–8 below. In this task they exist as stubs so the dispatcher can be
 tested in isolation.
 
-Event-type strings below are from the JD DSS spec. Verify against a real
-sandbox subscription response before production rollout — if JD returns a
-different casing or adds new types, update EVENT_TYPE_HANDLERS in one place.
+Event-type strings below are the ones DSS actually publishes (``field``,
+``boundary``, ``fieldOperation``); if JD adds new types, update
+EVENT_TYPE_HANDLERS in one place.
 """
 import logging
 import sys
@@ -82,8 +82,11 @@ def handle_field_event(event: JohnDeereWebhookEvent) -> None:
     client = _build_jd_client()
     data = client.get_resource_by_link(event.target_resource_uri)
     if data is None:
-        logger.info("JD event %s: field %s returned no data; skipping",
+        # A `field` event fires on deletion too, and the only signal is that
+        # the resource is gone. Archive rather than treating it as a no-op.
+        logger.info("JD event %s: field %s no longer fetchable; archiving",
                     event.jd_event_id, field_id)
+        handle_field_deletion(event)
         return
 
     root = _get_jd_root_folder()
@@ -329,15 +332,15 @@ def _parse_operation_id_from_uri(uri: str) -> str:
 # Maps JD event-type strings to the *name* of the handler in this module.
 # Using names (not direct function references) lets unittest.mock.patch swap
 # the implementation without the dict becoming stale.
+# DSS event types are coarse: one type per resource, covering addition,
+# modification and deletion alike (see the Event Types table in the Operations
+# Center - Webhook docs). Deletion is detected by the resource no longer being
+# fetchable, not by a distinct event type — handle_field_event archives when
+# the fetch comes back empty.
 EVENT_TYPE_HANDLERS: Dict[str, str] = {
-    'fieldCreated': 'handle_field_event',
-    'fieldUpdated': 'handle_field_event',
-    'fieldArchived': 'handle_field_deletion',
-    'fieldDeleted': 'handle_field_deletion',
-    'boundaryCreated': 'handle_boundary_event',
-    'boundaryUpdated': 'handle_boundary_event',
-    'fieldOperationCreated': 'handle_field_operation_event',
-    'fieldOperationUpdated': 'handle_field_operation_event',
+    'field': 'handle_field_event',
+    'boundary': 'handle_boundary_event',
+    'fieldOperation': 'handle_field_operation_event',
 }
 
 # Keep a reference to this module so callers (and tests) can inspect the

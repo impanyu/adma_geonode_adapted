@@ -38,7 +38,7 @@ class TestHandleBoundaryEvent(TestCase):
     def _event(self):
         return JohnDeereWebhookEvent.objects.create(
             jd_event_id='evt-b1',
-            event_type_id='boundaryUpdated',
+            event_type_id='boundary',
             org_id='4193081',
             target_resource_uri=(
                 'https://sandboxapi.deere.com/platform/organizations/'
@@ -46,7 +46,7 @@ class TestHandleBoundaryEvent(TestCase):
             ),
             payload={
                 'eventId': 'evt-b1',
-                'eventTypeId': 'boundaryUpdated',
+                'eventTypeId': 'boundary',
                 'orgId': '4193081',
                 'targetResource': (
                     'https://sandboxapi.deere.com/platform/organizations/'

@@ -51,7 +51,7 @@ class TestHandleFieldEvent(FieldHandlerTestBase):
         mock_client_factory.return_value.get_resource_by_link.return_value = {
             'id': 'F1', 'name': 'North 40',
         }
-        evt = self._event('fieldCreated', 'F1')
+        evt = self._event('field', 'F1')
         handle_field_event(evt)
 
         new_folder = Folder.objects.get(
@@ -76,7 +76,7 @@ class TestHandleFieldEvent(FieldHandlerTestBase):
         mock_client_factory.return_value.get_resource_by_link.return_value = {
             'id': 'F1', 'name': 'Renamed',
         }
-        evt = self._event('fieldUpdated', 'F1')
+        evt = self._event('field', 'F1')
         handle_field_event(evt)
 
         folder = Folder.objects.get(
@@ -87,11 +87,30 @@ class TestHandleFieldEvent(FieldHandlerTestBase):
     @patch('filemanager.johndeere_webhook_tasks._build_jd_client')
     def test_resource_404_aborts_without_error(self, mock_client_factory):
         mock_client_factory.return_value.get_resource_by_link.return_value = None
-        evt = self._event('fieldUpdated', 'F_GONE')
+        evt = self._event('field', 'F_GONE')
         # No exception, no folder created.
         handle_field_event(evt)
         self.assertFalse(
             Folder.objects.filter(third_party_id='F_GONE').exists()
+        )
+
+    @patch('filemanager.johndeere_webhook_tasks._build_jd_client')
+    def test_resource_404_archives_existing_folder(self, mock_client_factory):
+        # DSS has a single `field` event type covering deletion, so a field
+        # that stopped being fetchable is how a deletion reaches us.
+        mock_client_factory.return_value.get_resource_by_link.return_value = None
+        Folder.objects.create(
+            name='deleted-field',
+            parent=self.root,
+            owner=self.user,
+            is_third_party=True,
+            third_party_source='johndeere',
+            third_party_id='F_DEL',
+        )
+        evt = self._event('field', 'F_DEL')
+        handle_field_event(evt)
+        self.assertTrue(
+            Folder.objects.get(third_party_id='F_DEL').is_archived
         )
 
     @patch('filemanager.johndeere_webhook_tasks._build_jd_client')
@@ -102,7 +121,7 @@ class TestHandleFieldEvent(FieldHandlerTestBase):
         }
         evt = JohnDeereWebhookEvent.objects.create(
             jd_event_id='evt-qstring',
-            event_type_id='fieldUpdated',
+            event_type_id='field',
             org_id='4193081',
             target_resource_uri=(
                 'https://sandboxapi.deere.com/platform/organizations/'
@@ -137,7 +156,7 @@ class TestHandleFieldDeletion(FieldHandlerTestBase):
             name='b.shp', folder=sub, owner=self.user,
         )
 
-        evt = self._event('fieldArchived', 'F2')
+        evt = self._event('field', 'F2')
         handle_field_deletion(evt)
 
         field_folder.refresh_from_db()
@@ -148,5 +167,5 @@ class TestHandleFieldDeletion(FieldHandlerTestBase):
         self.assertTrue(f.is_archived)
 
     def test_unknown_field_id_is_noop(self):
-        evt = self._event('fieldDeleted', 'F_UNKNOWN')
+        evt = self._event('field', 'F_UNKNOWN')
         handle_field_deletion(evt)  # must not raise

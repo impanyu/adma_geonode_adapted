@@ -1,9 +1,13 @@
+import base64
 from io import StringIO
 from unittest.mock import patch
 
 from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 
+from filemanager.management.commands.manage_johndeere_webhooks import (
+    DEFAULT_EVENT_TYPE_IDS,
+)
 from filemanager.models import JohnDeereSubscription
 
 
@@ -24,26 +28,70 @@ class TestManageJohnDeereWebhooks(TestCase):
 
     @patch('filemanager.management.commands.manage_johndeere_webhooks.JohnDeereClient')
     def test_create_writes_row_only_on_success(self, mock_client_cls):
-        mock_client_cls.return_value.create_subscription.return_value = {
-            'id': 'SUB-42',
+        client = mock_client_cls.return_value
+        client.update_delivery.return_value = {
+            'authorizationHeaderValue': 'Basic x'
         }
+        client.create_subscription.side_effect = [
+            {'id': f'SUB-{t}'} for t in DEFAULT_EVENT_TYPE_IDS
+        ]
         output = self._run('--create')
 
-        self.assertIn('SUB-42', output)
-        sub = JohnDeereSubscription.objects.get(jd_subscription_id='SUB-42')
-        self.assertEqual(sub.org_id, '4193081')
+        for event_type_id in DEFAULT_EVENT_TYPE_IDS:
+            self.assertIn(f'SUB-{event_type_id}', output)
+            sub = JohnDeereSubscription.objects.get(
+                jd_subscription_id=f'SUB-{event_type_id}'
+            )
+            self.assertEqual(sub.org_id, '4193081')
+            self.assertEqual(sub.event_type_ids, [event_type_id])
+            self.assertEqual(
+                sub.client_endpoint,
+                'https://example.test/api/v1/webhooks/johndeere/',
+            )
         self.assertEqual(
-            sub.client_endpoint,
-            'https://example.test/api/v1/webhooks/johndeere/',
+            client.create_subscription.call_count, len(DEFAULT_EVENT_TYPE_IDS)
         )
-        mock_client_cls.return_value.create_subscription.assert_called_once()
+
+    @patch('filemanager.management.commands.manage_johndeere_webhooks.JohnDeereClient')
+    def test_create_registers_auth_header_before_subscribing(self, mock_client_cls):
+        # JD validates the callback by POSTing to it with the header configured
+        # on the client's delivery settings. Subscribing first would mean that
+        # probe arrives unauthenticated.
+        client = mock_client_cls.return_value
+        calls = []
+        client.update_delivery.side_effect = lambda **kw: (
+            calls.append('auth'), {'authorizationHeaderValue': kw.get(
+                'authorizationHeaderValue')}
+        )[1]
+        client.create_subscription.side_effect = lambda **kw: (
+            calls.append('subscribe'), {'id': 'SUB-' + kw['event_type_id']}
+        )[1]
+
+        self._run('--create')
+
+        self.assertEqual(calls[0], 'auth')
+        header = client.update_delivery.call_args.kwargs['authorizationHeaderValue']
+        self.assertEqual(
+            header,
+            'Basic ' + base64.b64encode(b'jd_user:jd_pass').decode(),
+        )
+
+    @patch('filemanager.management.commands.manage_johndeere_webhooks.JohnDeereClient')
+    def test_set_auth_registers_header_without_subscribing(self, mock_client_cls):
+        client = mock_client_cls.return_value
+        client.update_delivery.return_value = {
+            'authorizationHeaderValue': 'Basic x'
+        }
+        self._run('--set-auth')
+        client.update_delivery.assert_called_once()
+        client.create_subscription.assert_not_called()
 
     @patch('filemanager.management.commands.manage_johndeere_webhooks.JohnDeereClient')
     def test_list_prints_subscriptions(self, mock_client_cls):
         JohnDeereSubscription.objects.create(
             jd_subscription_id='LOCAL-1',
             org_id='4193081',
-            event_type_ids=['fieldUpdated'],
+            event_type_ids=['field'],
             client_endpoint='https://example.test/api/v1/webhooks/johndeere/',
         )
         mock_client_cls.return_value.list_subscriptions.return_value = [
@@ -59,7 +107,7 @@ class TestManageJohnDeereWebhooks(TestCase):
         JohnDeereSubscription.objects.create(
             jd_subscription_id='SUB-X',
             org_id='4193081',
-            event_type_ids=['fieldUpdated'],
+            event_type_ids=['field'],
             client_endpoint='https://example.test/api/v1/webhooks/johndeere/',
         )
         mock_client_cls.return_value.delete_subscription.return_value = True

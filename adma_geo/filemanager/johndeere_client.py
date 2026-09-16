@@ -111,6 +111,11 @@ class JohnDeereClient:
         return {
             'Authorization': f'Bearer {self.access_token}',
             'Accept': self.API_VERSION,
+            # Axiom rejects a body sent as application/json with 415, and
+            # requests sets exactly that whenever json= is used. Sending the
+            # vendor type on every request keeps writes working; it is
+            # ignored on GETs, which carry no body.
+            'Content-Type': self.API_VERSION,
         }
     
     def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
@@ -342,27 +347,33 @@ class JohnDeereClient:
     
     def create_subscription(
         self,
-        client_endpoint: str,
-        username: str,
-        password: str,
-        event_type_ids: List[str],
+        event_type_id: str,
+        target_uri: str,
         org_id: str,
+        display_name: str = '',
     ) -> Dict[str, Any]:
         """
         POST /eventSubscriptions — create a new webhook subscription.
 
+        One subscription covers exactly one event type: DSS takes a singular
+        ``eventTypeId``, not a list. Scoping is done with ``filters`` (orgId
+        here), and the callback is a ``targetEndpoint`` object. DSS has no
+        per-subscription credentials — the Authorization header it sends is
+        configured once per client with :meth:`update_delivery`.
+
         Returns the parsed JSON body (the new subscription, including ``id``).
         """
         body = {
-            'clientEndpoint': {
-                'uri': client_endpoint,
-                'username': username,
-                'password': password,
-            },
-            'eventTypeIds': list(event_type_ids),
-            'scopes': [
-                {'objectType': 'organization', 'objectId': str(org_id)},
+            'eventTypeId': event_type_id,
+            'filters': [
+                {'key': 'orgId', 'values': [str(org_id)]},
             ],
+            'targetEndpoint': {
+                'targetType': 'https',
+                'uri': target_uri,
+            },
+            'status': 'Active',
+            'displayName': display_name or f'ADMA {event_type_id} (org {org_id})',
         }
         response = self._make_request('POST', '/eventSubscriptions', json=body)
         if response.status_code not in (200, 201):
@@ -370,6 +381,34 @@ class JohnDeereClient:
                 f"Failed to create subscription: {response.status_code} - {response.text}"
             )
         return response.json()
+
+    def get_delivery(self) -> Dict[str, Any]:
+        """GET /eventSubscriptionDelivery — the client-wide delivery settings."""
+        response = self._make_request('GET', '/eventSubscriptionDelivery')
+        if response.status_code != 200:
+            raise Exception(
+                f"Failed to read delivery settings: {response.status_code} - {response.text}"
+            )
+        return response.json()
+
+    def update_delivery(self, **fields: Any) -> Dict[str, Any]:
+        """
+        PATCH /eventSubscriptionDelivery.
+
+        Accepts any of ``authorizationHeaderValue``, ``maxBatchSize``,
+        ``concurrentDeliveries``, ``status``. ``authorizationHeaderValue`` is
+        the verbatim Authorization header DSS sends with every event for this
+        client, including the subscriptionVerification probe — so it has to be
+        set *before* the first subscription is created, or validation fails.
+        """
+        response = self._make_request(
+            'PATCH', '/eventSubscriptionDelivery', json=fields
+        )
+        if response.status_code not in (200, 204):
+            raise Exception(
+                f"Failed to update delivery settings: {response.status_code} - {response.text}"
+            )
+        return response.json() if response.content else {}
 
     def list_subscriptions(self) -> List[Dict[str, Any]]:
         """GET /eventSubscriptions with pagination handling."""

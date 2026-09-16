@@ -30,7 +30,7 @@ class TestJohnDeereAdmin(TestCase):
     def test_reprocess_action_reenqueues_task(self, mock_delay):
         evt = JohnDeereWebhookEvent.objects.create(
             jd_event_id='evt-rx',
-            event_type_id='fieldUpdated',
+            event_type_id='field',
             org_id='4193081',
             payload={'eventId': 'evt-rx'},
             status='failed',
