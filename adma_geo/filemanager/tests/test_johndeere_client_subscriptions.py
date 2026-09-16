@@ -112,19 +112,34 @@ class TestSubscriptionClient(TestCase):
         result = self.client.list_subscriptions()
         self.assertEqual([s['id'] for s in result], ['A', 'B', 'C'])
 
+    @patch.object(JohnDeereClient, 'list_subscriptions')
     @patch.object(JohnDeereClient, '_make_request')
-    def test_delete_subscription_204_returns_true(self, mock_req):
+    def test_delete_subscription_terminates_via_put(self, mock_req, mock_list):
+        # DSS answers 403 to DELETE; Terminated via PUT is the documented way
+        # to switch a subscription off, and the PUT needs the whole object back.
+        existing = {
+            'id': 'SUB-1', 'eventTypeId': 'field', 'status': 'Active',
+            'links': [{'rel': 'self', 'uri': 'https://x/eventSubscriptions/SUB-1'}],
+        }
+        mock_list.return_value = [existing]
         mock_req.return_value = Mock(status_code=204, text='')
-        self.assertTrue(self.client.delete_subscription('SUB-1'))
-        mock_req.assert_called_once_with('DELETE', '/eventSubscriptions/SUB-1')
 
-    @patch.object(JohnDeereClient, '_make_request')
-    def test_delete_subscription_404_returns_true(self, mock_req):
-        mock_req.return_value = Mock(status_code=404, text='not found')
         self.assertTrue(self.client.delete_subscription('SUB-1'))
 
+        args, kwargs = mock_req.call_args
+        self.assertEqual(args[0], 'PUT')
+        self.assertEqual(args[1], '/eventSubscriptions/SUB-1')
+        self.assertEqual(kwargs['json']['status'], 'Terminated')
+        self.assertEqual(kwargs['json']['links'], existing['links'])
+
+    @patch.object(JohnDeereClient, 'list_subscriptions', return_value=[])
+    def test_delete_subscription_missing_returns_true(self, mock_list):
+        self.assertTrue(self.client.delete_subscription('SUB-GONE'))
+
+    @patch.object(JohnDeereClient, 'list_subscriptions')
     @patch.object(JohnDeereClient, '_make_request')
-    def test_delete_subscription_other_returns_false(self, mock_req):
+    def test_delete_subscription_error_returns_false(self, mock_req, mock_list):
+        mock_list.return_value = [{'id': 'SUB-1', 'status': 'Active'}]
         mock_req.return_value = Mock(status_code=500, text='boom')
         self.assertFalse(self.client.delete_subscription('SUB-1'))
 

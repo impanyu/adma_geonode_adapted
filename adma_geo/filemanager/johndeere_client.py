@@ -450,12 +450,32 @@ class JohnDeereClient:
         return all_subs
 
     def delete_subscription(self, subscription_id: str) -> bool:
-        """DELETE /eventSubscriptions/{id}. Returns True on 204 or 404, else False."""
-        response = self._make_request('DELETE', f'/eventSubscriptions/{subscription_id}')
-        if response.status_code in (204, 200, 404):
+        """
+        Stop a subscription. Returns True on success or if it is already gone.
+
+        DSS exposes no DELETE for subscriptions -- it answers 403 -- so the way
+        to switch one off is a PUT setting status to Terminated, which JD
+        documents as permanent. That PUT rejects a partial body: every field
+        the API returned has to come back unchanged, links included, so the
+        subscription is fetched first and echoed with only status altered.
+        """
+        subscription = None
+        for sub in self.list_subscriptions():
+            if sub.get('id') == subscription_id:
+                subscription = sub
+                break
+        if subscription is None:
+            return True  # already gone
+
+        body = dict(subscription)
+        body['status'] = 'Terminated'
+        response = self._make_request(
+            'PUT', f'/eventSubscriptions/{subscription_id}', json=body
+        )
+        if response.status_code in (200, 204):
             return True
         logger.error(
-            "Failed to delete subscription %s: %s - %s",
+            "Failed to terminate subscription %s: %s - %s",
             subscription_id, response.status_code, response.text,
         )
         return False
