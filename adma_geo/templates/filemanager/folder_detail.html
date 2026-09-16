@@ -248,11 +248,11 @@
                 <div class="d-flex align-items-center">
                     <label for="jdRootBaseMapSelector" class="me-2 mb-0 small text-muted">Base Map:</label>
                     <select id="jdRootBaseMapSelector" class="form-select form-select-sm" style="width: auto;">
-                        <option value="osm">OpenStreetMap</option>
+                        <option value="osm">Street (Esri)</option>
                         <option value="satellite" selected>Satellite (Esri)</option>
                         <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
-                        <option value="dark">Dark (CartoDB)</option>
+                        <option value="dark">Dark (Esri)</option>
                     </select>
                 </div>
             </div>
@@ -286,11 +286,11 @@
                 <div class="d-flex align-items-center">
                     <label for="jdBaseMapSelector" class="me-2 mb-0 small text-muted">Base Map:</label>
                     <select id="jdBaseMapSelector" class="form-select form-select-sm" style="width: auto;">
-                        <option value="osm" selected>OpenStreetMap</option>
+                        <option value="osm" selected>Street (Esri)</option>
                         <option value="satellite">Satellite (Esri)</option>
                         <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
-                        <option value="dark">Dark (CartoDB)</option>
+                        <option value="dark">Dark (Esri)</option>
                     </select>
                 </div>
             </div>
@@ -318,11 +318,11 @@
                 <div class="d-flex align-items-center">
                     <label for="jdOpBaseMapSelector" class="me-2 mb-0 small text-muted">Base Map:</label>
                     <select id="jdOpBaseMapSelector" class="form-select form-select-sm" style="width: auto;">
-                        <option value="osm" selected>OpenStreetMap</option>
+                        <option value="osm" selected>Street (Esri)</option>
                         <option value="satellite">Satellite (Esri)</option>
                         <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
-                        <option value="dark">Dark (CartoDB)</option>
+                        <option value="dark">Dark (Esri)</option>
                     </select>
                 </div>
             </div>
@@ -351,11 +351,11 @@
                 <div class="d-flex align-items-center">
                     <label for="realm5BaseMapSelector" class="me-2 mb-0 small text-muted">Base Map:</label>
                     <select id="realm5BaseMapSelector" class="form-select form-select-sm" style="width: auto;">
-                        <option value="osm" selected>OpenStreetMap</option>
+                        <option value="osm" selected>Street (Esri)</option>
                         <option value="satellite">Satellite (Esri)</option>
                         <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
-                        <option value="dark">Dark (CartoDB)</option>
+                        <option value="dark">Dark (Esri)</option>
                     </select>
                 </div>
             </div>
@@ -389,11 +389,11 @@
                 <div class="d-flex align-items-center">
                     <label for="realm5DeviceBaseMapSelector" class="me-2 mb-0 small text-muted">Base Map:</label>
                     <select id="realm5DeviceBaseMapSelector" class="form-select form-select-sm" style="width: auto;">
-                        <option value="osm" selected>OpenStreetMap</option>
+                        <option value="osm" selected>Street (Esri)</option>
                         <option value="satellite">Satellite (Esri)</option>
                         <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
-                        <option value="dark">Dark (CartoDB)</option>
+                        <option value="dark">Dark (Esri)</option>
                     </select>
                 </div>
             </div>
@@ -1414,7 +1414,15 @@ function refreshStats() {
 function getBaseMapSource(type) {
     switch(type) {
         case 'osm':
-            return new ol.source.OSM();
+            // Not OpenStreetMap any more: their volunteer tile servers answer
+            // 403 "Access blocked - App is not following the tile usage
+            // policy" for this application, so every map drew a wall of block
+            // notices. Esri's street layer needs no API key, unlike CARTO's,
+            // which now watermarks keyless tiles with "API KEY REQUIRED".
+            return new ol.source.XYZ({
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                attributions: 'Tiles &copy; Esri'
+            });
         case 'satellite':
             return new ol.source.XYZ({
                 url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -1436,12 +1444,16 @@ function getBaseMapSource(type) {
                 attributions: 'Map data: OpenTopoMap (CC-BY-SA)'
             });
         case 'dark':
+            // CARTO's keyless tiles are watermarked "API KEY REQUIRED".
             return new ol.source.XYZ({
-                url: 'https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png',
-                attributions: '&copy; CartoDB'
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+                attributions: 'Tiles &copy; Esri'
             });
         default:
-            return new ol.source.OSM();
+            return new ol.source.XYZ({
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                attributions: 'Tiles &copy; Esri'
+            });
     }
 }
 
@@ -1525,7 +1537,10 @@ function createBoundaryMap(targetId, spatialExtent, folderName, strokeColor) {
     });
     
     const baseLayer = new ol.layer.Tile({
-        source: new ol.source.OSM()
+        source: new ol.source.XYZ({
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                attributions: 'Tiles &copy; Esri'
+            })
     });
     
     const map = new ol.Map({
@@ -1923,7 +1938,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     realm5RootBaseLayer = new ol.layer.Tile({
-        source: new ol.source.OSM()
+        source: new ol.source.XYZ({
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                attributions: 'Tiles &copy; Esri'
+            })
     });
     
     realm5RootMap = new ol.Map({
@@ -2063,7 +2081,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     realm5DeviceLocationBaseLayer = new ol.layer.Tile({
-        source: new ol.source.OSM()
+        source: new ol.source.XYZ({
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                attributions: 'Tiles &copy; Esri'
+            })
     });
     
     realm5DeviceLocationMap = new ol.Map({

@@ -519,7 +519,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Create individual base layers WITH native attribution
         const baseLayers = {
             'osm': new ol.layer.Tile({
-                source: new ol.source.OSM(), // Use native OpenStreetMap attribution
+                source: // OSM blocks this app's tile requests with a 403 notice tile.
+            new ol.source.XYZ({
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                attributions: 'Tiles &copy; Esri'
+            }), // Use native OpenStreetMap attribution
                 title: 'OpenStreetMap',
                 visible: false
             }),

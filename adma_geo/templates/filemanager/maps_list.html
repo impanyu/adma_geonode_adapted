@@ -486,7 +486,11 @@
     // Base layers
     const baseLayers = {
         osm: new ol.layer.Tile({
-            source: new ol.source.OSM()
+            source: // OSM blocks this app's tile requests with a 403 notice tile.
+            new ol.source.XYZ({
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                attributions: 'Tiles &copy; Esri'
+            })
         }),
         satellite: new ol.layer.Tile({
             source: new ol.source.XYZ({
