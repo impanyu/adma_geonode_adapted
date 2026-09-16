@@ -7,6 +7,7 @@ from filemanager.johndeere_webhook_tasks import (
     handle_field_deletion,
     handle_field_event,
 )
+from filemanager.johndeere_client import ResourceUnavailable
 from filemanager.models import File, Folder, JohnDeereWebhookEvent
 
 User = get_user_model()
@@ -93,6 +94,25 @@ class TestHandleFieldEvent(FieldHandlerTestBase):
         self.assertFalse(
             Folder.objects.filter(third_party_id='F_GONE').exists()
         )
+
+    @patch('filemanager.johndeere_webhook_tasks._build_jd_client')
+    def test_unreadable_resource_never_archives(self, mock_client_factory):
+        # The dangerous case: a link JD serves on a host the SSRF guard does
+        # not know, or a 5xx, must not be mistaken for a deletion -- archiving
+        # takes the folder and every file under it.
+        mock_client_factory.return_value.get_resource_by_link.side_effect = (
+            ResourceUnavailable("URI not allowed")
+        )
+        folder = Folder.objects.create(
+            name='live-field', parent=self.root, owner=self.user,
+            is_third_party=True, third_party_source='johndeere',
+            third_party_id='F_LIVE',
+        )
+        evt = self._event('field', 'F_LIVE')
+        with self.assertRaises(ResourceUnavailable):
+            handle_field_event(evt)
+        folder.refresh_from_db()
+        self.assertFalse(folder.is_archived)
 
     @patch('filemanager.johndeere_webhook_tasks._build_jd_client')
     def test_resource_404_archives_existing_folder(self, mock_client_factory):

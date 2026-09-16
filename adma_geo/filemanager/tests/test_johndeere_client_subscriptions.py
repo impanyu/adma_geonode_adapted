@@ -2,7 +2,7 @@ from unittest.mock import Mock, patch
 
 from django.test import TestCase, override_settings
 
-from filemanager.johndeere_client import JohnDeereClient
+from filemanager.johndeere_client import JohnDeereClient, ResourceUnavailable
 
 
 class TestApiBaseUrl(TestCase):
@@ -159,7 +159,49 @@ class TestSubscriptionClient(TestCase):
         self.assertEqual(args[1], '/organizations/4193081/fields/F1')
 
     @patch.object(JohnDeereClient, '_make_request')
-    def test_get_resource_by_link_returns_none_on_error(self, mock_req):
+    def test_get_resource_by_link_returns_none_only_on_404(self, mock_req):
         mock_req.return_value = Mock(status_code=404, text='not found')
         uri = 'https://sandboxapi.deere.com/platform/organizations/4193081/fields/F1'
         self.assertIsNone(self.client.get_resource_by_link(uri))
+
+    @patch.object(JohnDeereClient, '_make_request')
+    def test_get_resource_by_link_raises_on_server_error(self, mock_req):
+        # A 500 must not read as "deleted": callers archive on None.
+        mock_req.return_value = Mock(status_code=500, text='boom')
+        uri = 'https://sandboxapi.deere.com/platform/organizations/4193081/fields/F1'
+        with self.assertRaises(ResourceUnavailable):
+            self.client.get_resource_by_link(uri)
+
+    @patch.object(JohnDeereClient, '_make_request')
+    def test_get_resource_by_link_accepts_api_deere_com(self, mock_req):
+        # JD returns self links on api.deere.com whichever host was called, so
+        # rejecting that host would make every link unusable.
+        mock_req.return_value = Mock(status_code=200, json=lambda: {'id': 'F1'}, text='')
+        data = self.client.get_resource_by_link(
+            'https://api.deere.com/platform/organizations/1/fields/F1'
+        )
+        self.assertEqual(data['id'], 'F1')
+        self.assertEqual(mock_req.call_args[0][1], '/organizations/1/fields/F1')
+
+    @patch.object(JohnDeereClient, '_make_request')
+    def test_get_resource_by_link_preserves_query_string(self, mock_req):
+        mock_req.return_value = Mock(status_code=200, json=lambda: {}, text='')
+        self.client.get_resource_by_link(
+            'https://api.deere.com/platform/fields/F1?embed=boundaries'
+        )
+        self.assertEqual(mock_req.call_args[0][1], '/fields/F1?embed=boundaries')
+
+    @patch.object(JohnDeereClient, '_make_request')
+    def test_get_resource_by_link_rejects_foreign_hosts(self, mock_req):
+        for uri in (
+            'https://169.254.169.254/platform/latest/meta-data/',
+            'http://sandboxapi.deere.com/platform/fields/F1',      # not https
+            'https://evil.example/platform/fields/F1',
+            'https://sandboxapi.deere.com.evil.example/platform/fields/F1',
+            'https://sandboxapi.deere.com/elsewhere/fields/F1',    # outside /platform
+            'https://sandboxapi.deere.com/platformX/fields/F1',    # prefix-match trap
+        ):
+            with self.subTest(uri=uri):
+                with self.assertRaises(ResourceUnavailable):
+                    self.client.get_resource_by_link(uri)
+        mock_req.assert_not_called()

@@ -23,7 +23,7 @@ from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
 
-from .johndeere_client import JohnDeereClient
+from .johndeere_client import JohnDeereClient, ResourceUnavailable
 from .models import File, Folder, JohnDeereWebhookEvent
 
 logger = logging.getLogger(__name__)
@@ -80,11 +80,14 @@ def handle_field_event(event: JohnDeereWebhookEvent) -> None:
         return
 
     client = _build_jd_client()
+    # get_resource_by_link returns None only for a 404 and raises otherwise, so
+    # this branch means the field really is gone -- a `field` event fires on
+    # deletion too, and its absence is the only signal. A fetch that merely
+    # failed raises ResourceUnavailable and is retried, because archiving a
+    # live field over a transient error would take the user's data with it.
     data = client.get_resource_by_link(event.target_resource_uri)
     if data is None:
-        # A `field` event fires on deletion too, and the only signal is that
-        # the resource is gone. Archive rather than treating it as a no-op.
-        logger.info("JD event %s: field %s no longer fetchable; archiving",
+        logger.info("JD event %s: field %s was deleted; archiving",
                     event.jd_event_id, field_id)
         handle_field_deletion(event)
         return
@@ -262,8 +265,10 @@ def handle_field_operation_event(event: JohnDeereWebhookEvent) -> None:
     client = _build_jd_client()
     data = client.get_resource_by_link(uri)
     if data is None:
+        # 404: the operation was deleted. Nothing to upsert; leave what we
+        # already stored alone rather than guessing.
         logger.info(
-            "JD event %s: operation %s returned no data; skipping",
+            "JD event %s: operation %s is gone; skipping",
             event.jd_event_id, operation_id,
         )
         return
@@ -350,7 +355,7 @@ _this_module = sys.modules[__name__]
 
 @shared_task(
     bind=True,
-    autoretry_for=(requests.RequestException, TimeoutError),
+    autoretry_for=(requests.RequestException, TimeoutError, ResourceUnavailable),
     retry_backoff=True,
     retry_backoff_max=600,
     max_retries=5,

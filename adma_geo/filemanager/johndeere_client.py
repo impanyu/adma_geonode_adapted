@@ -14,8 +14,18 @@ import logging
 from typing import Optional, Dict, List, Any
 
 from django.conf import settings
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+
+class ResourceUnavailable(Exception):
+    """A John Deere resource could not be read.
+
+    Distinct from a 404: the resource may well still exist. Callers must not
+    treat this as a deletion.
+    """
+
 
 
 class JohnDeereClient:
@@ -33,6 +43,15 @@ class JohnDeereClient:
     # unapproved application gets; production access has to be granted per
     # application on developer.deere.com. Once it is, point JD_API_BASE_URL at
     # https://partnerapi.deere.com/platform -- no code change needed.
+    # Every host John Deere serves the platform API from. sandboxapi and
+    # partnerapi are two front doors onto the same platform, and responses
+    # carry self links on api.deere.com regardless of which was called, so a
+    # link is only usable if all three are accepted.
+    ALLOWED_API_HOSTS = frozenset({
+        'sandboxapi.deere.com', 'partnerapi.deere.com', 'api.deere.com',
+    })
+    API_PATH_PREFIX = '/platform'
+
     SANDBOX_BASE_URL = "https://sandboxapi.deere.com/platform"
     PRODUCTION_BASE_URL = "https://partnerapi.deere.com/platform"
     API_BASE_URL = SANDBOX_BASE_URL
@@ -483,28 +502,50 @@ class JohnDeereClient:
     def get_resource_by_link(self, uri: str) -> Optional[Dict[str, Any]]:
         """
         Follow an absolute URI returned in an event's ``targetResource`` field
-        and return the parsed JSON. Returns None on non-200.
+        and return the parsed JSON.
 
-        SSRF guard: only URIs whose origin matches API_BASE_URL are allowed.
-        Any other URI is rejected with a warning — this prevents a compromised
-        JD account from redirecting us to internal services (e.g. metadata
-        endpoints at 169.254.169.254 or Docker-internal hosts).
+        Returns None only when John Deere answers 404 -- the resource is gone.
+        Every other failure raises ResourceUnavailable, because "we could not
+        read it" and "it no longer exists" lead to opposite actions upstream:
+        one is worth a retry, the other archives the user's folder.
+
+        SSRF guard: the URI must be https, on one of John Deere's API hosts,
+        under /platform. Anything else is rejected -- this prevents a
+        compromised JD account from redirecting us to internal services (e.g.
+        metadata endpoints at 169.254.169.254 or Docker-internal hosts). The
+        host is compared after parsing rather than by prefix, and the allow
+        list covers every host JD hands back: responses carry self links on
+        api.deere.com whichever host was called.
         """
-        if not uri.startswith(self.API_BASE_URL):
+        parsed = urlparse(uri)
+        path = parsed.path
+        if (parsed.scheme != 'https'
+                or parsed.hostname not in self.ALLOWED_API_HOSTS
+                or not (path == self.API_PATH_PREFIX
+                        or path.startswith(self.API_PATH_PREFIX + '/'))):
             logger.warning(
-                "get_resource_by_link: rejecting URI %r — does not match "
-                "allowed origin %r (SSRF guard)",
-                uri, self.API_BASE_URL,
+                "get_resource_by_link: rejecting URI %r (SSRF guard); allowed "
+                "hosts are %s under %s",
+                uri, sorted(self.ALLOWED_API_HOSTS), self.API_PATH_PREFIX,
             )
-            return None
-        endpoint = uri[len(self.API_BASE_URL):]
+            raise ResourceUnavailable(f"URI not allowed: {uri}")
+
+        endpoint = path[len(self.API_PATH_PREFIX):]
+        if parsed.query:
+            endpoint = f"{endpoint}?{parsed.query}"
+
         response = self._make_request('GET', endpoint)
+        if response.status_code == 404:
+            logger.info("Resource %s is gone (404)", uri)
+            return None
         if response.status_code != 200:
             logger.error(
                 "Failed to fetch resource %s: %s - %s",
                 uri, response.status_code, response.text,
             )
-            return None
+            raise ResourceUnavailable(
+                f"{uri} returned {response.status_code}"
+            )
         return response.json()
 
     @staticmethod
