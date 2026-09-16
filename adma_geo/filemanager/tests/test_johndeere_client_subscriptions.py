@@ -90,6 +90,40 @@ class TestSubscriptionClient(TestCase):
             self.client.update_delivery(authorizationHeaderValue='Basic abc')
 
     @patch.object(JohnDeereClient, '_make_request')
+    def test_pagination_follows_links_on_other_jd_hosts(self, mock_req):
+        # JD returns nextPage on api.deere.com even when sandboxapi was called.
+        # Stripping one configured base URL left the absolute URL in place, and
+        # _make_request then glued it onto the base -- so page 2 was never
+        # fetched correctly. Anything with more than 10 items hit this.
+        page1 = Mock(status_code=200, text='', json=lambda: {
+            'values': [{'id': 'A'}],
+            'links': [{'rel': 'nextPage',
+                       'uri': 'https://api.deere.com/platform/eventSubscriptions'
+                              '?pageOffset=10&itemLimit=10'}],
+        })
+        page2 = Mock(status_code=200, text='',
+                     json=lambda: {'values': [{'id': 'B'}], 'links': []})
+        mock_req.side_effect = [page1, page2]
+
+        result = self.client.list_subscriptions()
+        self.assertEqual([s['id'] for s in result], ['A', 'B'])
+        self.assertEqual(mock_req.call_args_list[1][0][1],
+                         '/eventSubscriptions?pageOffset=10&itemLimit=10')
+
+    def test_organization_needs_connection(self):
+        # Only a 'connections' link means the org has not granted us access.
+        self.assertTrue(JohnDeereClient.organization_needs_connection(
+            {'links': [{'rel': 'connections', 'uri': 'https://connections/...'}]}
+        ))
+        self.assertFalse(JohnDeereClient.organization_needs_connection(
+            {'links': [{'rel': 'self', 'uri': 'https://x'},
+                       {'rel': 'connections', 'uri': 'https://y'}]}
+        ))
+        self.assertFalse(JohnDeereClient.organization_needs_connection(
+            {'links': [{'rel': 'self', 'uri': 'https://x'}]}
+        ))
+
+    @patch.object(JohnDeereClient, '_make_request')
     def test_list_subscriptions_handles_pagination(self, mock_req):
         page1 = Mock(
             status_code=200,

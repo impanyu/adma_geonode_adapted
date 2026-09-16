@@ -191,6 +191,38 @@ class JohnDeereClient:
         
         return response
     
+    def _relative_endpoint(self, uri: str) -> Optional[str]:
+        """Turn an absolute John Deere URL into an endpoint for _make_request.
+
+        Links come back on whichever host John Deere feels like -- pagination
+        links in particular arrive on api.deere.com even when the call went to
+        sandboxapi -- so stripping a single configured base URL leaves the
+        whole absolute URL in place, which then gets concatenated onto the base
+        and produces nonsense. Match any of the known hosts instead. Returns
+        None if the URL is not one of ours.
+        """
+        parsed = urlparse(uri)
+        if (parsed.scheme != 'https'
+                or parsed.hostname not in self.ALLOWED_API_HOSTS
+                or not (parsed.path == self.API_PATH_PREFIX
+                        or parsed.path.startswith(self.API_PATH_PREFIX + '/'))):
+            return None
+        endpoint = parsed.path[len(self.API_PATH_PREFIX):]
+        return f"{endpoint}?{parsed.query}" if parsed.query else endpoint
+
+    @staticmethod
+    def organization_needs_connection(organization: Dict[str, Any]) -> bool:
+        """True when JD says we must send the user through Connections first.
+
+        Per John Deere's production review guidance: an organization that comes
+        back carrying only a 'connections' link has not granted this
+        application access, and every data call against it will 403 until a
+        staff member of that organization completes the connection at
+        connections.deere.com.
+        """
+        rels = {link.get('rel') for link in organization.get('links', [])}
+        return 'connections' in rels and not (rels - {'connections'})
+
     def get_organizations(self) -> List[Dict[str, Any]]:
         """
         Get list of organizations the user has access to.
@@ -204,8 +236,16 @@ class JohnDeereClient:
             logger.error(f"Failed to get organizations: {response.status_code} - {response.text}")
             return []
         
-        data = response.json()
-        return data.get('values', [])
+        organizations = response.json().get('values', [])
+        for organization in organizations:
+            if self.organization_needs_connection(organization):
+                logger.warning(
+                    "Organization %s (%s) has not connected this application; "
+                    "a member of it must grant access at connections.deere.com "
+                    "before any data call against it will succeed.",
+                    organization.get('id'), organization.get('name'),
+                )
+        return organizations
     
     def get_fields(self, org_id: str, embed_boundaries: bool = True) -> List[Dict[str, Any]]:
         """
@@ -245,8 +285,12 @@ class JohnDeereClient:
                     break
             
             if next_page:
-                # Extract just the path from the full URL
-                endpoint = next_page.replace(self.API_BASE_URL, '')
+                # nextPage is absolute and may be on a different JD host than
+                # the one we called; _relative_endpoint handles all of them.
+                endpoint = self._relative_endpoint(next_page)
+                if endpoint is None:
+                    logger.error("Ignoring nextPage link on an unexpected host: %s",
+                                 next_page)
                 params = {}  # Params are in the URL now
             else:
                 endpoint = None
@@ -328,7 +372,11 @@ class JohnDeereClient:
                     break
             
             if next_page:
-                endpoint = next_page.replace(self.API_BASE_URL, '')
+                endpoint = self._relative_endpoint(next_page)
+                if endpoint is None:
+                    logger.error("Ignoring nextPage link on an unexpected host: %s",
+                                 next_page)
+                    break
             else:
                 endpoint = None
         
@@ -463,7 +511,10 @@ class JohnDeereClient:
                     next_uri = link.get('uri')
                     break
             if next_uri:
-                endpoint = next_uri.replace(self.API_BASE_URL, '')
+                endpoint = self._relative_endpoint(next_uri)
+                if endpoint is None:
+                    logger.error("Ignoring nextPage link on an unexpected host: %s",
+                                 next_uri)
             else:
                 endpoint = None
         return all_subs
@@ -517,22 +568,14 @@ class JohnDeereClient:
         list covers every host JD hands back: responses carry self links on
         api.deere.com whichever host was called.
         """
-        parsed = urlparse(uri)
-        path = parsed.path
-        if (parsed.scheme != 'https'
-                or parsed.hostname not in self.ALLOWED_API_HOSTS
-                or not (path == self.API_PATH_PREFIX
-                        or path.startswith(self.API_PATH_PREFIX + '/'))):
+        endpoint = self._relative_endpoint(uri)
+        if endpoint is None:
             logger.warning(
                 "get_resource_by_link: rejecting URI %r (SSRF guard); allowed "
                 "hosts are %s under %s",
                 uri, sorted(self.ALLOWED_API_HOSTS), self.API_PATH_PREFIX,
             )
             raise ResourceUnavailable(f"URI not allowed: {uri}")
-
-        endpoint = path[len(self.API_PATH_PREFIX):]
-        if parsed.query:
-            endpoint = f"{endpoint}?{parsed.query}"
 
         response = self._make_request('GET', endpoint)
         if response.status_code == 404:
