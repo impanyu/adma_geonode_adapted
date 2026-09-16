@@ -250,7 +250,7 @@
                     <select id="jdRootBaseMapSelector" class="form-select form-select-sm" style="width: auto;">
                         <option value="osm">OpenStreetMap</option>
                         <option value="satellite" selected>Satellite (Esri)</option>
-                        <option value="terrain">Terrain (Stamen)</option>
+                        <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
                         <option value="dark">Dark (CartoDB)</option>
                     </select>
@@ -288,7 +288,7 @@
                     <select id="jdBaseMapSelector" class="form-select form-select-sm" style="width: auto;">
                         <option value="osm" selected>OpenStreetMap</option>
                         <option value="satellite">Satellite (Esri)</option>
-                        <option value="terrain">Terrain (Stamen)</option>
+                        <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
                         <option value="dark">Dark (CartoDB)</option>
                     </select>
@@ -320,7 +320,7 @@
                     <select id="jdOpBaseMapSelector" class="form-select form-select-sm" style="width: auto;">
                         <option value="osm" selected>OpenStreetMap</option>
                         <option value="satellite">Satellite (Esri)</option>
-                        <option value="terrain">Terrain (Stamen)</option>
+                        <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
                         <option value="dark">Dark (CartoDB)</option>
                     </select>
@@ -353,7 +353,7 @@
                     <select id="realm5BaseMapSelector" class="form-select form-select-sm" style="width: auto;">
                         <option value="osm" selected>OpenStreetMap</option>
                         <option value="satellite">Satellite (Esri)</option>
-                        <option value="terrain">Terrain (Stamen)</option>
+                        <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
                         <option value="dark">Dark (CartoDB)</option>
                     </select>
@@ -391,7 +391,7 @@
                     <select id="realm5DeviceBaseMapSelector" class="form-select form-select-sm" style="width: auto;">
                         <option value="osm" selected>OpenStreetMap</option>
                         <option value="satellite">Satellite (Esri)</option>
-                        <option value="terrain">Terrain (Stamen)</option>
+                        <option value="terrain">Terrain (Esri)</option>
                         <option value="topo">Topographic (OpenTopo)</option>
                         <option value="dark">Dark (CartoDB)</option>
                     </select>
@@ -1421,9 +1421,14 @@ function getBaseMapSource(type) {
                 attributions: 'Tiles &copy; Esri'
             });
         case 'terrain':
+            // Stamen's own tile servers were retired when the maps moved to
+            // Stadia in 2023; the old stamen-tiles.*.ssl.fastly.net endpoints
+            // answer 503 for every tile, so this option could never draw.
+            // Esri's terrain layer needs no API key, like the satellite layer
+            // above, whereas Stadia's replacement does.
             return new ol.source.XYZ({
-                url: 'https://stamen-tiles.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg',
-                attributions: 'Map tiles by Stamen Design'
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
+                attributions: 'Tiles &copy; Esri'
             });
         case 'topo':
             return new ol.source.XYZ({
