@@ -119,6 +119,7 @@ services:
       JD_CLIENT_SECRET: ${JD_CLIENT_SECRET}
       JD_REFRESH_TOKEN: ${JD_REFRESH_TOKEN}
       JD_ORG_ID: ${JD_ORG_ID}
+      JD_API_BASE_URL: ${JD_API_BASE_URL:-https://sandboxapi.deere.com/platform}
       # JD webhook (Basic Auth that JD uses when posting events to us).
       # Empty/unset = webhook endpoint returns 500 by design until configured.
       JD_WEBHOOK_USERNAME: ${JD_WEBHOOK_USERNAME:-}
@@ -178,6 +179,7 @@ services:
       JD_CLIENT_SECRET: ${JD_CLIENT_SECRET}
       JD_REFRESH_TOKEN: ${JD_REFRESH_TOKEN}
       JD_ORG_ID: ${JD_ORG_ID}
+      JD_API_BASE_URL: ${JD_API_BASE_URL:-https://sandboxapi.deere.com/platform}
       # JD webhook (Basic Auth that JD uses when posting events to us).
       # Empty/unset = webhook endpoint returns 500 by design until configured.
       JD_WEBHOOK_USERNAME: ${JD_WEBHOOK_USERNAME:-}
@@ -225,6 +227,7 @@ services:
       JD_CLIENT_SECRET: ${JD_CLIENT_SECRET}
       JD_REFRESH_TOKEN: ${JD_REFRESH_TOKEN}
       JD_ORG_ID: ${JD_ORG_ID}
+      JD_API_BASE_URL: ${JD_API_BASE_URL:-https://sandboxapi.deere.com/platform}
       # JD webhook (Basic Auth that JD uses when posting events to us).
       # Empty/unset = webhook endpoint returns 500 by design until configured.
       JD_WEBHOOK_USERNAME: ${JD_WEBHOOK_USERNAME:-}

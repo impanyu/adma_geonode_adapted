@@ -13,6 +13,8 @@ import json
 import logging
 from typing import Optional, Dict, List, Any
 
+from django.conf import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,25 +29,37 @@ class JohnDeereClient:
     # John Deere OAuth2 endpoints
     TOKEN_URL = "https://signin.johndeere.com/oauth2/aus78tnlaysMraFhC1t7/v1/token"
     
-    # API base URLs
-    API_BASE_URL = "https://sandboxapi.deere.com/platform"  # Sandbox
-    # API_BASE_URL = "https://partnerapi.deere.com/platform"  # Production
+    # API base URLs. Sandbox is the default because that is what an
+    # unapproved application gets; production access has to be granted per
+    # application on developer.deere.com. Once it is, point JD_API_BASE_URL at
+    # https://partnerapi.deere.com/platform -- no code change needed.
+    SANDBOX_BASE_URL = "https://sandboxapi.deere.com/platform"
+    PRODUCTION_BASE_URL = "https://partnerapi.deere.com/platform"
+    API_BASE_URL = SANDBOX_BASE_URL
     
     # Default API version header
     API_VERSION = "application/vnd.deere.axiom.v3+json"
     
-    def __init__(self, client_id: str, client_secret: str, refresh_token: str):
+    def __init__(self, client_id: str, client_secret: str, refresh_token: str,
+                 base_url: str = None):
         """
         Initialize John Deere client.
-        
+
         Args:
             client_id: Application ID from developer.deere.com
             client_secret: Application secret from developer.deere.com
             refresh_token: OAuth2 refresh token for the user
+            base_url: API base URL. Defaults to the JD_API_BASE_URL setting,
+                which in turn defaults to sandbox.
         """
         self.client_id = client_id
         self.client_secret = client_secret
         self.refresh_token = refresh_token
+        self.API_BASE_URL = (
+            base_url
+            or getattr(settings, 'JD_API_BASE_URL', None)
+            or self.SANDBOX_BASE_URL
+        ).rstrip('/')
         self.access_token = None
         self._session = requests.Session()
     

@@ -1,8 +1,38 @@
 from unittest.mock import Mock, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from filemanager.johndeere_client import JohnDeereClient
+
+
+class TestApiBaseUrl(TestCase):
+    """Moving to production must be a config change, not a code edit."""
+
+    @override_settings(JD_API_BASE_URL='https://partnerapi.deere.com/platform')
+    def test_base_url_comes_from_settings(self):
+        client = JohnDeereClient('cid', 'csec', 'refresh')
+        self.assertEqual(client.API_BASE_URL,
+                         'https://partnerapi.deere.com/platform')
+
+    @override_settings(JD_API_BASE_URL=None)
+    def test_defaults_to_sandbox(self):
+        client = JohnDeereClient('cid', 'csec', 'refresh')
+        self.assertEqual(client.API_BASE_URL, JohnDeereClient.SANDBOX_BASE_URL)
+
+    @override_settings(JD_API_BASE_URL='https://partnerapi.deere.com/platform')
+    def test_ssrf_guard_follows_the_configured_base(self):
+        # The guard on get_resource_by_link compares against the same base, so
+        # production links must not be rejected as off-origin.
+        client = JohnDeereClient('cid', 'csec', 'refresh')
+        client.access_token = 'token'
+        with patch.object(JohnDeereClient, '_make_request') as mock_req:
+            mock_req.return_value = Mock(status_code=200, json=lambda: {'id': 'F1'},
+                                         text='')
+            data = client.get_resource_by_link(
+                'https://partnerapi.deere.com/platform/organizations/1/fields/F1'
+            )
+        self.assertEqual(data['id'], 'F1')
+        self.assertEqual(mock_req.call_args[0][1], '/organizations/1/fields/F1')
 
 
 class TestSubscriptionClient(TestCase):

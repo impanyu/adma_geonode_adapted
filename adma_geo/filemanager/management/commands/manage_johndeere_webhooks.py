@@ -62,11 +62,13 @@ class Command(BaseCommand):
         for key in ('JD_CLIENT_ID', 'JD_CLIENT_SECRET', 'JD_REFRESH_TOKEN'):
             if not getattr(settings, key, None):
                 raise CommandError(f"{key} is not set")
-        return JohnDeereClient(
+        client = JohnDeereClient(
             client_id=settings.JD_CLIENT_ID,
             client_secret=settings.JD_CLIENT_SECRET,
             refresh_token=settings.JD_REFRESH_TOKEN,
         )
+        self.stdout.write(f"John Deere API: {client.API_BASE_URL}")
+        return client
 
     def _require_webhook_settings(self):
         missing = [

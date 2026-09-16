@@ -260,6 +260,11 @@ REALM5_API_KEY = os.environ.get('REALM5_API_KEY')
 
 # John Deere API Configuration
 # Credentials should be set via environment variables
+# Sandbox unless the application has been granted production access on
+# developer.deere.com; then set this to https://partnerapi.deere.com/platform
+JD_API_BASE_URL = os.environ.get(
+    'JD_API_BASE_URL', 'https://sandboxapi.deere.com/platform'
+)
 JD_CLIENT_ID = os.environ.get('JD_CLIENT_ID')
 JD_CLIENT_SECRET = os.environ.get('JD_CLIENT_SECRET')
 JD_REFRESH_TOKEN = os.environ.get('JD_REFRESH_TOKEN')
