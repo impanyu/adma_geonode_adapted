@@ -16,18 +16,31 @@ _MEDIA = tempfile.mkdtemp()
 
 
 class ReadShapefileColumnsTests(TestCase):
-    def test_returns_attribute_field_names(self):
-        d = tempfile.mkdtemp()
-        path = os.path.join(d, "plots.shp")
+    def _write_shapefile(self, columns):
+        path = os.path.join(tempfile.mkdtemp(), "plots.shp")
         gpd.GeoDataFrame(
-            {"Plot_Number": ["1", "2"], "Rate": [10, 20],
-             "geometry": [Point(0, 0), Point(1, 1)]},
+            dict(columns, geometry=[Point(0, 0), Point(1, 1)]),
             crs="EPSG:4326",
         ).to_file(path)
+        return path
+
+    def test_returns_attribute_field_names(self):
+        path = self._write_shapefile({"Plot_Num": ["1", "2"], "Rate": [10, 20]})
         cols = read_shapefile_columns(path)
-        self.assertIn("Plot_Number", cols)
+        self.assertIn("Plot_Num", cols)
         self.assertIn("Rate", cols)
         self.assertNotIn("geometry", cols)
+
+    def test_reports_field_names_as_the_shapefile_stores_them(self):
+        # A shapefile keeps its attributes in a DBF, whose field names cap at
+        # 10 characters, so GDAL truncates anything longer as it writes. These
+        # names drive the column-mapping dropdown and are later matched against
+        # the layer's real columns by resolve_plot_id_column(), so reporting the
+        # pre-truncation name the caller *asked* for would hand the user a
+        # choice that cannot match. ValidYieldExtractorTool carries both
+        # spellings in PLOT_ID_CANDIDATES for exactly this reason.
+        path = self._write_shapefile({"Plot_Number": ["1", "2"], "Rate": [10, 20]})
+        self.assertEqual(read_shapefile_columns(path), ["Plot_Numbe", "Rate"])
 
 
 @override_settings(MEDIA_ROOT=_MEDIA)
