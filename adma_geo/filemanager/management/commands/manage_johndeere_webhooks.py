@@ -154,7 +154,13 @@ class Command(BaseCommand):
         for sub in remote:
             sid = sub.get('id', '?')
             has_local = 'LOCAL' if sid in local else 'REMOTE-ONLY'
-            self.stdout.write(f"  [{has_local}] {sid}")
+            # JD keeps returning Terminated and Expired subscriptions, so show
+            # the status -- a long list is not the same as a working one.
+            status = sub.get('status', '?')
+            event_type = sub.get('eventTypeId', '?')
+            self.stdout.write(
+                f"  [{has_local}] {sid}  {event_type}  {status}"
+            )
         orphan_local = [sid for sid in local if not any(
             r.get('id') == sid for r in remote
         )]
