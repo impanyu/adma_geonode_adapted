@@ -22,15 +22,26 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', 'adma.unl.edu']
+def _csv_env(name, default):
+    """Comma-separated env var -> list, blanks dropped."""
+    return [item.strip() for item in os.environ.get(name, default).split(',') if item.strip()]
 
-# CSRF and CORS settings for production
-CSRF_TRUSTED_ORIGINS = [
-    'https://adma.unl.edu',
-    'http://adma.unl.edu',
-    'http://localhost',
-    'https://localhost',
-]
+
+# Hosts this deployment answers on. Each deployment sets its own in the
+# environment -- the demo box on adma.aisoup.net used to carry this as an
+# uncommitted edit that every git pull clobbered and had to be reapplied by
+# hand. The defaults keep local development and adma.unl.edu working untouched.
+ALLOWED_HOSTS = _csv_env(
+    'DJANGO_ALLOWED_HOSTS',
+    'localhost,127.0.0.1,0.0.0.0,adma.unl.edu',
+)
+
+# CSRF and CORS settings for production. Entries must carry a scheme, so these
+# are listed in full rather than derived from ALLOWED_HOSTS.
+CSRF_TRUSTED_ORIGINS = _csv_env(
+    'DJANGO_CSRF_TRUSTED_ORIGINS',
+    'https://adma.unl.edu,http://adma.unl.edu,http://localhost,https://localhost',
+)
 
 # Proxy settings for HTTPS detection
 USE_X_FORWARDED_HOST = True

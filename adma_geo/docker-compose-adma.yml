@@ -84,6 +84,8 @@ services:
       - "8001:8000"
     environment:
       DEBUG: "${DEBUG:-False}"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,adma.unl.edu}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://adma.unl.edu,http://adma.unl.edu,http://localhost,https://localhost}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
       POSTGRES_DB: adma_geo
       POSTGRES_USER: adma_geo
@@ -148,6 +150,8 @@ services:
       - adma_agent_workspaces:/opt/adma/agent_workspaces
     environment:
       DEBUG: "${DEBUG:-False}"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,adma.unl.edu}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://adma.unl.edu,http://adma.unl.edu,http://localhost,https://localhost}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
       POSTGRES_DB: adma_geo
       POSTGRES_USER: adma_geo
@@ -210,6 +214,8 @@ services:
       - .:/app
     environment:
       DEBUG: "${DEBUG:-False}"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,adma.unl.edu}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://adma.unl.edu,http://adma.unl.edu,http://localhost,https://localhost}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
       POSTGRES_DB: adma_geo
       POSTGRES_USER: adma_geo
