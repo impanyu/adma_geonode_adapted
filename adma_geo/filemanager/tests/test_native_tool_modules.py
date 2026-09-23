@@ -269,7 +269,7 @@ class ManagementZoneTests(SimpleTestCase):
         np.testing.assert_allclose(scaled.std(axis=0), [1.0, 1.0], atol=1e-12)
         # Having been scaled, the two columns now span the same distance.
         self.assertAlmostEqual(
-            float(scaled[:, 0].ptp()), float(scaled[:, 1].ptp()), places=10
+            float(np.ptp(scaled[:, 0])), float(np.ptp(scaled[:, 1])), places=10
         )
 
     def test_a_constant_column_contributes_nothing_rather_than_nan(self):
