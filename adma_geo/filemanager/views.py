@@ -64,6 +64,28 @@ def sanitize_folder_name(name: str) -> str:
     return name.strip()
 
 
+def api_login_required(view_func):
+    """login_required for endpoints the browser calls with fetch().
+
+    The stock decorator answers an unauthenticated request with a redirect to
+    the HTML login page. Front-end code then calls response.json() on it and
+    reports "Unexpected token '<', <!DOCTYPE ... is not valid JSON", which tells
+    the user nothing about the real problem: their session expired. Answer with
+    JSON these callers can actually read.
+    """
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse(
+                {'success': False,
+                 'error': 'Your session has expired. Please sign in again.',
+                 'code': 'not_authenticated'},
+                status=401,
+            )
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
 def _internal_error_response(exc, message='An internal error occurred. Please try again.', status=500):
     """
     Standard 500-error response that logs the full exception server-side
@@ -1348,7 +1370,7 @@ def public_file_detail(request, file_id):
         'realm5_all_variables': realm5_all_variables,
     })
 
-@login_required
+@api_login_required
 def create_folder(request):
     """Create a new folder via AJAX"""
     if request.method == 'POST':
@@ -1408,7 +1430,7 @@ def create_folder(request):
 
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
-@login_required
+@api_login_required
 def upload_files(request):
     """Upload files via AJAX"""
     if request.method == 'POST':
@@ -1631,7 +1653,7 @@ def delete_folder_complete(folder_obj):
         raise
 
 
-@login_required
+@api_login_required
 def delete_item(request):
     """Delete file or folder via AJAX - async with immediate response"""
     if request.method == 'POST':
@@ -1858,7 +1880,7 @@ def public_map_viewer(request, file_id):
         'public_breadcrumbs': file_obj.get_public_breadcrumbs(),  # Add public breadcrumbs
     })
 
-@login_required
+@api_login_required
 def upload_folders(request):
     """Upload folders with their structure via AJAX"""
     if request.method == 'POST':
@@ -2013,7 +2035,7 @@ def upload_folders(request):
 
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
-@login_required
+@api_login_required
 def toggle_visibility(request):
     """Toggle visibility - async for folders (recursive), immediate for files"""
     if request.method == 'POST':
@@ -2081,7 +2103,7 @@ def toggle_visibility(request):
 
     return JsonResponse({'success': False, 'error': 'Method not allowed'})
 
-@login_required
+@api_login_required
 def dashboard_stats(request):
     """API endpoint to get updated dashboard statistics with robust calculation and error handling"""
     if request.method == 'GET':
@@ -2869,7 +2891,7 @@ def search_api(request):
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 
-@login_required
+@api_login_required
 def run_seeding_tool(request):
     """
     API endpoint to trigger the Seeding Tool on a .shp or .gpkg file.
@@ -3004,7 +3026,7 @@ def check_seeding_tool_status(request, task_id):
         return _internal_error_response(e)
 
 
-@login_required
+@api_login_required
 def run_shape_to_json(request):
     """
     API endpoint to trigger the Shape to JSON Tool on a .shp file.
@@ -3109,7 +3131,7 @@ def check_shape_to_json_status(request, task_id):
         return _internal_error_response(e)
 
 
-@login_required
+@api_login_required
 def run_si_tool(request):
     """
     API endpoint to trigger the SI (Sufficiency Index) Tool v2.
@@ -3284,7 +3306,7 @@ def check_si_tool_status(request, task_id):
         return _internal_error_response(e)
 
 
-@login_required
+@api_login_required
 def run_yield_summary_tool(request):
     """
     API endpoint to trigger the Yield Summary Tool on treatment and yield shapefiles.
@@ -3545,7 +3567,7 @@ def read_shapefile_columns(shp_path):
         return list(src.schema["properties"].keys())
 
 
-@login_required
+@api_login_required
 def seeding_tool_columns(request, file_id):
     """Return a .shp's attribute column names for the seeding tool's pickers.
 
@@ -3577,7 +3599,7 @@ def seeding_tool_columns(request, file_id):
     return JsonResponse({'success': True, 'columns': columns})
 
 
-@login_required
+@api_login_required
 def valid_yield_extractor_columns(request, file_id):
     """Return the attribute column names of a selected .shp for the column-mapping UI."""
     try:
@@ -3603,7 +3625,7 @@ def valid_yield_extractor_columns(request, file_id):
     return JsonResponse({'success': True, 'columns': columns})
 
 
-@login_required
+@api_login_required
 def run_valid_yield_extractor(request):
     """
     API endpoint to trigger the Valid Yield Extractor Tool on plots, as-applied, and harvest shapefiles.
@@ -3767,7 +3789,7 @@ def check_valid_yield_extractor_status(request, task_id):
         return _internal_error_response(e)
 
 
-@login_required
+@api_login_required
 def rename_file(request):
     """
     API endpoint to rename a file.

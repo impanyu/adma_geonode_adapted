@@ -979,8 +979,22 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
             body: formData
         });
         
-        const data = await response.json();
-        
+        // Not every failure comes back as JSON: an expired session or a
+        // rejected CSRF token is answered with an HTML page, and calling
+        // .json() on that reports "Unexpected token '<'" instead of the real
+        // problem.
+        let data;
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            data = await response.json();
+        } else if (response.status === 401 || response.status === 403) {
+            alert('Your session has expired. Please sign in again, then retry the upload.');
+            return;
+        } else {
+            alert(`Upload failed (HTTP ${response.status}). Please try again.`);
+            return;
+        }
+
         if (data.success) {
             location.reload(); // Reload to show new files
         } else {
