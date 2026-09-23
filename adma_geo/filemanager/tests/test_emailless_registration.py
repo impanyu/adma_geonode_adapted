@@ -13,6 +13,7 @@ from django.test import RequestFactory, TestCase
 
 from allauth.account.models import EmailAddress
 from allauth.socialaccount.internal.flows.signup import process_auto_signup
+from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from allauth.socialaccount.models import SocialAccount, SocialLogin
 
 from filemanager.forms import ProfileForm, RegistrationForm
@@ -21,13 +22,21 @@ User = get_user_model()
 
 
 def google_login(email, verified=True):
-    """A SocialLogin shaped the way allauth's Google provider builds one."""
+    """
+    A SocialLogin shaped the way allauth's Google provider builds one.
+
+    The provider instance is not decoration: SocialLogin.serialize() reaches
+    through it, so a login built without one cannot be put into a session.
+    """
+    request = RequestFactory().get('/')
+    provider = get_socialaccount_adapter().get_provider(request, 'google')
     return SocialLogin(
         user=User(email=email),
         account=SocialAccount(provider='google', uid='uid-' + email),
         email_addresses=[
             EmailAddress(email=email, verified=verified, primary=True)
         ],
+        provider=provider,
     )
 
 
