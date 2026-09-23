@@ -55,6 +55,7 @@ urlpatterns = [
     # Seeding Tool endpoints
     path('api/seeding-tool/run/', views.run_seeding_tool, name='run_seeding_tool'),
     path('api/seeding-tool/status/<str:task_id>/', views.check_seeding_tool_status, name='check_seeding_tool_status'),
+    path('api/seeding-tool/columns/<str:file_id>/', views.seeding_tool_columns, name='seeding_tool_columns'),
     
     # Shape to JSON Tool endpoints
     path('api/shape-to-json/run/', views.run_shape_to_json, name='run_shape_to_json'),

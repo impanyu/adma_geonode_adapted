@@ -282,6 +282,43 @@
                         </div>
                     </div>
                     
+                    <!-- Column mapping. Populated from the selected .shp so the
+                         user picks from what the file actually contains instead of
+                         having to know the spelling; blank = let the tool detect. -->
+                    <div class="row" id="columnMappingRow" style="display: none;">
+                        <div class="col-12">
+                            <hr>
+                            <h6 class="mb-1"><i class="fas fa-table me-2"></i>Column Mapping
+                                <small class="text-muted fw-normal">(optional)</small>
+                            </h6>
+                            <p class="text-muted small mb-3">
+                                Leave any of these on &ldquo;Auto-detect&rdquo; and the tool will
+                                work the column out from the file.
+                            </p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="productCol" class="form-label">Product column</label>
+                            <select class="form-select" id="productCol">
+                                <option value="">Auto-detect</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="widthCol" class="form-label">Swath / width column</label>
+                            <select class="form-select" id="widthCol">
+                                <option value="">Auto-detect</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="rateCol" class="form-label">Rate column</label>
+                            <select class="form-select" id="rateCol">
+                                <option value="">Auto-detect</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <div id="columnLoadError" class="alert alert-warning py-2 small d-none mb-0"></div>
+                        </div>
+                    </div>
+
                     <!-- Submit Button -->
                     <div class="row">
                         <div class="col-12">
@@ -342,6 +379,18 @@
                 <ul id="outputFilesList" class="list-group">
                     <!-- Files will be populated by JavaScript -->
                 </ul>
+
+                <!-- Run preview. Sreeja asked for this: the figure the tool
+                     already draws (polygons coloured by product, field boundary
+                     dashed) shows at a glance what the run produced. -->
+                <div id="previewSection" class="mt-4 d-none">
+                    <h6><i class="fas fa-image me-2"></i>Preview</h6>
+                    <p class="text-muted small mb-2">Seeding polygons by product, with the generated field boundary.</p>
+                    <a id="previewLink" href="#" target="_blank" rel="noopener">
+                        <img id="previewImage" src="" alt="Seeding polygons by product"
+                             class="img-fluid border rounded w-100">
+                    </a>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -653,8 +702,46 @@ function selectInputFile(element) {
     document.getElementById('selectedFileId').value = fileId;
     document.getElementById('selectedFileName').textContent = fileName;
     document.getElementById('selectedFileDisplay').classList.add('show');
-    
+
+    loadSeedingColumns(fileId, fileName);
     updateSubmitButton();
+}
+
+// Fill the column pickers from the chosen shapefile. Failing to read them is
+// not fatal -- the tool auto-detects -- so say so and carry on.
+async function loadSeedingColumns(fileId, fileName) {
+    const row = document.getElementById('columnMappingRow');
+    const errorBox = document.getElementById('columnLoadError');
+    const selects = ['productCol', 'widthCol', 'rateCol'].map(id => document.getElementById(id));
+
+    errorBox.classList.add('d-none');
+    selects.forEach(sel => { sel.innerHTML = '<option value="">Auto-detect</option>'; });
+
+    if (!fileName.toLowerCase().endsWith('.shp')) {
+        row.style.display = 'none';
+        return;
+    }
+    row.style.display = '';
+
+    try {
+        const response = await fetch(`/api/seeding-tool/columns/${fileId}/`);
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Could not read columns');
+
+        data.columns.forEach(name => {
+            selects.forEach(sel => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                sel.appendChild(opt);
+            });
+        });
+    } catch (err) {
+        errorBox.textContent =
+            'Could not read the columns from this file (' + err.message +
+            '). The tool will detect them automatically.';
+        errorBox.classList.remove('d-none');
+    }
 }
 
 // Select output folder
@@ -953,7 +1040,10 @@ document.getElementById('seedingToolForm').addEventListener('submit', async func
             },
             body: JSON.stringify({
                 file_id: fileId,
-                output_folder_id: folderId || null
+                output_folder_id: folderId || null,
+                product_col: document.getElementById('productCol').value,
+                width_col: document.getElementById('widthCol').value,
+                rate_col: document.getElementById('rateCol').value
             })
         });
         
@@ -1016,16 +1106,41 @@ document.getElementById('seedingToolForm').addEventListener('submit', async func
     }
 });
 
+// Render the run preview. The image is served through the normal file
+// download route, so it inherits the same permissions as every other output.
+function showRunPreview(result) {
+    const section = document.getElementById('previewSection');
+    const image = document.getElementById('previewImage');
+    const link = document.getElementById('previewLink');
+
+    const previewName = (result.output_files || {}).preview;
+    const record = (result.created_files || []).find(f => f.name === previewName);
+
+    if (!previewName || !record) {
+        section.classList.add('d-none');
+        return;
+    }
+
+    const url = `/file/${record.id}/download/`;
+    image.src = url;
+    link.href = url;
+    section.classList.remove('d-none');
+}
+
 // Show results
 function showResults(result) {
     const outputFiles = result.output_files || {};
     const filesList = document.getElementById('outputFilesList');
     filesList.innerHTML = '';
-    
+
+    showRunPreview(result);
+
     const fileTypes = {
         'polygons': { icon: 'fa-draw-polygon', label: 'Seeding Polygons', color: 'success' },
+        'polygons_components': { icon: 'fa-draw-polygon', label: 'Seeding Polygons', color: 'success' },
         'boundary': { icon: 'fa-border-all', label: 'Boundary', color: 'primary' },
-        'summary': { icon: 'fa-file-csv', label: 'Summary CSV', color: 'info' }
+        'summary': { icon: 'fa-file-csv', label: 'Summary CSV', color: 'info' },
+        'preview': { icon: 'fa-image', label: 'Run Preview', color: 'warning' }
     };
     
     for (const [type, path] of Object.entries(outputFiles)) {

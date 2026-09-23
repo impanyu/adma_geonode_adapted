@@ -526,9 +526,16 @@ def dashboard(request):
         Q(owner=user) | Q(is_public=True)  # User's own OR public
     ).distinct().order_by('third_party_source', '-created_at')
     
+    # Tools panel. Read from the same source as the Tools page -- these cards
+    # used to be hardcoded in the template, so tools added later (Valid Yield
+    # Extractor, Yield Summary) appeared on /tools/ but never on the dashboard,
+    # under a badge that claimed there were five.
+    dashboard_tools = Tool.get_available_tools_for_user(user).filter(status='available')
+
     return render(request, 'filemanager/dashboard.html', {
         'folders': folders,
         'recent_files': recent_files,
+        'tools': dashboard_tools,
         'stats': stats,
         'current_folder': None,
         'page_obj': page_obj,
@@ -2891,6 +2898,11 @@ def run_seeding_tool(request):
         data = json.loads(request.body)
         file_id = data.get('file_id')
         output_folder_id = data.get('output_folder_id')  # Optional
+        # Optional column overrides. Blank means "let the tool auto-detect",
+        # which is what it does when these are None.
+        product_col = (data.get('product_col') or '').strip() or None
+        width_col = (data.get('width_col') or '').strip() or None
+        rate_col = (data.get('rate_col') or '').strip() or None
         
         if not file_id:
             return JsonResponse({'success': False, 'error': 'file_id is required'}, status=400)
@@ -2922,7 +2934,10 @@ def run_seeding_tool(request):
         
         # Trigger the Celery task with optional output_folder_id
         from .tasks import run_seeding_tool_task
-        task = run_seeding_tool_task.delay(str(file_id), output_folder_id)
+        task = run_seeding_tool_task.delay(
+            str(file_id), output_folder_id,
+            product_col=product_col, width_col=width_col, rate_col=rate_col,
+        )
         
         return JsonResponse({
             'success': True,
@@ -3510,6 +3525,38 @@ def read_shapefile_columns(shp_path):
     import fiona
     with fiona.open(shp_path) as src:
         return list(src.schema["properties"].keys())
+
+
+@login_required
+def seeding_tool_columns(request, file_id):
+    """Return a .shp's attribute column names for the seeding tool's pickers.
+
+    Sreeja asked for this in January: without it users have to know the exact
+    spelling of the product / width / rate columns, and every input file spells
+    them differently.
+    """
+    try:
+        file_obj = File.objects.get(id=file_id)
+    except File.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'File not found'}, status=404)
+
+    if file_obj.owner != request.user and not file_obj.is_public:
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    ext = os.path.splitext(file_obj.name)[1].lower()
+    if ext != '.shp':
+        return JsonResponse(
+            {'success': False, 'error': f'File must be a .shp file. Got: {ext}'},
+            status=400,
+        )
+
+    try:
+        from .SeedingPolygonTool_SV import peek_columns
+        columns = peek_columns(file_obj.file.path)
+    except Exception as e:
+        return _internal_error_response(e)
+
+    return JsonResponse({'success': True, 'columns': columns})
 
 
 @login_required

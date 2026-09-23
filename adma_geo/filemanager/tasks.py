@@ -387,7 +387,8 @@ def toggle_file_visibility_task(self, file_id, is_public, file_name):
 
 
 @shared_task(bind=True)
-def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=None):
+def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=None,
+                         product_col=None, width_col=None, rate_col=None):
     """
     Run the Seeding Tool on a .shp or .gpkg file.
 
@@ -486,11 +487,52 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=
         logger.info(f"Processing file: {input_path}")
         logger.info(f"Output directory: {output_dir}")
         
-        # Import and run the seeding tool
-        from .SeedingTool_asappled_single_ADMA_V1 import process_seeding_tool
-        
-        success, message, output_files = process_seeding_tool(input_path, output_dir)
-        
+        # Import and run the seeding tool.
+        #
+        # SeedingPolygonTool_SV is Sreeja Vinod's revision of the tool. It
+        # reports failure by raising and reports success with a dict, where the
+        # older module returned a (success, message, files) triple, so adapt
+        # here rather than editing her script -- her next revision drops in
+        # unchanged.
+        from .SeedingPolygonTool_SV import process_seeding_data
+
+        plot_path = os.path.join(
+            output_dir,
+            f"{os.path.splitext(os.path.basename(input_path))[0]}_preview.png",
+        )
+        try:
+            results = process_seeding_data(
+                input_path,
+                output_folder=output_dir,
+                plot_path=plot_path,
+                product_col=product_col or None,
+                width_col=width_col or None,
+                rate_col=rate_col or None,
+            )
+        except Exception as exc:
+            success, message, output_files = False, str(exc), []
+        else:
+            # Downstream expects a dict: *_components keys carry every sidecar
+            # of a shapefile (.shp/.shx/.dbf/.prj/.cpg) so each becomes its own
+            # File record, and scalar keys carry a single path.
+            polygons_base = os.path.splitext(results['polygons_path'])[0]
+            output_files = {
+                'polygons_components': [
+                    polygons_base + ext
+                    for ext in ('.shp', '.shx', '.dbf', '.prj', '.cpg')
+                    if os.path.exists(polygons_base + ext)
+                ],
+                'summary': results['summary_path'],
+            }
+            if results.get('plot_path') and os.path.exists(results['plot_path']):
+                output_files['preview'] = results['plot_path']
+            message = (
+                f"Processed {results['products_processed']} product(s); "
+                f"columns used -> product: {results['product_col_used']}, "
+                f"width: {results['width_col_used']}, rate: {results['rate_col_used']}"
+            )
+            success = True
+
         if not success:
             logger.error(f"Seeding Tool failed: {message}")
             # Update file processing log
@@ -567,6 +609,12 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=
                     if result:
                         created_files.append(result)
         
+        # Process the run preview image
+        if 'preview' in output_files:
+            result = create_file_record(output_files['preview'])
+            if result:
+                created_files.append(result)
+
         # Process CSV summary file
         if 'summary' in output_files:
             summary_path = output_files['summary']
