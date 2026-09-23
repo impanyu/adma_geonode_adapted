@@ -15,8 +15,8 @@
                     <p class="text-muted">Create your account to start managing agricultural data</p>
                 </div>
 
-                {# Offered first: it needs nothing typed, and it is the only
-                   route that gives the account a verified email address. #}
+                {% comment %}Offered first: it needs nothing typed, and it is the
+                only route that gives the account a verified email address.{% endcomment %}
                 <div class="d-grid">
                     <a href="{% provider_login_url 'google' %}" class="btn btn-outline-secondary btn-lg">
                         <i class="fab fa-google me-2"></i>Sign up with Google

@@ -158,6 +158,7 @@ class ProfilePageTests(TestCase):
         self.assertContains(response, 'Connect Google')
         self.assertContains(response, '/accounts/google/login/')
         self.assertNotContains(response, 'name="email"')
+        self.assertNotContains(response, '{#')
 
     def test_profile_saves_without_an_email(self):
         User.objects.create_user('grower', password='correct-horse-battery')
@@ -190,6 +191,9 @@ class EntrancePageStyleTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Sign up with Google')
         self.assertNotContains(response, 'name="email"')
+        # {# #} only comments out a single line; a multi-line one renders as
+        # visible page text.
+        self.assertNotContains(response, '{#')
         # The validator list UserCreationForm renders by default.
         self.assertNotContains(response, 'too similar to your other personal information')
 
@@ -205,6 +209,7 @@ class EntrancePageStyleTests(TestCase):
         self.assertTemplateUsed(response, 'socialaccount/signup.html')
         self.assertTemplateUsed(response, 'base.html')
         self.assertContains(response, 'One more step')
+        self.assertNotContains(response, '{#')
         # The way out of the dead end has to be on the page.
         self.assertContains(response, 'Connect Google')
 
