@@ -216,3 +216,21 @@ class EntrancePageStyleTests(TestCase):
     def test_social_signup_page_without_a_pending_login_redirects(self):
         response = self.client.get('/accounts/3rdparty/signup/')
         self.assertEqual(response.status_code, 302)
+
+
+class AdminBrandingTests(TestCase):
+    """
+    The admin is reachable from the same site, so it should not look like a
+    different product. Its login page renders through admin/base_site.html,
+    which we override -- and an override that stops being picked up fails
+    silently, leaving Django's own blue header in place.
+    """
+
+    def test_admin_login_uses_the_adma_branding(self):
+        response = self.client.get('/admin/login/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'admin/base_site.html')
+        self.assertContains(response, 'ADMA administration')
+        self.assertContains(response, '--adma-red')
+        self.assertNotContains(response, 'Django administration')

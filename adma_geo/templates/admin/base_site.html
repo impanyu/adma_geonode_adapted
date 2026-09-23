@@ -1,0 +1,94 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% comment %}
+Django's admin ships its own blue palette and a bare "Django administration"
+header, which reads as a different product bolted onto the site. The admin
+stylesheet drives nearly all of its colour from CSS custom properties, so
+restating those properties is enough to bring it onto the ADMA palette
+without overriding a single admin rule or template beyond this one.
+{% endcomment %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | ADMA administration{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+    html[data-theme="light"], :root {
+        --adma-red: #d00000;
+        --adma-red-dark: #b00000;
+
+        --primary: var(--adma-red);
+        --secondary: var(--adma-red-dark);
+        --accent: #ffffff;
+
+        --header-bg: var(--adma-red);
+        --header-color: rgba(255, 255, 255, .85);
+        --header-branding-color: #ffffff;
+        --header-link-color: #ffffff;
+
+        --breadcrumbs-bg: #f8f9fa;
+        --breadcrumbs-fg: #6c757d;
+        --breadcrumbs-link-fg: var(--adma-red);
+
+        --link-fg: var(--adma-red);
+        --link-hover-color: var(--adma-red-dark);
+        --link-selected-fg: var(--adma-red-dark);
+
+        --button-bg: var(--adma-red);
+        --button-fg: #ffffff;
+        --button-hover-bg: var(--adma-red-dark);
+        --default-button-bg: var(--adma-red-dark);
+        --default-button-hover-bg: #8a0000;
+
+        --object-tools-bg: var(--adma-red-dark);
+        --object-tools-hover-bg: var(--adma-red);
+    }
+
+    /* The admin sets its dark palette in its own block, so restate ours there
+       too rather than let the blues come back when the OS asks for dark. */
+    html[data-theme="dark"] {
+        --primary: var(--adma-red);
+        --secondary: var(--adma-red-dark);
+        --header-bg: #7a0000;
+        --breadcrumbs-bg: #1b1b1b;
+        --breadcrumbs-link-fg: #ff6b6b;
+        --link-fg: #ff6b6b;
+        --link-hover-color: #ff9b9b;
+        --link-selected-fg: #ff9b9b;
+        --button-bg: var(--adma-red);
+        --button-hover-bg: var(--adma-red-dark);
+        --object-tools-bg: var(--adma-red-dark);
+    }
+
+    #site-name a {
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        font-weight: 600;
+        letter-spacing: .01em;
+    }
+
+    #branding h1 { margin-bottom: 0; }
+
+    /* The header gradient the rest of the site uses. */
+    #header {
+        background: linear-gradient(135deg, var(--adma-red) 0%, var(--adma-red-dark) 100%);
+    }
+
+    div.breadcrumbs {
+        border-bottom: 1px solid #dee2e6;
+    }
+</style>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        <i class="fas fa-seedling"></i>ADMA administration
+    </a>
+</h1>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
