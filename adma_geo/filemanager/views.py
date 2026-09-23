@@ -395,9 +395,6 @@ def profile(request):
     """
     from rest_framework.authtoken.models import Token
 
-    # A social account's address is owned by the provider; see ProfileForm.
-    email_locked = request.user.socialaccount_set.exists()
-
     if request.method == 'POST':
         action = request.POST.get('action', 'save')
         if action in ('create_token', 'regenerate_token'):
@@ -410,18 +407,17 @@ def profile(request):
             )
             return redirect('filemanager:profile')
 
-        form = ProfileForm(request.POST, instance=request.user, email_locked=email_locked)
+        form = ProfileForm(request.POST, instance=request.user)
         if form.is_valid():
             form.save()
             messages.success(request, 'Profile updated.')
             return redirect('filemanager:profile')
     else:
-        form = ProfileForm(instance=request.user, email_locked=email_locked)
+        form = ProfileForm(instance=request.user)
 
     return render(request, 'filemanager/profile.html', {
         'form': form,
         'api_token': Token.objects.filter(user=request.user).first(),
-        'email_locked': email_locked,
         'social_accounts': request.user.socialaccount_set.all(),
     })
 

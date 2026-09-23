@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load crispy_forms_tags %}
+{% load socialaccount %}
 
 {% block title %}Profile - ADMA{% endblock %}
 
@@ -50,10 +51,38 @@
                         {% endif %}
                     </div>
 
+                    {# Read-only: an address is only ever supplied by a provider
+                       that verified it, so there is nothing to edit here. #}
+                    {% if user.email %}
+                    <div class="row text-muted small mb-4">
+                        <div class="col-12">
+                            <strong>Email</strong><br>
+                            {{ user.email }}
+                            {% if social_accounts %}
+                                <span class="ms-1">(from {{ social_accounts.0.provider|title }})</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save me-2"></i>Save changes
                     </button>
                 </form>
+
+                {% if not social_accounts %}
+                {# Lets a password account pick up one-click Google sign-in.
+                   The link is matched on the provider's account id, so it
+                   works whatever address either side holds. #}
+                <hr class="my-4">
+                <p class="text-muted small mb-2">
+                    Connect a Google account to sign in with one click next time.
+                </p>
+                <a href="{% provider_login_url 'google' process='connect' %}"
+                   class="btn btn-outline-secondary">
+                    <i class="fab fa-google me-2"></i>Connect Google
+                </a>
+                {% endif %}
             </div>
         </div>
 
