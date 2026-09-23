@@ -2568,17 +2568,13 @@ class SIToolView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         user = self.request.user
         
-        # Build hierarchical tree data structure for the file browsers
-        # We need separate trees for shapefiles, CSV files, and TIF files
-        shp_tree_data = self._build_tree_data(user, file_extensions=['.shp'])
-        csv_tree_data = self._build_tree_data(user, file_extensions=['.csv'])
-        tif_tree_data = self._build_tree_data(user, file_extensions=['.tif', '.tiff'])
-        folder_tree_data = self._build_folder_tree(user)
-
-        context['shp_tree_data'] = shp_tree_data
-        context['csv_tree_data'] = csv_tree_data
-        context['tif_tree_data'] = tif_tree_data
-        context['folder_tree_data'] = folder_tree_data
+        # One tree carrying every type this tool accepts. It used to be four
+        # server-filtered trees, one per extension; the shared picker filters
+        # client-side from its accept list, so a single payload now feeds all
+        # six inputs and the output folder.
+        context['tree_data'] = self._build_tree_data(
+            user, file_extensions=['.shp', '.csv', '.tif', '.tiff']
+        )
         context['page_title'] = 'SI Tool'
         
         return context

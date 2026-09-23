@@ -314,11 +314,13 @@
                             <div class="col-md-4 mb-3">
                                 <div class="input-section h-100">
                                     <h6><i class="fas fa-draw-polygon me-2 text-warning"></i>Buffer Sector Shapefile <span class="text-danger">*</span></h6>
-                                    <div class="file-tree" id="bufferSectorsTree"></div>
                                     <input type="hidden" id="bufferSectorsFileId" name="buffer_shp_id" required>
-                                    <div id="bufferSectorsDisplay" class="selection-info file-selected">
-                                        <i class="fas fa-check-circle me-1"></i>
-                                        <span id="bufferSectorsFileName"></span>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control" id="bufferSectorsFileName" readonly
+                                               placeholder="Nothing selected">
+                                        <button class="btn btn-outline-secondary" type="button" id="browseBufferBtn">
+                                            <i class="fas fa-folder-open"></i>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -327,11 +329,13 @@
                             <div class="col-md-4 mb-3 conditional-section show" id="ndreSection">
                                 <div class="input-section h-100">
                                     <h6><i class="fas fa-leaf me-2 text-success"></i>NDRE Shapefile <span class="text-danger">*</span></h6>
-                                    <div class="file-tree" id="ndreTree"></div>
                                     <input type="hidden" id="ndreFileId" name="ndre_shp_id">
-                                    <div id="ndreDisplay" class="selection-info file-selected">
-                                        <i class="fas fa-check-circle me-1"></i>
-                                        <span id="ndreFileName"></span>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control" id="ndreFileName" readonly
+                                               placeholder="Nothing selected">
+                                        <button class="btn btn-outline-secondary" type="button" id="browseNdreBtn">
+                                            <i class="fas fa-folder-open"></i>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -340,11 +344,13 @@
                             <div class="col-md-4 mb-3 conditional-section" id="nirSection">
                                 <div class="input-section h-100">
                                     <h6><i class="fas fa-image me-2 text-purple"></i>NIR GeoTIFF <span class="text-danger">*</span></h6>
-                                    <div class="file-tree" id="nirTree"></div>
                                     <input type="hidden" id="nirFileId" name="nir_tif_id">
-                                    <div id="nirDisplay" class="selection-info file-selected">
-                                        <i class="fas fa-check-circle me-1"></i>
-                                        <span id="nirFileName"></span>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control" id="nirFileName" readonly
+                                               placeholder="Nothing selected">
+                                        <button class="btn btn-outline-secondary" type="button" id="browseNirBtn">
+                                            <i class="fas fa-folder-open"></i>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -353,11 +359,13 @@
                             <div class="col-md-4 mb-3 conditional-section" id="rededgeSection">
                                 <div class="input-section h-100">
                                     <h6><i class="fas fa-image me-2 text-danger"></i>RedEdge GeoTIFF <span class="text-danger">*</span></h6>
-                                    <div class="file-tree" id="rededgeTree"></div>
                                     <input type="hidden" id="rededgeFileId" name="rededge_tif_id">
-                                    <div id="rededgeDisplay" class="selection-info file-selected">
-                                        <i class="fas fa-check-circle me-1"></i>
-                                        <span id="rededgeFileName"></span>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control" id="rededgeFileName" readonly
+                                               placeholder="Nothing selected">
+                                        <button class="btn btn-outline-secondary" type="button" id="browseRededgeBtn">
+                                            <i class="fas fa-folder-open"></i>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -366,11 +374,13 @@
                             <div class="col-md-4 mb-3">
                                 <div class="input-section h-100">
                                     <h6><i class="fas fa-file-csv me-2 text-info"></i>CSV File <span class="text-danger">*</span></h6>
-                                    <div class="file-tree" id="csvTree"></div>
                                     <input type="hidden" id="csvFileId" name="csv_file_id" required>
-                                    <div id="csvDisplay" class="selection-info file-selected">
-                                        <i class="fas fa-check-circle me-1"></i>
-                                        <span id="csvFileName"></span>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control" id="csvFileName" readonly
+                                               placeholder="Nothing selected">
+                                        <button class="btn btn-outline-secondary" type="button" id="browseCsvBtn">
+                                            <i class="fas fa-folder-open"></i>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -381,11 +391,13 @@
                             <div class="col-md-4 mb-3">
                                 <div class="input-section">
                                     <h6><i class="fas fa-th-large me-2 text-purple"></i>Indicator Block Shapefile <span class="text-danger">*</span></h6>
-                                    <div class="file-tree" id="indicatorBlockTree"></div>
                                     <input type="hidden" id="indicatorBlockFileId" name="indicator_shp_id">
-                                    <div id="indicatorBlockDisplay" class="selection-info file-selected">
-                                        <i class="fas fa-check-circle me-1"></i>
-                                        <span id="indicatorBlockFileName"></span>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control" id="indicatorBlockFileName" readonly
+                                               placeholder="Nothing selected">
+                                        <button class="btn btn-outline-secondary" type="button" id="browseIndicatorBtn">
+                                            <i class="fas fa-folder-open"></i>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -401,12 +413,14 @@
                         <p class="text-muted small">Leave empty to auto-create "si_tool_output" folder in the same location as your buffer sectors file.</p>
                         <div class="row">
                             <div class="col-md-6">
-                                <div class="file-tree" id="outputFolderTree" style="max-height: 200px;"></div>
                                 <input type="hidden" id="outputFolderId" name="output_folder_id" value="">
-                                <div id="outputFolderDisplay" class="selection-info file-selected show" style="background-color: #cff4fc; border-color: #0dcaf0;">
-                                    <i class="fas fa-magic me-1 text-info"></i>
-                                    <span id="outputFolderName">Auto-create folder (same location as buffer file)</span>
-                                </div>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control" id="outputFolderName" readonly
+                                               placeholder="Nothing selected">
+                                        <button class="btn btn-outline-secondary" type="button" id="browseOutputBtn">
+                                            <i class="fas fa-folder-open"></i>
+                                        </button>
+                                    </div>
                             </div>
                         </div>
                     </div>
@@ -485,10 +499,8 @@
 {% endblock %}
 
 {% block extra_js %}
-{{ shp_tree_data|json_script:"shpTreeData-data" }}
-{{ csv_tree_data|json_script:"csvTreeData-data" }}
-{{ tif_tree_data|json_script:"tifTreeData-data" }}
-{{ folder_tree_data|json_script:"folderTreeData-data" }}
+{% include "filemanager/_file_picker.html" %}
+{{ tree_data|json_script:"treeData-data" }}
 <script>
 // CSRF token setup
 function getCookie(name) {
@@ -509,10 +521,8 @@ function getCookie(name) {
 const csrftoken = getCookie('csrftoken');
 
 // Data from Django context
-const shpTreeData = JSON.parse(document.getElementById("shpTreeData-data").textContent);
-const csvTreeData = JSON.parse(document.getElementById("csvTreeData-data").textContent);
-const tifTreeData = JSON.parse(document.getElementById("tifTreeData-data").textContent);
-const folderTreeData = JSON.parse(document.getElementById("folderTreeData-data").textContent);
+// One payload for every input; the picker narrows it by accept list.
+const treeData = JSON.parse(document.getElementById("treeData-data").textContent);
 
 // Current selections
 let currentTreatment = 'STANDARD';
@@ -579,198 +589,7 @@ function updateConditionalSections() {
 // Tree Building Functions
 // ============================================
 
-function buildFileTree(containerId, treeData, fileType, onSelectCallback) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = '';
 
-    function createFolderNode(folder) {
-        const node = document.createElement('div');
-        node.className = 'tree-node';
-
-        const hasChildren = (folder.subfolders && folder.subfolders.length > 0) ||
-                            (folder.files && folder.files.length > 0);
-
-        const content = document.createElement('div');
-        content.className = 'tree-node-content';
-        content.setAttribute('data-has-children', hasChildren ? 'true' : 'false');
-        content.setAttribute('ondblclick', 'handleFolderDoubleClick(event, this)');
-
-        content.innerHTML = `
-            <div class="tree-toggle ${hasChildren ? '' : 'style="visibility: hidden;"'}" onclick="event.stopPropagation(); toggleFolder(this)">
-                <i class="fas fa-chevron-right"></i>
-            </div>
-            <div class="tree-icon folder-icon"><i class="fas fa-folder"></i></div>
-            <span class="tree-label">${folder.name}</span>
-        `;
-
-        node.appendChild(content);
-
-        if (hasChildren) {
-            const children = document.createElement('div');
-            children.className = 'tree-children';
-
-            if (folder.subfolders) {
-                folder.subfolders.forEach(subfolder => {
-                    children.appendChild(createFolderNode(subfolder));
-                });
-            }
-
-            if (folder.files) {
-                folder.files.forEach(file => {
-                    children.appendChild(createFileNode(file, fileType, onSelectCallback));
-                });
-            }
-
-            node.appendChild(children);
-        }
-
-        return node;
-    }
-
-    function createFileNode(file, fileType, callback) {
-        const node = document.createElement('div');
-        node.className = 'tree-node';
-
-        const content = document.createElement('div');
-        content.className = 'tree-node-content';
-        content.setAttribute('data-file-id', file.id);
-        content.setAttribute('data-file-name', file.name);
-        content.setAttribute('onclick', `${callback}(this)`);
-
-        let iconClass = 'file-icon';
-        let icon = 'fa-file-archive';
-        if (fileType === 'csv') {
-            iconClass = 'csv-icon';
-            icon = 'fa-file-csv';
-        } else if (fileType === 'tif') {
-            iconClass = 'tif-icon';
-            icon = 'fa-image';
-        }
-
-        content.innerHTML = `
-            <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
-            <div class="tree-icon ${iconClass}"><i class="fas ${icon}"></i></div>
-            <span class="tree-label">${file.name}</span>
-            ${file.size_display ? `<span class="badge bg-light text-dark tree-badge">${file.size_display}</span>` : ''}
-        `;
-
-        node.appendChild(content);
-        return node;
-    }
-
-    // My Files section
-    if (treeData.my_folders.length > 0 || treeData.my_root_files.length > 0) {
-        const mySection = document.createElement('div');
-        mySection.className = 'tree-root-section';
-        mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Files</div>';
-
-        treeData.my_root_files.forEach(file => {
-            mySection.appendChild(createFileNode(file, fileType, onSelectCallback));
-        });
-
-        treeData.my_folders.forEach(folder => {
-            mySection.appendChild(createFolderNode(folder));
-        });
-
-        container.appendChild(mySection);
-    }
-
-    // Public Files section
-    if (treeData.public_folders.length > 0 || treeData.public_root_files.length > 0) {
-        const publicSection = document.createElement('div');
-        publicSection.className = 'tree-root-section';
-        publicSection.innerHTML = '<div class="tree-section-header"><i class="fas fa-globe me-2"></i>Public Files</div>';
-
-        treeData.public_root_files.forEach(file => {
-            publicSection.appendChild(createFileNode(file, fileType, onSelectCallback));
-        });
-
-        treeData.public_folders.forEach(folder => {
-            publicSection.appendChild(createFolderNode(folder));
-        });
-
-        container.appendChild(publicSection);
-    }
-
-    if (container.children.length === 0) {
-        let typeLabel = 'shape';
-        if (fileType === 'csv') typeLabel = 'CSV';
-        else if (fileType === 'tif') typeLabel = 'GeoTIFF';
-        container.innerHTML = `
-            <div class="text-center text-muted py-3">
-                <i class="fas fa-exclamation-circle mb-2"></i>
-                <p class="mb-0 small">No ${typeLabel} files found.</p>
-            </div>
-        `;
-    }
-}
-
-function buildOutputFolderTree() {
-    const container = document.getElementById('outputFolderTree');
-    container.innerHTML = '';
-
-    // Auto option
-    const autoOption = document.createElement('div');
-    autoOption.className = 'tree-node';
-    autoOption.innerHTML = `
-        <div class="tree-node-content selected-output" data-folder-id="" data-folder-name="" onclick="selectOutputFolder(this)">
-            <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
-            <div class="tree-icon"><i class="fas fa-magic text-info"></i></div>
-            <span class="tree-label">Auto-create folder</span>
-        </div>
-    `;
-    container.appendChild(autoOption);
-
-    function createFolderNode(folder) {
-        const node = document.createElement('div');
-        node.className = 'tree-node';
-
-        const hasSubfolders = folder.subfolders && folder.subfolders.length > 0;
-
-        const content = document.createElement('div');
-        content.className = 'tree-node-content';
-        content.setAttribute('data-folder-id', folder.id);
-        content.setAttribute('data-folder-name', folder.name);
-        content.setAttribute('onclick', 'selectOutputFolder(this)');
-        content.setAttribute('data-has-children', hasSubfolders ? 'true' : 'false');
-        content.setAttribute('ondblclick', 'handleFolderDoubleClick(event, this)');
-
-        content.innerHTML = `
-            <div class="tree-toggle ${hasSubfolders ? '' : 'style="visibility: hidden;"'}" onclick="event.stopPropagation(); toggleFolder(this)">
-                <i class="fas fa-chevron-right"></i>
-            </div>
-            <div class="tree-icon folder-icon"><i class="fas fa-folder"></i></div>
-            <span class="tree-label">${folder.name}</span>
-        `;
-
-        node.appendChild(content);
-
-        if (hasSubfolders) {
-            const children = document.createElement('div');
-            children.className = 'tree-children';
-
-            folder.subfolders.forEach(subfolder => {
-                children.appendChild(createFolderNode(subfolder));
-            });
-
-            node.appendChild(children);
-        }
-
-        return node;
-    }
-
-    if (folderTreeData.my_folders.length > 0) {
-        const mySection = document.createElement('div');
-        mySection.className = 'tree-root-section';
-        mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Folders</div>';
-
-        folderTreeData.my_folders.forEach(folder => {
-            mySection.appendChild(createFolderNode(folder));
-        });
-
-        container.appendChild(mySection);
-    }
-}
 
 // ============================================
 // Tree Interaction
@@ -811,93 +630,12 @@ function handleFolderDoubleClick(event, element) {
 // File Selection Callbacks
 // ============================================
 
-function selectBufferSectorsFile(element) {
-    document.querySelectorAll('#bufferSectorsTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected');
-    });
-    element.classList.add('selected');
 
-    document.getElementById('bufferSectorsFileId').value = element.dataset.fileId;
-    document.getElementById('bufferSectorsFileName').textContent = element.dataset.fileName;
-    document.getElementById('bufferSectorsDisplay').classList.add('show');
 
-    updateSubmitButton();
-}
 
-function selectNdreFile(element) {
-    document.querySelectorAll('#ndreTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected');
-    });
-    element.classList.add('selected');
 
-    document.getElementById('ndreFileId').value = element.dataset.fileId;
-    document.getElementById('ndreFileName').textContent = element.dataset.fileName;
-    document.getElementById('ndreDisplay').classList.add('show');
 
-    updateSubmitButton();
-}
 
-function selectNirFile(element) {
-    document.querySelectorAll('#nirTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected');
-    });
-    element.classList.add('selected');
-
-    document.getElementById('nirFileId').value = element.dataset.fileId;
-    document.getElementById('nirFileName').textContent = element.dataset.fileName;
-    document.getElementById('nirDisplay').classList.add('show');
-
-    updateSubmitButton();
-}
-
-function selectRededgeFile(element) {
-    document.querySelectorAll('#rededgeTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected');
-    });
-    element.classList.add('selected');
-
-    document.getElementById('rededgeFileId').value = element.dataset.fileId;
-    document.getElementById('rededgeFileName').textContent = element.dataset.fileName;
-    document.getElementById('rededgeDisplay').classList.add('show');
-
-    updateSubmitButton();
-}
-
-function selectCsvFile(element) {
-    document.querySelectorAll('#csvTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected');
-    });
-    element.classList.add('selected');
-
-    document.getElementById('csvFileId').value = element.dataset.fileId;
-    document.getElementById('csvFileName').textContent = element.dataset.fileName;
-    document.getElementById('csvDisplay').classList.add('show');
-
-    updateSubmitButton();
-}
-
-function selectIndicatorBlockFile(element) {
-    document.querySelectorAll('#indicatorBlockTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected');
-    });
-    element.classList.add('selected');
-
-    document.getElementById('indicatorBlockFileId').value = element.dataset.fileId;
-    document.getElementById('indicatorBlockFileName').textContent = element.dataset.fileName;
-    document.getElementById('indicatorBlockDisplay').classList.add('show');
-
-    updateSubmitButton();
-}
-
-function selectOutputFolder(element) {
-    document.querySelectorAll('#outputFolderTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected-output');
-    });
-    element.classList.add('selected-output');
-
-    document.getElementById('outputFolderId').value = element.dataset.folderId;
-    document.getElementById('outputFolderName').textContent = element.dataset.folderName || 'Auto-create folder (same location as buffer file)';
-}
 
 // ============================================
 // Form Validation
@@ -943,15 +681,6 @@ function updateSubmitButton() {
 // ============================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Build file trees
-    buildFileTree('bufferSectorsTree', shpTreeData, 'shp', 'selectBufferSectorsFile');
-    buildFileTree('ndreTree', shpTreeData, 'shp', 'selectNdreFile');
-    buildFileTree('nirTree', tifTreeData, 'tif', 'selectNirFile');
-    buildFileTree('rededgeTree', tifTreeData, 'tif', 'selectRededgeFile');
-    buildFileTree('csvTree', csvTreeData, 'csv', 'selectCsvFile');
-    buildFileTree('indicatorBlockTree', shpTreeData, 'shp', 'selectIndicatorBlockFile');
-    buildOutputFolderTree();
-
     // Add input listeners for column fields
     document.getElementById('siColumnName').addEventListener('input', updateSubmitButton);
     document.getElementById('fieldColumn').addEventListener('input', updateSubmitButton);
@@ -1092,5 +821,102 @@ function showResults(result) {
     const resultsModal = new bootstrap.Modal(document.getElementById('resultsModal'));
     resultsModal.show();
 }
+
+// One shared picker replaces the six inline trees this page used to draw;
+// the single tree_data payload carries every accepted type and the picker
+// narrows it per input.
+ADMAFilePicker.setTree(typeof treeData !== 'undefined' ? treeData : {});
+document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('browseBufferBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'file',
+            accept: [".shp"],
+            title: 'Select buffer sector shapefile',
+            onSelect: function (choice) {
+                document.getElementById('bufferSectorsFileId').value = choice.id;
+                document.getElementById('bufferSectorsFileName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+                if (typeof validateForm === 'function') validateForm();
+            }
+        });
+    });
+    document.getElementById('browseNdreBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'file',
+            accept: [".shp"],
+            title: 'Select NDRE shapefile',
+            onSelect: function (choice) {
+                document.getElementById('ndreFileId').value = choice.id;
+                document.getElementById('ndreFileName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+                if (typeof validateForm === 'function') validateForm();
+            }
+        });
+    });
+    document.getElementById('browseNirBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'file',
+            accept: [".tif", ".tiff"],
+            title: 'Select NIR GeoTIFF',
+            onSelect: function (choice) {
+                document.getElementById('nirFileId').value = choice.id;
+                document.getElementById('nirFileName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+                if (typeof validateForm === 'function') validateForm();
+            }
+        });
+    });
+    document.getElementById('browseRededgeBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'file',
+            accept: [".tif", ".tiff"],
+            title: 'Select red-edge GeoTIFF',
+            onSelect: function (choice) {
+                document.getElementById('rededgeFileId').value = choice.id;
+                document.getElementById('rededgeFileName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+                if (typeof validateForm === 'function') validateForm();
+            }
+        });
+    });
+    document.getElementById('browseCsvBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'file',
+            accept: [".csv"],
+            title: 'Select CSV',
+            onSelect: function (choice) {
+                document.getElementById('csvFileId').value = choice.id;
+                document.getElementById('csvFileName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+                if (typeof validateForm === 'function') validateForm();
+            }
+        });
+    });
+    document.getElementById('browseIndicatorBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'file',
+            accept: [".shp"],
+            title: 'Select indicator block shapefile',
+            onSelect: function (choice) {
+                document.getElementById('indicatorBlockFileId').value = choice.id;
+                document.getElementById('indicatorBlockFileName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+                if (typeof validateForm === 'function') validateForm();
+            }
+        });
+    });
+    document.getElementById('browseOutputBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'folder',
+            title: 'Select output folder',
+            onSelect: function (choice) {
+                document.getElementById('outputFolderId').value = choice.id;
+                document.getElementById('outputFolderName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+                if (typeof validateForm === 'function') validateForm();
+            }
+        });
+    });
+});
 </script>
 {% endblock %}

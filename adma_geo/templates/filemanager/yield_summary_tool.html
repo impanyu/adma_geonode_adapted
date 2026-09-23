@@ -274,12 +274,15 @@
                                 Browse and select the treatment sector shapefile (.shp) with section_nu and Treatment columns.
                             </p>
                             
-                            <div class="file-tree" id="treatmentFileTree">
-                                <div class="tree-loading">
-                                    <i class="fas fa-spinner fa-spin me-2"></i>Loading files...
-                                </div>
                             </div>
                             
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="selectedTreatmentFileName"
+                                       value="Nothing selected" readonly>
+                                <button class="btn btn-outline-secondary" type="button" id="browseTreatmentBtn">
+                                    <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+                                </button>
+                            </div>
                             <input type="hidden" id="selectedTreatmentFileId" name="treatment_file_id" required>
                             <div id="selectedTreatmentDisplay" class="selection-info treatment-selected">
                                 <i class="fas fa-check-circle me-2 text-primary"></i>
@@ -297,12 +300,15 @@
                                 Browse and select the yield shapefile (.shp) with Yield and Moisture columns.
                             </p>
                             
-                            <div class="file-tree" id="yieldFileTree">
-                                <div class="tree-loading">
-                                    <i class="fas fa-spinner fa-spin me-2"></i>Loading files...
-                                </div>
                             </div>
                             
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="selectedYieldFileName"
+                                       value="Nothing selected" readonly>
+                                <button class="btn btn-outline-secondary" type="button" id="browseYieldBtn">
+                                    <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+                                </button>
+                            </div>
                             <input type="hidden" id="selectedYieldFileId" name="yield_file_id" required>
                             <div id="selectedYieldDisplay" class="selection-info yield-selected">
                                 <i class="fas fa-check-circle me-2 text-success"></i>
@@ -393,16 +399,15 @@
                                 Choose where to save the output files, or leave default to auto-create a folder.
                             </p>
                             
-                            <div class="file-tree" id="outputFolderTree">
-                                <div class="tree-loading">
-                                    <i class="fas fa-spinner fa-spin me-2"></i>Loading folders...
-                                </div>
                             </div>
                             
                             <input type="hidden" id="selectedFolderId" name="output_folder_id" value="">
-                            <div id="selectedFolderDisplay" class="selection-info folder-selected show">
-                                <i class="fas fa-check-circle me-2 text-secondary"></i>
-                                <strong>Output:</strong> <span id="selectedFolderName">Auto-create "yield_summary_output" folder</span>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="selectedFolderName"
+                                       value="Nothing selected" readonly>
+                                <button class="btn btn-outline-secondary" type="button" id="browseOutputBtn">
+                                    <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+                                </button>
                             </div>
                         </div>
                         
@@ -550,6 +555,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% include "filemanager/_file_picker.html" %}
 {{ tree_data|json_script:"treeData-data" }}
 <script>
 // CSRF token setup
@@ -580,10 +586,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
     
-    buildTreatmentFileTree();
-    buildYieldFileTree();
-    buildOutputFolderTree();
-    
     // Add event listeners for parameter updates
     document.getElementById('totalNValues').addEventListener('input', updateSummary);
     document.getElementById('bufferDistance').addEventListener('input', updateSummary);
@@ -592,167 +594,14 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Build treatment file tree
-function buildTreatmentFileTree() {
-    const container = document.getElementById('treatmentFileTree');
-    container.innerHTML = '';
-    buildFileTree(container, 'treatment');
-}
 
 // Build yield file tree
-function buildYieldFileTree() {
-    const container = document.getElementById('yieldFileTree');
-    container.innerHTML = '';
-    buildFileTree(container, 'yield');
-}
 
 // Generic file tree builder
-function buildFileTree(container, mode) {
-    // My Files section
-    if (treeData.my_folders.length > 0 || treeData.my_root_files.length > 0) {
-        const mySection = document.createElement('div');
-        mySection.className = 'tree-root-section';
-        mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Files</div>';
-        
-        treeData.my_root_files.forEach(file => {
-            if (file.name.toLowerCase().endsWith('.shp')) {
-                mySection.appendChild(createFileNode(file, mode, false));
-            }
-        });
-        
-        treeData.my_folders.forEach(folder => {
-            mySection.appendChild(createFolderNode(folder, mode, false));
-        });
-        
-        container.appendChild(mySection);
-    }
-    
-    // Public Files section
-    if (treeData.public_folders.length > 0 || treeData.public_root_files.length > 0) {
-        const publicSection = document.createElement('div');
-        publicSection.className = 'tree-root-section';
-        publicSection.innerHTML = '<div class="tree-section-header"><i class="fas fa-globe me-2"></i>Public Files</div>';
-        
-        treeData.public_root_files.forEach(file => {
-            if (file.name.toLowerCase().endsWith('.shp')) {
-                publicSection.appendChild(createFileNode(file, mode, true));
-            }
-        });
-        
-        treeData.public_folders.forEach(folder => {
-            publicSection.appendChild(createFolderNode(folder, mode, true));
-        });
-        
-        container.appendChild(publicSection);
-    }
-    
-    if (container.children.length === 0) {
-        container.innerHTML = `
-            <div class="text-center text-muted py-4">
-                <i class="fas fa-exclamation-circle fa-2x mb-2"></i>
-                <p class="mb-0">No shapefiles found.</p>
-                <p class="small">Upload a .shp file first.</p>
-            </div>
-        `;
-    }
-}
 
 // Build output folder tree
-function buildOutputFolderTree() {
-    const container = document.getElementById('outputFolderTree');
-    container.innerHTML = '';
-    
-    // Auto-create option
-    const autoOption = document.createElement('div');
-    autoOption.className = 'tree-node';
-    autoOption.innerHTML = `
-        <div class="tree-node-content selected-output" data-folder-id="" data-folder-name="Auto-create folder" onclick="selectOutputFolder(this)">
-            <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
-            <div class="tree-icon"><i class="fas fa-magic text-info"></i></div>
-            <span class="tree-label">Auto-create "yield_summary_output" folder</span>
-        </div>
-    `;
-    container.appendChild(autoOption);
-    
-    // My Folders section
-    if (treeData.my_folders.length > 0) {
-        const mySection = document.createElement('div');
-        mySection.className = 'tree-root-section';
-        mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Folders</div>';
-        
-        treeData.my_folders.forEach(folder => {
-            mySection.appendChild(createFolderNode(folder, 'output', false));
-        });
-        
-        container.appendChild(mySection);
-    }
-}
 
 // Create a folder node
-function createFolderNode(folder, mode, isPublic) {
-    const node = document.createElement('div');
-    node.className = 'tree-node';
-    
-    const hasChildren = (folder.subfolders && folder.subfolders.length > 0) || 
-                        (folder.files && folder.files.length > 0);
-    const hasShpFiles = folder.files && folder.files.some(f => f.name.toLowerCase().endsWith('.shp'));
-    const hasSubfolders = folder.subfolders && folder.subfolders.length > 0;
-    
-    const showToggle = mode === 'output' ? hasSubfolders : (hasShpFiles || hasSubfolders);
-    
-    const content = document.createElement('div');
-    content.className = 'tree-node-content';
-    content.setAttribute('data-has-children', showToggle ? 'true' : 'false');
-    
-    if (mode === 'output') {
-        content.setAttribute('data-folder-id', folder.id);
-        content.setAttribute('data-folder-name', folder.name);
-        content.setAttribute('onclick', 'selectOutputFolder(this)');
-    }
-    
-    content.setAttribute('ondblclick', 'handleFolderDoubleClick(event, this)');
-    
-    content.innerHTML = `
-        <div class="tree-toggle ${showToggle ? '' : 'style="visibility: hidden;"'}" onclick="event.stopPropagation(); toggleFolder(this)">
-            <i class="fas fa-chevron-right"></i>
-        </div>
-        <div class="tree-icon folder-icon"><i class="fas fa-folder"></i></div>
-        <span class="tree-label">${folder.name}</span>
-        ${isPublic ? '<span class="badge bg-info tree-badge">Public</span>' : ''}
-        ${folder.file_count !== undefined ? `<span class="badge bg-secondary tree-badge">${folder.file_count} files</span>` : ''}
-    `;
-    
-    node.appendChild(content);
-    
-    if (showToggle) {
-        const children = document.createElement('div');
-        children.className = 'tree-children';
-        
-        if (folder.subfolders) {
-            folder.subfolders.forEach(subfolder => {
-                children.appendChild(createFolderNode(subfolder, mode, isPublic));
-            });
-        }
-        
-        if (mode !== 'output' && folder.files) {
-            folder.files.forEach(file => {
-                if (file.name.toLowerCase().endsWith('.shp')) {
-                    children.appendChild(createFileNode(file, mode, isPublic));
-                }
-            });
-        }
-        
-        if (children.children.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'empty-folder';
-            empty.textContent = mode === 'output' ? 'Empty' : 'No shapefiles';
-            children.appendChild(empty);
-        }
-        
-        node.appendChild(children);
-    }
-    
-    return node;
-}
 
 // Handle double-click on folder
 function handleFolderDoubleClick(event, element) {
@@ -769,28 +618,6 @@ function handleFolderDoubleClick(event, element) {
 }
 
 // Create a file node
-function createFileNode(file, mode, isPublic) {
-    const node = document.createElement('div');
-    node.className = 'tree-node';
-    
-    const content = document.createElement('div');
-    content.className = 'tree-node-content';
-    content.setAttribute('data-file-id', file.id);
-    content.setAttribute('data-file-name', file.name);
-    content.setAttribute('data-mode', mode);
-    content.setAttribute('onclick', `selectInputFile(this, '${mode}')`);
-    
-    content.innerHTML = `
-        <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
-        <div class="tree-icon file-icon"><i class="fas fa-file-archive"></i></div>
-        <span class="tree-label">${file.name}</span>
-        ${isPublic ? '<span class="badge bg-info tree-badge">Public</span>' : ''}
-        ${file.size_display ? `<span class="badge bg-light text-dark tree-badge">${file.size_display}</span>` : ''}
-    `;
-    
-    node.appendChild(content);
-    return node;
-}
 
 // Toggle folder expand/collapse
 function toggleFolder(toggleEl) {
@@ -842,19 +669,6 @@ function selectInputFile(element, mode) {
 }
 
 // Select output folder
-function selectOutputFolder(element) {
-    document.querySelectorAll('#outputFolderTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected-output');
-    });
-    
-    element.classList.add('selected-output');
-    
-    const folderId = element.dataset.folderId;
-    const folderName = element.dataset.folderName;
-    
-    document.getElementById('selectedFolderId').value = folderId;
-    document.getElementById('selectedFolderName').textContent = folderName || 'Auto-create "yield_summary_output" folder';
-}
 
 // Update summary panel
 function updateSummary() {
@@ -1016,17 +830,13 @@ async function createNewFolder() {
         
         if (data.success || data.folder) {
             const newFolder = data.folder;
+            // The tree this used to search no longer exists; the picker
+            // reads treeData, so update that and select the folder directly.
             addFolderToTreeData(newFolder, parentId);
-            buildOutputFolderTree();
-            
-            setTimeout(() => {
-                const newFolderEl = document.querySelector(`#outputFolderTree [data-folder-id="${newFolder.id}"]`);
-                if (newFolderEl) {
-                    selectOutputFolder(newFolderEl);
-                    expandToFolder(newFolderEl);
-                }
-            }, 100);
-            
+            ADMAFilePicker.setTree(treeData);
+            document.getElementById('selectedFolderId').value = newFolder.id;
+            document.getElementById('selectedFolderName').value = newFolder.name;
+            if (typeof updateSubmitButton === 'function') updateSubmitButton();
             createFolderModal.hide();
         } else {
             alert(data.error || 'Failed to create folder');
@@ -1228,5 +1038,46 @@ function showResults(result) {
     const resultsModal = new bootstrap.Modal(document.getElementById('resultsModal'));
     resultsModal.show();
 }
+
+// The inline trees this page used to draw are replaced by the shared
+// picker dialog; see _file_picker.html.
+ADMAFilePicker.setTree(typeof treeData !== 'undefined' ? treeData : {});
+document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('browseTreatmentBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'file',
+            accept: [".shp"],
+            title: 'Select treatment shapefile',
+            onSelect: function (choice) {
+                document.getElementById('selectedTreatmentFileId').value = choice.id;
+                document.getElementById('selectedTreatmentFileName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+            }
+        });
+    });
+    document.getElementById('browseYieldBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'file',
+            accept: [".shp"],
+            title: 'Select yield shapefile',
+            onSelect: function (choice) {
+                document.getElementById('selectedYieldFileId').value = choice.id;
+                document.getElementById('selectedYieldFileName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+            }
+        });
+    });
+    document.getElementById('browseOutputBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'folder',
+            title: 'Select output folder',
+            onSelect: function (choice) {
+                document.getElementById('selectedFolderId').value = choice.id;
+                document.getElementById('selectedFolderName').value = choice.path || choice.name;
+                if (typeof updateSubmitButton === 'function') updateSubmitButton();
+            }
+        });
+    });
+});
 </script>
 {% endblock %}

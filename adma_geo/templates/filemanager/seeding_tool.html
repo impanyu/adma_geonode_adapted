@@ -669,22 +669,13 @@ async function createNewFolder() {
             // Folder created successfully
             const newFolder = data.folder;
             
-            // Add the new folder to treeData
+            // The output tree this used to rebuild and search is gone; the
+            // picker reads treeData, so refresh that and select the new folder
+            // directly.
             addFolderToTreeData(newFolder, parentId);
-            
-            // Rebuild the output folder tree
-            buildOutputFolderTree();
-            
-            // Auto-select the newly created folder as output
-            setTimeout(() => {
-                const newFolderEl = document.querySelector(`#outputFolderTree [data-folder-id="${newFolder.id}"]`);
-                if (newFolderEl) {
-                    selectOutputFolder(newFolderEl);
-                    
-                    // Expand parent folders to show the new folder
-                    expandToFolder(newFolderEl);
-                }
-            }, 100);
+            ADMAFilePicker.setTree(treeData);
+            document.getElementById('selectedFolderId').value = newFolder.id;
+            document.getElementById('selectedFolderName').value = newFolder.name;
             
             // Close modal
             createFolderModal.hide();
