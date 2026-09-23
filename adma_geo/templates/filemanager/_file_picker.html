@@ -171,8 +171,11 @@ window.ADMAFilePicker = (function () {
 
         // Folders first.
         level.folders.forEach(folder => {
-            const count = (folder.file_count !== undefined)
-                ? `${folder.file_count} file${folder.file_count === 1 ? '' : 's'}` : '';
+            // Count what is actually selectable underneath, not the folder's
+            // raw file_count: that counts every file regardless of type, so a
+            // folder would advertise "3 files" and then open on an empty list
+            // once the accept filter was applied.
+            const count = countSelectable(folder);
             addRow({
                 icon: folder.icon || 'fa-folder',
                 colour: folder.isSection ? 'text-secondary' : 'text-warning',
@@ -208,6 +211,32 @@ window.ADMAFilePicker = (function () {
                     : 'No matching files here.');
             list.appendChild(empty);
         }
+    }
+
+    // How many selectable things sit under this node, recursively. In folder
+    // mode that is the subfolders; in file mode the files the accept list
+    // allows.
+    function countSelectable(node) {
+        if (node.isSection) {
+            const total = (node.subfolders || []).reduce((n, f) => n + countSelectable_(f), 0)
+                        + (options.mode === 'folder' ? 0 : (node.files || []).filter(f => accepts(f.name)).length);
+            return total ? describe(total) : '';
+        }
+        const total = countSelectable_(node);
+        return total ? describe(total) : (options.mode === 'folder' ? '' : 'empty');
+    }
+
+    function countSelectable_(node) {
+        const here = options.mode === 'folder'
+            ? (node.subfolders || []).length
+            : (node.files || []).filter(f => accepts(f.name)).length;
+        return (node.subfolders || []).reduce((n, f) => n + countSelectable_(f), here);
+    }
+
+    function describe(n) {
+        return options.mode === 'folder'
+            ? `${n} folder${n === 1 ? '' : 's'}`
+            : `${n} file${n === 1 ? '' : 's'}`;
     }
 
     function pathFor(name) {
