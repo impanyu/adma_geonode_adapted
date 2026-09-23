@@ -842,7 +842,7 @@
                     <h5 class="mb-0 me-3">
                         <i class="fas fa-tools me-2"></i>Tools
                     </h5>
-                    <span class="badge bg-secondary">5 tools</span>
+                    <span class="badge bg-secondary">{{ tools|length }} tool{{ tools|length|pluralize }}</span>
                 </div>
                 <div class="btn-group" role="group" aria-label="Tools view toggle">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="toolsListViewBtn" onclick="toggleSectionView('tools', 'list')">
@@ -860,166 +860,54 @@
                     <div class="table-responsive">
                         <table class="table table-hover">
                             <thead class="table-light">
-                                <tr>
-                                    <th>Tool</th>
-                                    <th>Description</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                                {% for tool in tools %}
                                 <tr>
                                     <td>
                                         <div class="d-flex align-items-center">
-                                            <i class="fas fa-seedling me-3 text-warning" style="font-size: 1.5rem;"></i>
-                                            <strong>Seeding Tool</strong>
+                                            <i class="fas {{ tool.icon|default:'fa-wrench' }} me-3 text-{{ tool.icon_color|default:'secondary' }}" style="font-size: 1.5rem;"></i>
+                                            <strong>{{ tool.name }}</strong>
                                         </div>
                                     </td>
-                                    <td><small class="text-muted">Process point shapefiles to create seeding polygons, boundaries, and summary statistics.</small></td>
+                                    <td class="text-muted small">{{ tool.short_description|default:tool.description }}</td>
                                     <td><span class="badge bg-success">Available</span></td>
                                     <td>
-                                        <a href="{% url 'filemanager:seeding_tool' %}" class="btn btn-sm btn-warning">
-                                            <i class="fas fa-play me-1"></i>Launch
+                                        <a href="{% url tool.url_name %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-play me-1"></i>Open
                                         </a>
                                     </td>
                                 </tr>
-                                <tr>
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <i class="fas fa-exchange-alt me-3 text-primary" style="font-size: 1.5rem;"></i>
-                                            <strong>Shape to JSON</strong>
-                                        </div>
-                                    </td>
-                                    <td><small class="text-muted">Convert shapefiles to GeoJSON format for web mapping.</small></td>
-                                    <td><span class="badge bg-success">Available</span></td>
-                                    <td>
-                                        <a href="{% url 'filemanager:shape_to_json_tool' %}" class="btn btn-sm btn-primary">
-                                            <i class="fas fa-play me-1"></i>Launch
-                                        </a>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <i class="fas fa-chart-line me-3 text-success" style="font-size: 1.5rem;"></i>
-                                            <strong>SI Tool</strong>
-                                        </div>
-                                    </td>
-                                    <td><small class="text-muted">Calculate Stress Index values from NDRE and buffer sector data.</small></td>
-                                    <td><span class="badge bg-success">Available</span></td>
-                                    <td>
-                                        <a href="{% url 'filemanager:si_tool' %}" class="btn btn-sm btn-success">
-                                            <i class="fas fa-play me-1"></i>Launch
-                                        </a>
-                                    </td>
-                                </tr>
-                                <tr class="opacity-50">
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <i class="fas fa-chart-bar me-3 text-secondary" style="font-size: 1.5rem;"></i>
-                                            <strong class="text-muted">Yield Analysis</strong>
-                                        </div>
-                                    </td>
-                                    <td><small class="text-muted">Analyze yield data and generate reports.</small></td>
-                                    <td><span class="badge bg-secondary">Coming Soon</span></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-secondary" disabled>
-                                            <i class="fas fa-clock me-1"></i>Soon
-                                        </button>
-                                    </td>
-                                </tr>
-                                <tr class="opacity-50">
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <i class="fas fa-layer-group me-3 text-secondary" style="font-size: 1.5rem;"></i>
-                                            <strong class="text-muted">Layer Merge</strong>
-                                        </div>
-                                    </td>
-                                    <td><small class="text-muted">Merge multiple GIS layers into a single file.</small></td>
-                                    <td><span class="badge bg-secondary">Coming Soon</span></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-secondary" disabled>
-                                            <i class="fas fa-clock me-1"></i>Soon
-                                        </button>
-                                    </td>
-                                </tr>
+                                {% empty %}
+                                <tr><td colspan="4" class="text-muted">No tools are available to you yet.</td></tr>
+                                {% endfor %}
                             </tbody>
                         </table>
                     </div>
                 </div>
                 
-                <!-- Tools Panel View -->
+                <!-- Tools Panel View. Rendered from the same source as the
+                     Tools page; these cards used to be hardcoded here and
+                     silently fell behind whenever a tool was added. -->
                 <div id="toolsPanelView" class="view-container">
                     <div class="row">
-                        <!-- Seeding Tool -->
+                        {% for tool in tools %}
                         <div class="col-lg-4 col-md-6 mb-3">
-                            <a href="{% url 'filemanager:seeding_tool' %}" class="text-decoration-none">
-                                <div class="card h-100 border-warning tool-panel-card">
+                            <a href="{% url tool.url_name %}" class="text-decoration-none">
+                                <div class="card h-100 border-{{ tool.icon_color|default:'secondary' }} tool-panel-card">
                                     <div class="card-body text-center">
-                                        <i class="fas fa-seedling fa-3x text-warning mb-3"></i>
-                                        <h5 class="card-title text-dark">Seeding Tool</h5>
+                                        <i class="fas {{ tool.icon|default:'fa-wrench' }} fa-3x text-{{ tool.icon_color|default:'secondary' }} mb-3"></i>
+                                        <h5 class="card-title text-dark">{{ tool.name }}</h5>
                                         <p class="card-text text-muted small">
-                                            Process point shapefiles to create seeding polygons, boundaries, and summary statistics.
+                                            {{ tool.short_description|default:tool.description }}
                                         </p>
                                     </div>
                                 </div>
                             </a>
                         </div>
-                        
-                        <!-- Shape to JSON Tool -->
-                        <div class="col-lg-4 col-md-6 mb-3">
-                            <a href="{% url 'filemanager:shape_to_json_tool' %}" class="text-decoration-none">
-                                <div class="card h-100 border-primary tool-panel-card">
-                                    <div class="card-body text-center">
-                                        <i class="fas fa-exchange-alt fa-3x text-primary mb-3"></i>
-                                        <h5 class="card-title text-dark">Shape to JSON</h5>
-                                        <p class="card-text text-muted small">
-                                            Convert shapefiles to GeoJSON format for web mapping.
-                                        </p>
-                                    </div>
-                                </div>
-                            </a>
+                        {% empty %}
+                        <div class="col-12">
+                            <p class="text-muted mb-0">No tools are available to you yet.</p>
                         </div>
-                        
-                        <!-- SI Tool -->
-                        <div class="col-lg-4 col-md-6 mb-3">
-                            <a href="{% url 'filemanager:si_tool' %}" class="text-decoration-none">
-                                <div class="card h-100 border-success tool-panel-card">
-                                    <div class="card-body text-center">
-                                        <i class="fas fa-chart-line fa-3x text-success mb-3"></i>
-                                        <h5 class="card-title text-dark">SI Tool</h5>
-                                        <p class="card-text text-muted small">
-                                            Calculate Stress Index values from NDRE and buffer sector data.
-                                        </p>
-                                    </div>
-                                </div>
-                            </a>
-                        </div>
-                        
-                        <!-- Placeholder for future tools -->
-                        <div class="col-lg-4 col-md-6 mb-3">
-                            <div class="card h-100 border-secondary opacity-50">
-                                <div class="card-body text-center">
-                                    <i class="fas fa-chart-bar fa-3x text-secondary mb-3"></i>
-                                    <h5 class="card-title text-muted">Yield Analysis</h5>
-                                    <p class="card-text text-muted small">
-                                        Analyze yield data and generate reports. Coming soon.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="col-lg-4 col-md-6 mb-3">
-                            <div class="card h-100 border-secondary opacity-50">
-                                <div class="card-body text-center">
-                                    <i class="fas fa-layer-group fa-3x text-secondary mb-3"></i>
-                                    <h5 class="card-title text-muted">Layer Merge</h5>
-                                    <p class="card-text text-muted small">
-                                        Merge multiple GIS layers into a single file. Coming soon.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
