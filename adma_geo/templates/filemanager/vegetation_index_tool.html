@@ -1,0 +1,116 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-leaf{% endblock %}
+{% block tool_tagline %}Compute a vegetation index from reflectance bands{% endblock %}
+{% block run_url %}{% url 'filemanager:run_vegetation_index' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border mb-3">
+    Bands may come from separate GeoTIFFs or from one multi-band image -- point
+    several bands at the same file and give each its own band number. They must
+    share a grid; if they do not, run <a href="{% url 'filemanager:raster_clip_tool' %}">Clip
+    &amp; Reproject</a> on them first.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="mb-3">
+    <label class="form-label fw-semibold" for="indexSelect">
+        <i class="fas fa-flask me-2 text-success"></i>Index
+    </label>
+    <select class="form-select" id="indexSelect">
+        {% for index in indices %}
+            <option value="{{ index.key }}"
+                    data-bands="{{ index.bands|join:',' }}"
+                    data-description="{{ index.description }}">{{ index.name }}</option>
+        {% endfor %}
+    </select>
+    <div class="form-text" id="indexDescription"></div>
+</div>
+
+<div id="bandInputs" class="row"></div>
+
+<div class="row" id="soilFactorRow" style="display: none;">
+    <div class="col-md-4 mb-3">
+        <label class="form-label fw-semibold" for="soilFactor">Soil adjustment (L)</label>
+        <input type="number" class="form-control" id="soilFactor" value="0.5" step="0.1" min="0" max="1">
+        <div class="form-text">0.5 suits most partial canopies.</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tool_script %}
+<script>
+const BAND_LABELS = {
+    red: 'Red', green: 'Green', nir: 'Near-infrared (NIR)', rededge: 'Red edge',
+};
+
+// One row per band the chosen index needs, rebuilt whenever the index changes.
+function renderBandInputs() {
+    const option = document.getElementById('indexSelect').selectedOptions[0];
+    const bands = option.dataset.bands.split(',').filter(Boolean);
+    document.getElementById('indexDescription').textContent = option.dataset.description;
+    document.getElementById('soilFactorRow').style.display =
+        option.value === 'savi' ? '' : 'none';
+
+    const container = document.getElementById('bandInputs');
+    container.innerHTML = bands.map(band => `
+        <div class="col-md-6 mb-3">
+            <label class="form-label fw-semibold">${BAND_LABELS[band] || band}</label>
+            <div class="input-group">
+                <input type="text" class="form-control" id="name_${band}" placeholder="No file chosen" readonly>
+                <button class="btn btn-outline-secondary" type="button" id="browse_${band}">
+                    <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+                </button>
+                <input type="number" class="form-control" id="band_${band}"
+                       value="1" min="1" style="max-width: 5.5rem;" title="Band number within that file">
+            </div>
+            <input type="hidden" id="file_${band}">
+            <div class="form-text" id="info_${band}">Band number is the last box.</div>
+        </div>
+    `).join('');
+
+    bands.forEach(band => {
+        wirePicker(`browse_${band}`, `name_${band}`, `file_${band}`, {
+            accept: ['.tif', '.tiff'],
+            title: `Choose the ${BAND_LABELS[band] || band} image`,
+            onSelect: async (id) => {
+                try {
+                    const response = await fetch(`/api/native-tools/bands/${id}/`);
+                    const data = await response.json();
+                    if (data.success) {
+                        document.getElementById(`band_${band}`).max = data.bands;
+                        document.getElementById(`info_${band}`).textContent =
+                            `${data.bands} band(s) in this file`;
+                    }
+                } catch (err) { /* the hint is optional */ }
+            },
+        });
+    });
+}
+
+document.getElementById('indexSelect').addEventListener('change', renderBandInputs);
+renderBandInputs();
+
+function buildPayload() {
+    const option = document.getElementById('indexSelect').selectedOptions[0];
+    const bands = option.dataset.bands.split(',').filter(Boolean);
+
+    const chosen = {};
+    for (const band of bands) {
+        const fileId = document.getElementById(`file_${band}`).value;
+        if (!fileId) throw new Error(`Choose an image for the ${BAND_LABELS[band] || band} band.`);
+        chosen[band] = {
+            file_id: fileId,
+            band: parseInt(document.getElementById(`band_${band}`).value, 10) || 1,
+        };
+    }
+
+    return {
+        index: option.value,
+        bands: chosen,
+        soil_factor: parseFloat(document.getElementById('soilFactor').value) || 0.5,
+    };
+}
+</script>
+{% endblock %}

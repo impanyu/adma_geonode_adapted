@@ -1,0 +1,113 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-crop-simple{% endblock %}
+{% block tool_tagline %}Cut a raster to a boundary, move it to another CRS, or both{% endblock %}
+{% block run_url %}{% url 'filemanager:run_raster_clip_reproject' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border">
+    Clipping runs before reprojection, so a reprojection only has to resample the
+    part being kept. Give a boundary, a target CRS, or both -- but at least one.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <label class="form-label fw-semibold">
+            <i class="fas fa-image me-2 text-info"></i>Raster
+        </label>
+        <div class="input-group">
+            <input type="text" class="form-control" id="rasterName" placeholder="No file chosen" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="browseRaster">
+                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+            </button>
+        </div>
+        <input type="hidden" id="rasterId">
+        <div class="form-text" id="rasterInfo">The GeoTIFF to process.</div>
+    </div>
+
+    <div class="col-md-6 mb-3">
+        <label class="form-label fw-semibold">
+            <i class="fas fa-draw-polygon me-2 text-primary"></i>Boundary <span class="text-muted fw-normal">(optional)</span>
+        </label>
+        <div class="input-group">
+            <input type="text" class="form-control" id="boundaryName" placeholder="No clipping" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="browseBoundary">
+                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+            </button>
+            <button class="btn btn-outline-secondary" type="button" id="clearBoundary" title="Do not clip">
+                <i class="fas fa-rotate-left"></i>
+            </button>
+        </div>
+        <input type="hidden" id="boundaryId">
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <label class="form-label fw-semibold" for="targetEpsg">
+            Target CRS <span class="text-muted fw-normal">(optional)</span>
+        </label>
+        <input type="text" class="form-control" id="targetEpsg" placeholder="e.g. 4326" inputmode="numeric">
+        <div class="form-text">An EPSG code. Leave blank to keep the current CRS.</div>
+    </div>
+
+    <div class="col-md-6 mb-3">
+        <label class="form-label fw-semibold" for="resampling">Resampling</label>
+        <select class="form-select" id="resampling">
+            {% for method in resampling_methods %}
+                <option value="{{ method }}" {% if method == default_resampling %}selected{% endif %}>{{ method }}</option>
+            {% endfor %}
+        </select>
+        <div class="form-text">
+            Use <strong>nearest</strong> for classified rasters -- interpolating class
+            2 and class 4 would invent a class 3 that means nothing.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tool_script %}
+<script>
+wirePicker('browseRaster', 'rasterName', 'rasterId', {
+    accept: ['.tif', '.tiff'], title: 'Choose the raster',
+    onSelect: async (id) => {
+        try {
+            const response = await fetch(`/api/native-tools/bands/${id}/`);
+            const data = await response.json();
+            if (data.success) {
+                document.getElementById('rasterInfo').textContent =
+                    `${data.bands} band(s)` + (data.crs ? `, currently ${data.crs}` : ', no CRS recorded');
+            }
+        } catch (err) { /* the hint is optional */ }
+    },
+});
+wirePicker('browseBoundary', 'boundaryName', 'boundaryId', {
+    accept: ['.shp', '.gpkg', '.geojson'], title: 'Choose the boundary',
+});
+document.getElementById('clearBoundary').addEventListener('click', () => {
+    document.getElementById('boundaryId').value = '';
+    document.getElementById('boundaryName').value = '';
+    document.getElementById('boundaryName').placeholder = 'No clipping';
+});
+
+function buildPayload() {
+    const raster = document.getElementById('rasterId').value;
+    if (!raster) throw new Error('Choose a raster.');
+
+    const boundary = document.getElementById('boundaryId').value;
+    const epsg = document.getElementById('targetEpsg').value.trim();
+    if (!boundary && !epsg) {
+        throw new Error('Choose a boundary to clip to, a target CRS, or both.');
+    }
+
+    return {
+        raster_file_id: raster,
+        boundary_file_id: boundary || null,
+        target_epsg: epsg || null,
+        resampling: document.getElementById('resampling').value,
+    };
+}
+</script>
+{% endblock %}

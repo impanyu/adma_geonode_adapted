@@ -2675,3 +2675,14 @@ def cleanup_idle_agents_task():
     if count > 0:
         logger.info(f"Cleaned up {count} idle agent container(s)")
     return {"stopped": count}
+
+
+# Celery autodiscovery only imports <app>.tasks, so the native GIS tool tasks
+# -- which live in their own module to keep this one from growing further --
+# are pulled in here to get themselves registered on the worker.
+from .native_tool_tasks import (  # noqa: E402,F401
+    run_management_zones_task,
+    run_raster_clip_reproject_task,
+    run_vegetation_index_task,
+    run_zonal_statistics_task,
+)

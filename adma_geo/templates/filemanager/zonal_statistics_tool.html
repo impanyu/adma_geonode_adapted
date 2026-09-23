@@ -1,0 +1,114 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-table-cells{% endblock %}
+{% block tool_tagline %}Summarise a raster within each polygon{% endblock %}
+{% block run_url %}{% url 'filemanager:run_zonal_statistics' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border">
+    Answers questions like <em>what is the mean NDRE in each field</em>. The zones
+    are reprojected onto the raster automatically, and nodata pixels are left out
+    of the statistics rather than averaged in.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <label class="form-label fw-semibold">
+            <i class="fas fa-draw-polygon me-2 text-primary"></i>Zone polygons
+        </label>
+        <div class="input-group">
+            <input type="text" class="form-control" id="vectorName" placeholder="No file chosen" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="browseVector">
+                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+            </button>
+        </div>
+        <input type="hidden" id="vectorId">
+        <div class="form-text">One row of statistics per polygon.</div>
+    </div>
+
+    <div class="col-md-6 mb-3">
+        <label class="form-label fw-semibold">
+            <i class="fas fa-image me-2 text-info"></i>Raster
+        </label>
+        <div class="input-group">
+            <input type="text" class="form-control" id="rasterName" placeholder="No file chosen" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="browseRaster">
+                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+            </button>
+        </div>
+        <input type="hidden" id="rasterId">
+        <div class="form-text" id="rasterInfo">GeoTIFF to summarise.</div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-3 mb-3">
+        <label class="form-label fw-semibold" for="bandNumber">Band</label>
+        <input type="number" class="form-control" id="bandNumber" value="1" min="1">
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <label class="form-label fw-semibold" for="columnPrefix">Column prefix</label>
+        <input type="text" class="form-control" id="columnPrefix" value="val" maxlength="6">
+        <div class="form-text">Shapefile fields cap at 10 characters.</div>
+    </div>
+
+    <div class="col-md-6 mb-3">
+        <label class="form-label fw-semibold d-block">Statistics</label>
+        <div class="d-flex flex-wrap gap-3">
+            <div class="form-check"><input class="form-check-input stat" type="checkbox" value="count" id="s_count" checked><label class="form-check-label" for="s_count">count</label></div>
+            <div class="form-check"><input class="form-check-input stat" type="checkbox" value="mean" id="s_mean" checked><label class="form-check-label" for="s_mean">mean</label></div>
+            <div class="form-check"><input class="form-check-input stat" type="checkbox" value="min" id="s_min" checked><label class="form-check-label" for="s_min">min</label></div>
+            <div class="form-check"><input class="form-check-input stat" type="checkbox" value="max" id="s_max" checked><label class="form-check-label" for="s_max">max</label></div>
+            <div class="form-check"><input class="form-check-input stat" type="checkbox" value="std" id="s_std" checked><label class="form-check-label" for="s_std">std</label></div>
+            <div class="form-check"><input class="form-check-input stat" type="checkbox" value="sum" id="s_sum"><label class="form-check-label" for="s_sum">sum</label></div>
+            <div class="form-check"><input class="form-check-input stat" type="checkbox" value="median" id="s_median"><label class="form-check-label" for="s_median">median</label></div>
+            <div class="form-check"><input class="form-check-input stat" type="checkbox" value="range" id="s_range"><label class="form-check-label" for="s_range">range</label></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tool_script %}
+<script>
+wirePicker('browseVector', 'vectorName', 'vectorId', {
+    accept: ['.shp', '.gpkg', '.geojson'], title: 'Choose the zone polygons',
+});
+wirePicker('browseRaster', 'rasterName', 'rasterId', {
+    accept: ['.tif', '.tiff'], title: 'Choose the raster',
+    onSelect: async (id) => {
+        // Say how many bands there are rather than let someone guess and
+        // meet "band 3 is out of range" only after queueing the task.
+        try {
+            const response = await fetch(`/api/native-tools/bands/${id}/`);
+            const data = await response.json();
+            if (data.success) {
+                document.getElementById('bandNumber').max = data.bands;
+                document.getElementById('rasterInfo').textContent =
+                    `${data.bands} band(s)` + (data.crs ? `, ${data.crs}` : '');
+            }
+        } catch (err) { /* the form still works without this hint */ }
+    },
+});
+
+function buildPayload() {
+    const vector = document.getElementById('vectorId').value;
+    const raster = document.getElementById('rasterId').value;
+    if (!vector) throw new Error('Choose the zone polygons.');
+    if (!raster) throw new Error('Choose the raster.');
+
+    const statistics = [...document.querySelectorAll('.stat:checked')].map(c => c.value);
+    if (!statistics.length) throw new Error('Choose at least one statistic.');
+
+    return {
+        vector_file_id: vector,
+        raster_file_id: raster,
+        band: parseInt(document.getElementById('bandNumber').value, 10) || 1,
+        prefix: document.getElementById('columnPrefix').value || 'val',
+        statistics: statistics,
+    };
+}
+</script>
+{% endblock %}

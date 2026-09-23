@@ -1030,6 +1030,96 @@ class Tool(models.Model):
                     'generates': ['valid_application_area_shp', 'valid_harvest_area_shp', 'harvest_strips_shp', 'clean_yield_points_shp', 'summary_csv', 'visualizations_png'],
                 },
             },
+            {
+                'slug': 'zonal-statistics',
+                'name': 'Zonal Statistics',
+                'short_description': 'Summarise a raster within each polygon -- mean, min, max and more per field or plot.',
+                'description': 'Computes per-polygon statistics of a raster band: the mean NDRE per field, '
+                              'the yield range per treatment plot, and so on. Zones are reprojected to the '
+                              'raster automatically, and nodata pixels are excluded rather than averaged in. '
+                              'Outputs a CSV and a copy of the polygons carrying the statistics as attributes.',
+                'category': 'analysis',
+                'icon': 'fa-table-cells',
+                'icon_color': 'info',
+                'url_name': 'filemanager:zonal_statistics_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_zonal_statistics_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.shp', '.gpkg', '.geojson', '.tif', '.tiff'],
+                    'required_inputs': ['vector_file_id', 'raster_file_id'],
+                },
+                'output_config': {
+                    'generates': ['statistics_csv', 'zones_shp'],
+                },
+            },
+            {
+                'slug': 'vegetation-index',
+                'name': 'Vegetation Index',
+                'short_description': 'Compute NDVI, NDRE, GNDVI or SAVI from reflectance bands, with a colour preview.',
+                'description': 'Builds a vegetation index raster from red, green, near-infrared and red-edge '
+                              'bands, supplied either as separate GeoTIFFs or as bands of one multi-band image. '
+                              'Writes a float32 GeoTIFF plus a coloured PNG preview. Pixels with no reflectance '
+                              'are left as nodata rather than zero, so downstream averages stay honest.',
+                'category': 'gis_processing',
+                'icon': 'fa-leaf',
+                'icon_color': 'success',
+                'url_name': 'filemanager:vegetation_index_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_vegetation_index_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.tif', '.tiff'],
+                    'indices': ['ndvi', 'ndre', 'gndvi', 'savi'],
+                },
+                'output_config': {
+                    'generates': ['index_tif', 'preview_png'],
+                },
+            },
+            {
+                'slug': 'management-zones',
+                'name': 'Management Zones',
+                'short_description': 'Cluster yield or imagery points into management zones with k-means.',
+                'description': 'Groups field measurements into a chosen number of management zones using '
+                              'k-means, the usual first step toward a variable-rate prescription. Attributes '
+                              'are scaled before clustering so a column recorded in larger numbers cannot '
+                              'decide the result alone, and zones are numbered worst to best so the numbering '
+                              'means something and is stable between runs.',
+                'category': 'analysis',
+                'icon': 'fa-shapes',
+                'icon_color': 'primary',
+                'url_name': 'filemanager:management_zones_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_management_zones_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.shp', '.gpkg', '.geojson'],
+                    'required_inputs': ['file_id', 'columns'],
+                },
+                'output_config': {
+                    'generates': ['zones_shp', 'summary_csv', 'map_png'],
+                },
+            },
+            {
+                'slug': 'raster-clip-reproject',
+                'name': 'Clip & Reproject Raster',
+                'short_description': 'Cut a raster down to a field boundary and/or move it to another CRS.',
+                'description': 'Clips a GeoTIFF to a boundary polygon, reprojects it to a target EPSG code, '
+                              'or both. Clipping runs first so that a reprojection only resamples the part '
+                              'being kept. Useful for getting imagery bands onto a common grid before the '
+                              'Vegetation Index tool combines them.',
+                'category': 'gis_processing',
+                'icon': 'fa-crop-simple',
+                'icon_color': 'warning',
+                'url_name': 'filemanager:raster_clip_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_raster_clip_reproject_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.tif', '.tiff', '.shp', '.gpkg', '.geojson'],
+                    'required_inputs': ['raster_file_id'],
+                    'optional_inputs': ['boundary_file_id', 'target_epsg'],
+                },
+                'output_config': {
+                    'generates': ['raster_tif'],
+                },
+            },
         ]
         
         created_tools = []

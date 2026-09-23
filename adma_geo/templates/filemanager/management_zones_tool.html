@@ -1,0 +1,94 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-shapes{% endblock %}
+{% block tool_tagline %}Cluster field measurements into management zones{% endblock %}
+{% block run_url %}{% url 'filemanager:run_management_zones' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border">
+    Groups points into zones with k-means. Attributes are scaled first, so a column
+    recorded in larger numbers cannot decide the result on its own, and zones come
+    back numbered from lowest to highest on the first column you pick.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="row">
+    <div class="col-md-8 mb-3">
+        <label class="form-label fw-semibold">
+            <i class="fas fa-location-dot me-2 text-primary"></i>Point layer
+        </label>
+        <div class="input-group">
+            <input type="text" class="form-control" id="inputName" placeholder="No file chosen" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="browseInput">
+                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+            </button>
+        </div>
+        <input type="hidden" id="inputId">
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label class="form-label fw-semibold" for="zoneCount">Number of zones</label>
+        <select class="form-select" id="zoneCount">
+            {% for n in zone_choices %}
+                <option value="{{ n }}" {% if n == 3 %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<div class="mb-3">
+    <label class="form-label fw-semibold">Columns to cluster on</label>
+    <div id="columnBox" class="border rounded p-3 text-muted small">
+        Choose a point layer first and its numeric columns will appear here.
+    </div>
+    <div class="form-text">
+        Zones are ranked by the first column you tick.
+    </div>
+</div>
+{% endblock %}
+
+{% block tool_script %}
+<script>
+wirePicker('browseInput', 'inputName', 'inputId', {
+    accept: ['.shp', '.gpkg', '.geojson'], title: 'Choose the point layer',
+    onSelect: async (id) => {
+        const box = document.getElementById('columnBox');
+        box.className = 'border rounded p-3 text-muted small';
+        box.textContent = 'Reading columns…';
+        try {
+            const response = await fetch(`/api/native-tools/columns/${id}/`);
+            const data = await response.json();
+            if (!data.success) { box.textContent = data.error; return; }
+            if (!data.columns.length) {
+                box.textContent = 'This layer has no numeric columns to cluster on.';
+                return;
+            }
+            box.className = 'border rounded p-3';
+            box.innerHTML = '<div class="d-flex flex-wrap gap-3">' + data.columns.map((c, i) => `
+                <div class="form-check">
+                    <input class="form-check-input column-choice" type="checkbox"
+                           value="${c}" id="col_${i}">
+                    <label class="form-check-label" for="col_${i}">${c}</label>
+                </div>`).join('') + '</div>';
+        } catch (err) {
+            box.textContent = 'Could not read the columns: ' + err.message;
+        }
+    },
+});
+
+function buildPayload() {
+    const fileId = document.getElementById('inputId').value;
+    if (!fileId) throw new Error('Choose a point layer.');
+
+    const columns = [...document.querySelectorAll('.column-choice:checked')].map(c => c.value);
+    if (!columns.length) throw new Error('Tick at least one column to cluster on.');
+
+    return {
+        file_id: fileId,
+        columns: columns,
+        zone_count: parseInt(document.getElementById('zoneCount').value, 10) || 3,
+    };
+}
+</script>
+{% endblock %}
