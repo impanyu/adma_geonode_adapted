@@ -82,3 +82,11 @@ src/celerybeat-schedule
 cookies.txt
 *.cookies
 **/cookies.txt
+
+# Local Claude Code settings
+.claude/
+
+# User uploads. The deployment bind-mounts this directory and the container
+# writes it as root, so tracking it also makes `git pull` on the server abort
+# part-way through with a permission error.
+adma_geo/media/
