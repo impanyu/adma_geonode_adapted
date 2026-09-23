@@ -129,3 +129,36 @@ class GoogleAutoSignupTests(TestCase):
             self.request, google_login('taken@gmail.com')
         )
         self.assertFalse(allowed)
+
+
+class ProfilePageTests(TestCase):
+    """
+    The page has to render for both kinds of account. The Connect Google link
+    is the only route by which an account that already holds an address --
+    every account created before this change -- can reach one-click sign-in,
+    and {% provider_login_url %} raises if the provider is not configured.
+    """
+
+    def test_password_account_is_offered_the_google_link(self):
+        User.objects.create_user('grower', password='correct-horse-battery')
+        self.client.login(username='grower', password='correct-horse-battery')
+
+        response = self.client.get('/profile/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Connect Google')
+        self.assertContains(response, '/accounts/google/login/')
+        self.assertNotContains(response, 'name="email"')
+
+    def test_profile_saves_without_an_email(self):
+        User.objects.create_user('grower', password='correct-horse-battery')
+        self.client.login(username='grower', password='correct-horse-battery')
+
+        response = self.client.post('/profile/', {
+            'action': 'save', 'first_name': 'Pat', 'last_name': 'Nguyen',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        user = User.objects.get(username='grower')
+        self.assertEqual(user.first_name, 'Pat')
+        self.assertEqual(user.email, '')
