@@ -1501,6 +1501,21 @@ def download_file(request, file_id):
     except FileNotFoundError:
         raise Http404("File not found on disk")
 
+
+def geojson_data(request, file_id):
+    """Serve a bounded GeoJSON file to its owner or a public viewer."""
+    file_obj = get_object_or_404(File, id=file_id)
+    if (file_obj.owner != request.user and not file_obj.is_public
+            or not file_obj.is_spatial
+            or Path(file_obj.name).suffix.lower() != '.geojson'):
+        raise Http404("GeoJSON file not found")
+    if file_obj.file.size > 10 * 1024 * 1024:
+        return HttpResponse("GeoJSON exceeds the 10 MB map limit.", status=413)
+    response = FileResponse(file_obj.file.open('rb'), content_type='application/geo+json')
+    response['Cache-Control'] = 'private, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
 def delete_file_complete(file_obj):
     """
     Complete deletion of a file including all dependencies:
@@ -1766,6 +1781,7 @@ def map_viewer(request, file_id):
     return render(request, 'filemanager/map_viewer.html', {
         'file': file_obj,
         'geoserver_info': geoserver_info,
+        'direct_geojson': Path(file_obj.name).suffix.lower() == '.geojson' and file_obj.file.size <= 10 * 1024 * 1024,
     })
 
 def public_map_viewer(request, file_id):
@@ -1830,6 +1846,7 @@ def public_map_viewer(request, file_id):
     return render(request, 'filemanager/map_viewer.html', {
         'file': file_obj,
         'geoserver_info': geoserver_info,
+        'direct_geojson': Path(file_obj.name).suffix.lower() == '.geojson' and file_obj.file.size <= 10 * 1024 * 1024,
         'is_public_view': True,  # Flag to adjust breadcrumbs and navigation
         'public_breadcrumbs': file_obj.get_public_breadcrumbs(),  # Add public breadcrumbs
     })

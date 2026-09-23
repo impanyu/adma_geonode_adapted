@@ -31,9 +31,16 @@ def process_gis_file_task(self, file_id):
         if success:
             file_obj.processing_log += f"\n✓ Processing completed: {message}"
             file_obj.save()
-            
-            # Trigger publishing to GeoServer
-            publish_to_geoserver_task.delay(file_id)
+
+            # GeoJSON is drawn directly in the map viewer. GeoServer's publisher
+            # accepts shapefiles and rasters, so scheduling it here creates a
+            # misleading processing error for an otherwise valid GeoJSON file.
+            if file_obj.name.lower().endswith('.geojson'):
+                file_obj.gis_status = 'processed'
+                file_obj.processing_log += "\nGeoJSON is ready for direct map viewing."
+                file_obj.save()
+            else:
+                publish_to_geoserver_task.delay(file_id)
             
             return f"Successfully processed GIS file: {file_obj.name}"
         else:

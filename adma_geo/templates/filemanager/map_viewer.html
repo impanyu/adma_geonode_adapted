@@ -345,7 +345,7 @@
             </div>
         </div>
         
-        {% if file.gis_status == 'published' and geoserver_info or file.gis_status == 'processed' and geoserver_info %}
+        {% if direct_geojson or file.gis_status == 'published' and geoserver_info or file.gis_status == 'processed' and geoserver_info %}
             <!-- Direct map container with explicit inline height -->
             <!-- Map Container -->
             <div class="map-container">
@@ -354,11 +354,16 @@
             
             <div class="mt-2">
                 <small class="text-muted">
+                    {% if direct_geojson %}
+                    <strong>Source:</strong> GeoJSON file, loaded directly | <strong>CRS:</strong> EPSG:4326
+                    {% else %}
                     <strong>Status:</strong> {{ file.get_gis_status_display }} | 
                     <strong>CRS:</strong> {{ file.crs|default:"Unknown" }} |
                     <strong>Layer:</strong> {{ geoserver_info.workspace }}:{{ geoserver_info.layer_name }}
+                    {% endif %}
                 </small>
             </div>
+            {% if direct_geojson %}<p id="geojson-status" class="mt-2" role="status">Loading GeoJSON…</p>{% endif %}
         {% else %}
             <div class="text-center py-5 border">
                 <i class="fas fa-hourglass-half fa-3x text-info mb-3"></i>
@@ -462,7 +467,50 @@
 <!-- OpenLayers JS -->
 <script src="https://cdn.jsdelivr.net/npm/ol@v8.2.0/dist/ol.js"></script>
 
-{% if file.gis_status == 'published' and geoserver_info or file.gis_status == 'processed' and geoserver_info %}
+{% if direct_geojson %}
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    const status = document.getElementById('geojson-status');
+    const basemaps = {
+        osm: new ol.layer.Tile({source: new ol.source.XYZ({url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attributions: 'Tiles © Esri'})}),
+        satellite: new ol.layer.Tile({source: new ol.source.XYZ({url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attributions: '© Esri, Maxar, Earthstar Geographics, and the GIS User Community'})}),
+        terrain: new ol.layer.Tile({source: new ol.source.XYZ({url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}', attributions: '© Esri, USGS, NOAA'})}),
+        topo: new ol.layer.Tile({source: new ol.source.XYZ({url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attributions: '© Esri, HERE, Garmin, USGS'})})
+    };
+    const vector = new ol.layer.Vector({source: new ol.source.Vector(), style: new ol.style.Style({
+        stroke: new ol.style.Stroke({color: '#0958d9', width: 3}),
+        fill: new ol.style.Fill({color: 'rgba(9, 88, 217, 0.25)'}),
+        image: new ol.style.Circle({radius: 7, fill: new ol.style.Fill({color: '#0958d9'}), stroke: new ol.style.Stroke({color: '#ffffff', width: 2})})
+    })});
+    const map = new ol.Map({target: 'map', layers: [...Object.values(basemaps), vector], view: new ol.View({center: ol.proj.fromLonLat([-99.5, 41]), zoom: 7})});
+    map.addControl(new ol.control.Zoom());
+    map.addControl(new ol.control.Attribution({collapsible: false}));
+    map.addControl(new ol.control.ScaleLine());
+    function selectBasemap(name) {
+        Object.entries(basemaps).forEach(([key, layer]) => layer.setVisible(key === name));
+    }
+    const selector = document.getElementById('mapLayerSelect');
+    selectBasemap(selector.value);
+    selector.addEventListener('change', () => selectBasemap(selector.value));
+    try {
+        const response = await fetch("{% url 'filemanager:geojson_data' file.id %}", {credentials: 'same-origin', cache: 'no-store'});
+        if (!response.ok) throw new Error('GeoJSON could not be loaded (' + response.status + ').');
+        const data = await response.json();
+        if (!['FeatureCollection', 'Feature', 'GeometryCollection', 'Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'].includes(data.type)) throw new Error('This file is not valid GeoJSON.');
+        const features = new ol.format.GeoJSON().readFeatures(data, {dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857'});
+        if (!features.length) throw new Error('This GeoJSON file has no map features.');
+        vector.getSource().addFeatures(features);
+        map.getView().fit(vector.getSource().getExtent(), {padding: [45, 45, 45, 45], maxZoom: 16, duration: 250});
+        status.textContent = features.length + ' feature' + (features.length === 1 ? '' : 's') + ' shown from the GeoJSON file.';
+    } catch (error) {
+        status.classList.add('text-danger');
+        status.textContent = error instanceof Error ? error.message : 'Could not display this GeoJSON file.';
+    }
+});
+</script>
+{% endif %}
+
+{% if not direct_geojson and file.gis_status == 'published' and geoserver_info or not direct_geojson and file.gis_status == 'processed' and geoserver_info %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Creating OpenLayers map...');

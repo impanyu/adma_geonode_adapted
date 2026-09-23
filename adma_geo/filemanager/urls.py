@@ -30,6 +30,7 @@ urlpatterns = [
     path('folder/<uuid:folder_id>/', views.folder_detail, name='folder_detail'),
     path('file/<uuid:file_id>/', views.file_detail, name='file_detail'),
     path('file/<uuid:file_id>/download/', views.download_file, name='download_file'),
+    path('file/<uuid:file_id>/geojson/', views.geojson_data, name='geojson_data'),
     path('file/<uuid:file_id>/map/', views.map_viewer, name='map_viewer'),
     
     # Public map viewer
