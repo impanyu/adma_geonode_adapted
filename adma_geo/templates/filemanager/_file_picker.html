@@ -1,0 +1,248 @@
+{% comment %}
+Shared file/folder picker.
+
+Every tool page used to carry its own inline file tree -- five pages, five
+slightly different implementations of the same thing, and a form that grew a
+tall scrolling tree for each input it needed. This is one dialog they all open
+instead, closer to the file picker any desktop application would show.
+
+Usage from a tool page:
+
+    {% include "filemanager/_file_picker.html" %}
+
+    <script>
+      ADMAFilePicker.setTree(treeData);          // the usual tree_data payload
+      ADMAFilePicker.open({
+          mode: 'file',                          // or 'folder'
+          accept: ['.shp'],                      // omit for any file
+          title: 'Select input shapefile',
+          onSelect: ({id, name, path}) => { ... }
+      });
+    </script>
+
+setTree accepts either the standard payload (my_folders / my_root_files /
+public_folders / public_root_files) or an array of already-merged sections.
+{% endcomment %}
+
+<div class="modal fade" id="admaFilePickerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="admaFilePickerTitle">Select a file</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body pb-0">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <nav aria-label="breadcrumb" class="flex-grow-1 overflow-hidden">
+            <ol class="breadcrumb mb-0 flex-nowrap" id="admaFilePickerCrumbs"></ol>
+          </nav>
+          <div class="input-group input-group-sm" style="max-width: 220px;">
+            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <input type="text" class="form-control" id="admaFilePickerSearch"
+                   placeholder="Filter by name" autocomplete="off">
+          </div>
+        </div>
+
+        <div id="admaFilePickerList" class="list-group list-group-flush border rounded"
+             style="max-height: 48vh; overflow-y: auto;"></div>
+      </div>
+
+      <div class="modal-footer justify-content-between">
+        <small class="text-muted" id="admaFilePickerHint"></small>
+        <div>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="admaFilePickerConfirm" disabled>Select</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+window.ADMAFilePicker = (function () {
+    let sections = [];      // [{label, icon, folders, files, isPublic}]
+    let stack = [];         // breadcrumb trail; [] means the roots listing
+    let options = {};
+    let chosen = null;
+    let modal = null;
+
+    function el(id) { return document.getElementById(id); }
+
+    function normalise(tree) {
+        if (Array.isArray(tree)) return tree;
+        const out = [];
+        if ((tree.my_folders || []).length || (tree.my_root_files || []).length) {
+            out.push({
+                label: 'My Files', icon: 'fa-user', isPublic: false,
+                folders: tree.my_folders || [], files: tree.my_root_files || [],
+            });
+        }
+        if ((tree.public_folders || []).length || (tree.public_root_files || []).length) {
+            out.push({
+                label: 'Public Files', icon: 'fa-globe', isPublic: true,
+                folders: tree.public_folders || [], files: tree.public_root_files || [],
+            });
+        }
+        return out;
+    }
+
+    function setTree(tree) { sections = normalise(tree || {}); }
+
+    function accepts(name) {
+        if (options.mode === 'folder') return false;
+        if (!options.accept || !options.accept.length) return true;
+        const lower = (name || '').toLowerCase();
+        return options.accept.some(ext => lower.endsWith(ext.toLowerCase()));
+    }
+
+    // What the current breadcrumb position contains.
+    function currentLevel() {
+        if (!stack.length) {
+            return {
+                folders: sections.map((s, i) => ({
+                    id: '__section__' + i, name: s.label, icon: s.icon,
+                    subfolders: s.folders, files: s.files, isSection: true,
+                })),
+                files: [],
+            };
+        }
+        const node = stack[stack.length - 1];
+        return { folders: node.subfolders || [], files: node.files || [] };
+    }
+
+    function render() {
+        const list = el('admaFilePickerList');
+        const crumbs = el('admaFilePickerCrumbs');
+        const filter = (el('admaFilePickerSearch').value || '').trim().toLowerCase();
+        list.innerHTML = '';
+        crumbs.innerHTML = '';
+
+        // Breadcrumbs
+        const trail = [{ name: 'All files', index: -1 }].concat(
+            stack.map((n, i) => ({ name: n.name, index: i }))
+        );
+        trail.forEach((crumb, i) => {
+            const li = document.createElement('li');
+            li.className = 'breadcrumb-item' + (i === trail.length - 1 ? ' active' : '');
+            if (i === trail.length - 1) {
+                li.textContent = crumb.name;
+            } else {
+                const a = document.createElement('a');
+                a.href = '#';
+                a.textContent = crumb.name;
+                a.addEventListener('click', ev => {
+                    ev.preventDefault();
+                    stack = crumb.index < 0 ? [] : stack.slice(0, crumb.index + 1);
+                    chosen = null;
+                    render();
+                });
+                li.appendChild(a);
+            }
+            crumbs.appendChild(li);
+        });
+
+        const level = currentLevel();
+        let rows = 0;
+
+        function addRow({ icon, colour, label, sub, selectable, onOpen, value }) {
+            if (filter && !label.toLowerCase().includes(filter)) return;
+            rows++;
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'list-group-item list-group-item-action d-flex align-items-center';
+            if (chosen && value && chosen.id === value.id) item.classList.add('active');
+            item.innerHTML =
+                `<i class="fas ${icon} ${colour} me-3"></i>` +
+                `<span class="flex-grow-1 text-start">${label}</span>` +
+                (sub ? `<small class="text-muted ms-2">${sub}</small>` : '');
+            item.addEventListener('click', () => {
+                if (selectable) {
+                    chosen = value;
+                    el('admaFilePickerConfirm').disabled = false;
+                    render();
+                    return;
+                }
+                if (onOpen) onOpen();
+            });
+            item.addEventListener('dblclick', () => { if (onOpen) onOpen(); });
+            list.appendChild(item);
+        }
+
+        // Folders first.
+        level.folders.forEach(folder => {
+            const count = (folder.file_count !== undefined)
+                ? `${folder.file_count} file${folder.file_count === 1 ? '' : 's'}` : '';
+            addRow({
+                icon: folder.icon || 'fa-folder',
+                colour: folder.isSection ? 'text-secondary' : 'text-warning',
+                label: folder.name,
+                sub: count,
+                // In folder mode a folder is the thing being chosen, but the
+                // section headers are not real folders and cannot be picked.
+                selectable: options.mode === 'folder' && !folder.isSection,
+                value: { id: folder.id, name: folder.name, path: pathFor(folder.name) },
+                onOpen: () => { stack.push(folder); chosen = null; render(); },
+            });
+        });
+
+        // Then files, in file mode only.
+        if (options.mode !== 'folder') {
+            level.files.forEach(file => {
+                if (!accepts(file.name)) return;
+                addRow({
+                    icon: 'fa-file', colour: 'text-primary', label: file.name,
+                    selectable: true,
+                    value: { id: file.id, name: file.name, path: pathFor(file.name) },
+                });
+            });
+        }
+
+        if (!rows) {
+            const empty = document.createElement('div');
+            empty.className = 'list-group-item text-center text-muted py-4';
+            empty.textContent = filter
+                ? 'Nothing here matches that filter.'
+                : (options.mode === 'folder'
+                    ? 'No folders here.'
+                    : 'No matching files here.');
+            list.appendChild(empty);
+        }
+    }
+
+    function pathFor(name) {
+        return stack.map(n => n.name).concat(name).join(' / ');
+    }
+
+    function open(opts) {
+        options = opts || {};
+        stack = [];
+        chosen = null;
+
+        el('admaFilePickerTitle').textContent =
+            options.title || (options.mode === 'folder' ? 'Select a folder' : 'Select a file');
+        el('admaFilePickerSearch').value = '';
+        el('admaFilePickerConfirm').disabled = true;
+        el('admaFilePickerHint').textContent = options.mode === 'folder'
+            ? 'Click a folder to open it, or select it and choose Select.'
+            : (options.accept && options.accept.length
+                ? 'Showing ' + options.accept.join(', ') + ' files.'
+                : '');
+
+        render();
+
+        if (!modal) modal = new bootstrap.Modal(el('admaFilePickerModal'));
+        modal.show();
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        el('admaFilePickerSearch').addEventListener('input', render);
+        el('admaFilePickerConfirm').addEventListener('click', function () {
+            if (chosen && typeof options.onSelect === 'function') options.onSelect(chosen);
+            if (modal) modal.hide();
+        });
+    });
+
+    return { setTree, open };
+})();
+</script>

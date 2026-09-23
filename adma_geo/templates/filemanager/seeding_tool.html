@@ -222,118 +222,121 @@
 
 <!-- Main Form -->
 <div class="row">
-    <div class="col-12">
+    <div class="col-lg-8">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Tool Configuration</h5>
+                <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Seeding Polygon Tool</h5>
             </div>
             <div class="card-body">
                 <form id="seedingToolForm">
-                    <div class="row">
-                        <!-- Input File Selection -->
-                        <div class="col-md-6 mb-4">
-                            <h6 class="fw-bold mb-3">
-                                <i class="fas fa-file-import me-2 text-primary"></i>
-                                Step 1: Select Input Shapefile
-                            </h6>
-                            <p class="text-muted small mb-3">
-                                Browse and select a point shapefile (.shp) containing seeding data.
-                            </p>
-                            
-                            <div class="file-tree" id="inputFileTree">
-                                <div class="tree-loading">
-                                    <i class="fas fa-spinner fa-spin me-2"></i>Loading files...
-                                </div>
-                            </div>
-                            
-                            <input type="hidden" id="selectedFileId" name="file_id" required>
-                            <div id="selectedFileDisplay" class="selection-info file-selected">
-                                <i class="fas fa-check-circle me-2 text-warning"></i>
-                                <strong>Selected:</strong> <span id="selectedFileName"></span>
-                            </div>
+
+                    <!-- Step 1 -->
+                    <h6 class="fw-bold d-flex align-items-center mb-3">
+                        <span class="badge rounded-pill bg-primary me-2">1</span>Select Shapefile
+                    </h6>
+                    <div class="mb-3">
+                        <label class="form-label">Input file (.shp)</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="selectedFileName"
+                                   placeholder="No file selected" readonly>
+                            <button class="btn btn-outline-secondary" type="button" id="browseInputBtn">
+                                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+                            </button>
                         </div>
-                        
-                        <!-- Output Folder Selection -->
-                        <div class="col-md-6 mb-4">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h6 class="fw-bold mb-0">
-                                    <i class="fas fa-folder-open me-2 text-warning"></i>
-                                    Step 2: Select Output Folder
-                                </h6>
-                                <button type="button" class="btn btn-sm btn-outline-success" id="createFolderBtn" onclick="showCreateFolderModal()">
-                                    <i class="fas fa-folder-plus me-1"></i>New Folder
-                                </button>
-                            </div>
-                            <p class="text-muted small mb-3">
-                                Choose where to save the output files, or create a new folder.
-                            </p>
-                            
-                            <div class="file-tree" id="outputFolderTree">
-                                <div class="tree-loading">
-                                    <i class="fas fa-spinner fa-spin me-2"></i>Loading folders...
-                                </div>
-                            </div>
-                            
-                            <input type="hidden" id="selectedFolderId" name="output_folder_id" value="">
-                            <div id="selectedFolderDisplay" class="selection-info folder-selected show">
-                                <i class="fas fa-check-circle me-2 text-success"></i>
-                                <strong>Output:</strong> <span id="selectedFolderName">Auto-create "seeding_tool_output" folder (same location as input file)</span>
-                            </div>
-                        </div>
+                        <input type="hidden" id="selectedFileId" name="file_id" required>
                     </div>
-                    
-                    <!-- Column mapping. Populated from the selected .shp so the
-                         user picks from what the file actually contains instead of
-                         having to know the spelling; blank = let the tool detect. -->
-                    <div class="row" id="columnMappingRow" style="display: none;">
-                        <div class="col-12">
-                            <hr>
-                            <h6 class="mb-1"><i class="fas fa-table me-2"></i>Column Mapping
-                                <small class="text-muted fw-normal">(optional)</small>
-                            </h6>
-                            <p class="text-muted small mb-3">
-                                Leave any of these on &ldquo;Auto-detect&rdquo; and the tool will
-                                work the column out from the file.
-                            </p>
+                    <div class="mb-4">
+                        <label class="form-label">Output folder</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="selectedFolderName"
+                                   value="Same folder as input" readonly>
+                            <button class="btn btn-outline-secondary" type="button" id="browseOutputBtn">
+                                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+                            </button>
+                            <button class="btn btn-outline-success" type="button" onclick="showCreateFolderModal()">
+                                <i class="fas fa-folder-plus me-1"></i>New
+                            </button>
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="productCol" class="form-label">Product column</label>
+                        <input type="hidden" id="selectedFolderId" name="output_folder_id" value="">
+                    </div>
+
+                    <!-- Step 2. Populated from the chosen shapefile so the user
+                         picks from what the file actually contains; the badge
+                         shows what the tool detected on its own. -->
+                    <h6 class="fw-bold d-flex align-items-center mb-3">
+                        <span class="badge rounded-pill bg-primary me-2">2</span>Map Columns
+                    </h6>
+                    <div id="columnMappingRow" class="mb-4">
+                        <div class="mb-3">
+                            <label for="productCol" class="form-label">Product</label>
                             <select class="form-select" id="productCol">
                                 <option value="">Auto-detect</option>
                             </select>
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="widthCol" class="form-label">Swath / width column</label>
+                        <div class="mb-3">
+                            <label for="widthCol" class="form-label">Swath / implement width</label>
                             <select class="form-select" id="widthCol">
                                 <option value="">Auto-detect</option>
                             </select>
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="rateCol" class="form-label">Rate column</label>
+                        <div class="mb-3">
+                            <label for="rateCol" class="form-label">
+                                Applied rate <small class="text-muted fw-normal">(optional)</small>
+                            </label>
                             <select class="form-select" id="rateCol">
                                 <option value="">Auto-detect</option>
                             </select>
                         </div>
-                        <div class="col-12">
-                            <div id="columnLoadError" class="alert alert-warning py-2 small d-none mb-0"></div>
+                        <div id="columnLoadError" class="alert alert-warning py-2 small d-none mb-0"></div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <h6 class="fw-bold d-flex align-items-center mb-3">
+                        <span class="badge rounded-pill bg-primary me-2">3</span>Options
+                    </h6>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="generateBoundary" checked>
+                        <label class="form-check-label" for="generateBoundary">
+                            Generate applied-area boundary
+                            <small class="text-muted">(always clipped when on)</small>
+                        </label>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-6 mb-3">
+                            <label for="boundaryBuffer" class="form-label">Boundary buffer (ft)</label>
+                            <input type="number" step="0.1" class="form-control" id="boundaryBuffer" value="3.0">
+                        </div>
+                        <div class="col-sm-6 mb-3">
+                            <label for="polygonGap" class="form-label">Product gap (ft)</label>
+                            <input type="number" step="0.1" class="form-control" id="polygonGap" value="0.0">
+                        </div>
+                        <div class="col-12 mb-4">
+                            <label for="maxGap" class="form-label">Max pass-gap override (ft)</label>
+                            <input type="number" step="0.1" class="form-control" id="maxGap"
+                                   placeholder="Leave blank to use the per-product default">
                         </div>
                     </div>
 
-                    <!-- Submit Button -->
-                    <div class="row">
-                        <div class="col-12">
-                            <hr>
-                            <div class="d-flex justify-content-between align-items-center">
-                                <a href="{% url 'filemanager:dashboard' %}" class="btn btn-outline-secondary">
-                                    <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-                                </a>
-                                <button type="submit" class="btn btn-warning btn-lg" id="runToolBtn" disabled>
-                                    <i class="fas fa-play me-2"></i>Run Seeding Tool
-                                </button>
-                            </div>
-                        </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <a href="{% url 'filemanager:dashboard' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                        </a>
+                        <button type="submit" class="btn btn-warning btn-lg" id="runToolBtn" disabled>
+                            <i class="fas fa-play me-2"></i>Run &mdash; Build Seeding Polygons
+                        </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Run Summary. Sreeja's mockup puts this beside the form rather than
+         only inside a modal, so the numbers stay on screen after a run. -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header"><h6 class="mb-0"><i class="fas fa-list-check me-2"></i>Run Summary</h6></div>
+            <div class="card-body" id="runSummaryBody">
+                <p class="text-muted small mb-0">Run the tool to see a summary here.</p>
             </div>
         </div>
     </div>
@@ -442,6 +445,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% include "filemanager/_file_picker.html" %}
 {{ tree_data|json_script:"treeData-data" }}
 <script>
 // CSRF token setup
@@ -465,263 +469,47 @@ const csrftoken = getCookie('csrftoken');
 // Data from Django context
 const treeData = JSON.parse(document.getElementById("treeData-data").textContent);
 
-// Build input file tree (shows folders and .shp files)
-function buildInputFileTree() {
-    const container = document.getElementById('inputFileTree');
-    container.innerHTML = '';
-    
-    // My Files section
-    if (treeData.my_folders.length > 0 || treeData.my_root_files.length > 0) {
-        const mySection = document.createElement('div');
-        mySection.className = 'tree-root-section';
-        mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Files</div>';
-        
-        // Root level files (shapefiles only)
-        treeData.my_root_files.forEach(file => {
-            if (file.name.toLowerCase().endsWith('.shp')) {
-                mySection.appendChild(createFileNode(file, 'input'));
+// The inline trees this page used to draw are gone; both inputs now open the
+// shared picker instead (see _file_picker.html).
+ADMAFilePicker.setTree(treeData);
+
+document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('browseInputBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'file',
+            accept: ['.shp'],
+            title: 'Select input shapefile',
+            onSelect: function (choice) {
+                document.getElementById('selectedFileId').value = choice.id;
+                document.getElementById('selectedFileName').value = choice.path || choice.name;
+                loadSeedingColumns(choice.id, choice.name);
+                updateSubmitButton();
             }
         });
-        
-        // Folders
-        treeData.my_folders.forEach(folder => {
-            mySection.appendChild(createFolderNode(folder, 'input', false));
-        });
-        
-        container.appendChild(mySection);
-    }
-    
-    // Public Files section
-    if (treeData.public_folders.length > 0 || treeData.public_root_files.length > 0) {
-        const publicSection = document.createElement('div');
-        publicSection.className = 'tree-root-section';
-        publicSection.innerHTML = '<div class="tree-section-header"><i class="fas fa-globe me-2"></i>Public Files</div>';
-        
-        // Root level public files (shapefiles only)
-        treeData.public_root_files.forEach(file => {
-            if (file.name.toLowerCase().endsWith('.shp')) {
-                publicSection.appendChild(createFileNode(file, 'input', true));
-            }
-        });
-        
-        // Public folders
-        treeData.public_folders.forEach(folder => {
-            publicSection.appendChild(createFolderNode(folder, 'input', true));
-        });
-        
-        container.appendChild(publicSection);
-    }
-    
-    // Empty state
-    if (container.children.length === 0) {
-        container.innerHTML = `
-            <div class="text-center text-muted py-4">
-                <i class="fas fa-exclamation-circle fa-2x mb-2"></i>
-                <p class="mb-0">No shapefiles found.</p>
-                <p class="small">Upload a .shp file first.</p>
-            </div>
-        `;
-    }
-}
-
-// Build output folder tree (shows only folders)
-function buildOutputFolderTree() {
-    const container = document.getElementById('outputFolderTree');
-    container.innerHTML = '';
-    
-    // Auto-create option
-    const autoOption = document.createElement('div');
-    autoOption.className = 'tree-node';
-    autoOption.innerHTML = `
-        <div class="tree-node-content selected-output" data-folder-id="" data-folder-name="Auto-create folder (same location as input)" onclick="selectOutputFolder(this)">
-            <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
-            <div class="tree-icon"><i class="fas fa-magic text-info"></i></div>
-            <span class="tree-label">Auto-create "seeding_tool_output" folder (same location as input file)</span>
-        </div>
-    `;
-    container.appendChild(autoOption);
-    
-    // My Folders section
-    if (treeData.my_folders.length > 0) {
-        const mySection = document.createElement('div');
-        mySection.className = 'tree-root-section';
-        mySection.innerHTML = '<div class="tree-section-header"><i class="fas fa-user me-2"></i>My Folders</div>';
-        
-        treeData.my_folders.forEach(folder => {
-            mySection.appendChild(createFolderNode(folder, 'output', false));
-        });
-        
-        container.appendChild(mySection);
-    }
-}
-
-// Create a folder node
-function createFolderNode(folder, mode, isPublic) {
-    const node = document.createElement('div');
-    node.className = 'tree-node';
-    
-    const hasChildren = (folder.subfolders && folder.subfolders.length > 0) || 
-                        (folder.files && folder.files.length > 0);
-    const hasShpFiles = folder.files && folder.files.some(f => f.name.toLowerCase().endsWith('.shp'));
-    const hasSubfolders = folder.subfolders && folder.subfolders.length > 0;
-    
-    // For input mode, show expand toggle if has shp files or subfolders
-    // For output mode, show expand toggle if has subfolders
-    const showToggle = mode === 'input' ? (hasShpFiles || hasSubfolders) : hasSubfolders;
-    
-    const content = document.createElement('div');
-    content.className = 'tree-node-content';
-    content.setAttribute('data-has-children', showToggle ? 'true' : 'false');
-    
-    if (mode === 'output') {
-        content.setAttribute('data-folder-id', folder.id);
-        content.setAttribute('data-folder-name', folder.name);
-        content.setAttribute('onclick', 'selectOutputFolder(this)');
-    }
-    
-    // Add double-click handler for folder expansion
-    content.setAttribute('ondblclick', 'handleFolderDoubleClick(event, this)');
-    
-    content.innerHTML = `
-        <div class="tree-toggle ${showToggle ? '' : 'style="visibility: hidden;"'}" onclick="event.stopPropagation(); toggleFolder(this)">
-            <i class="fas fa-chevron-right"></i>
-        </div>
-        <div class="tree-icon folder-icon"><i class="fas fa-folder"></i></div>
-        <span class="tree-label">${folder.name}</span>
-        ${isPublic ? '<span class="badge bg-info tree-badge">Public</span>' : ''}
-        ${folder.file_count !== undefined ? `<span class="badge bg-secondary tree-badge">${folder.file_count} files</span>` : ''}
-    `;
-    
-    node.appendChild(content);
-    
-    // Children container
-    if (showToggle) {
-        const children = document.createElement('div');
-        children.className = 'tree-children';
-        
-        // Add subfolders
-        if (folder.subfolders) {
-            folder.subfolders.forEach(subfolder => {
-                children.appendChild(createFolderNode(subfolder, mode, isPublic));
-            });
-        }
-        
-        // Add files (only for input mode, only .shp files)
-        if (mode === 'input' && folder.files) {
-            folder.files.forEach(file => {
-                if (file.name.toLowerCase().endsWith('.shp')) {
-                    children.appendChild(createFileNode(file, mode, isPublic));
-                }
-            });
-        }
-        
-        // Empty folder indicator
-        if (children.children.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'empty-folder';
-            empty.textContent = mode === 'input' ? 'No shapefiles' : 'Empty';
-            children.appendChild(empty);
-        }
-        
-        node.appendChild(children);
-    }
-    
-    return node;
-}
-
-// Handle double-click on folder to expand/collapse
-function handleFolderDoubleClick(event, element) {
-    event.preventDefault();
-    event.stopPropagation();
-    
-    const hasChildren = element.getAttribute('data-has-children') === 'true';
-    if (hasChildren) {
-        const toggleEl = element.querySelector('.tree-toggle');
-        if (toggleEl) {
-            toggleFolder(toggleEl);
-        }
-    }
-}
-
-// Create a file node
-function createFileNode(file, mode, isPublic) {
-    const node = document.createElement('div');
-    node.className = 'tree-node';
-    
-    const content = document.createElement('div');
-    content.className = 'tree-node-content';
-    content.setAttribute('data-file-id', file.id);
-    content.setAttribute('data-file-name', file.name);
-    content.setAttribute('onclick', 'selectInputFile(this)');
-    
-    content.innerHTML = `
-        <div class="tree-toggle" style="visibility: hidden;"><i class="fas fa-chevron-right"></i></div>
-        <div class="tree-icon file-icon"><i class="fas fa-file-archive"></i></div>
-        <span class="tree-label">${file.name}</span>
-        ${isPublic ? '<span class="badge bg-info tree-badge">Public</span>' : ''}
-        ${file.size_display ? `<span class="badge bg-light text-dark tree-badge">${file.size_display}</span>` : ''}
-    `;
-    
-    node.appendChild(content);
-    return node;
-}
-
-// Toggle folder expand/collapse
-function toggleFolder(toggleEl) {
-    const nodeContent = toggleEl.closest('.tree-node-content');
-    const node = nodeContent.closest('.tree-node');
-    const children = node.querySelector('.tree-children');
-    
-    if (children) {
-        toggleEl.classList.toggle('expanded');
-        children.classList.toggle('expanded');
-        
-        // Update folder icon
-        const folderIcon = nodeContent.querySelector('.folder-icon i');
-        if (children.classList.contains('expanded')) {
-            folderIcon.className = 'fas fa-folder-open';
-        } else {
-            folderIcon.className = 'fas fa-folder';
-        }
-    }
-}
-
-// Select input file
-function selectInputFile(element) {
-    // Remove selection from all
-    document.querySelectorAll('#inputFileTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected');
     });
-    
-    // Select this file
-    element.classList.add('selected');
-    
-    const fileId = element.dataset.fileId;
-    const fileName = element.dataset.fileName;
-    
-    document.getElementById('selectedFileId').value = fileId;
-    document.getElementById('selectedFileName').textContent = fileName;
-    document.getElementById('selectedFileDisplay').classList.add('show');
 
-    loadSeedingColumns(fileId, fileName);
-    updateSubmitButton();
-}
+    document.getElementById('browseOutputBtn').addEventListener('click', function () {
+        ADMAFilePicker.open({
+            mode: 'folder',
+            title: 'Select output folder',
+            onSelect: function (choice) {
+                document.getElementById('selectedFolderId').value = choice.id;
+                document.getElementById('selectedFolderName').value = choice.path || choice.name;
+            }
+        });
+    });
+});
 
 // Fill the column pickers from the chosen shapefile. Failing to read them is
 // not fatal -- the tool auto-detects -- so say so and carry on.
 async function loadSeedingColumns(fileId, fileName) {
-    const row = document.getElementById('columnMappingRow');
     const errorBox = document.getElementById('columnLoadError');
     const selects = ['productCol', 'widthCol', 'rateCol'].map(id => document.getElementById(id));
 
     errorBox.classList.add('d-none');
     selects.forEach(sel => { sel.innerHTML = '<option value="">Auto-detect</option>'; });
 
-    if (!fileName.toLowerCase().endsWith('.shp')) {
-        row.style.display = 'none';
-        return;
-    }
-    row.style.display = '';
+    if (!fileName.toLowerCase().endsWith('.shp')) return;
 
     try {
         const response = await fetch(`/api/seeding-tool/columns/${fileId}/`);
@@ -744,65 +532,20 @@ async function loadSeedingColumns(fileId, fileName) {
     }
 }
 
-// Select output folder
-function selectOutputFolder(element) {
-    // Remove selection from all
-    document.querySelectorAll('#outputFolderTree .tree-node-content').forEach(item => {
-        item.classList.remove('selected-output');
-    });
-    
-    // Select this folder
-    element.classList.add('selected-output');
-    
-    const folderId = element.dataset.folderId;
-    const folderName = element.dataset.folderName;
-    
-    document.getElementById('selectedFolderId').value = folderId;
-    document.getElementById('selectedFolderName').textContent = folderName || 'Auto-create "seeding_tool_output" folder (same location as input file)';
-}
-
-// Update submit button state
+// The run button needs an input file; the output folder is optional and
+// defaults to a folder created next to the input.
 function updateSubmitButton() {
     const fileId = document.getElementById('selectedFileId').value;
-    const submitBtn = document.getElementById('runToolBtn');
-    submitBtn.disabled = !fileId;
+    document.getElementById('runToolBtn').disabled = !fileId;
 }
 
-// Initialize trees on page load
-document.addEventListener('DOMContentLoaded', function() {
-    buildInputFileTree();
-    buildOutputFolderTree();
-});
-
-// ============================================
-// Create Folder Functionality (Reusable)
-// ============================================
-
-let createFolderModal = null;
-
-// Show create folder modal
 function showCreateFolderModal() {
-    // Build parent folder selection tree
-    buildParentFolderTree();
-    
-    // Reset form
     document.getElementById('newFolderName').value = '';
     document.getElementById('newFolderParentId').value = '';
-    document.getElementById('selectedParentName').textContent = 'Root (no parent)';
-    
-    // Show modal
-    if (!createFolderModal) {
-        createFolderModal = new bootstrap.Modal(document.getElementById('createFolderModal'));
-    }
-    createFolderModal.show();
-    
-    // Focus on folder name input
-    setTimeout(() => {
-        document.getElementById('newFolderName').focus();
-    }, 300);
+    buildParentFolderTree();
+    new bootstrap.Modal(document.getElementById('createFolderModal')).show();
 }
 
-// Build parent folder selection tree (for create folder modal)
 function buildParentFolderTree() {
     const container = document.getElementById('parentFolderTree');
     container.innerHTML = '';
@@ -1043,7 +786,11 @@ document.getElementById('seedingToolForm').addEventListener('submit', async func
                 output_folder_id: folderId || null,
                 product_col: document.getElementById('productCol').value,
                 width_col: document.getElementById('widthCol').value,
-                rate_col: document.getElementById('rateCol').value
+                rate_col: document.getElementById('rateCol').value,
+                generate_boundary: document.getElementById('generateBoundary').checked,
+                boundary_buffer_ft: document.getElementById('boundaryBuffer').value,
+                polygon_gap_ft: document.getElementById('polygonGap').value,
+                max_gap_ft: document.getElementById('maxGap').value
             })
         });
         
@@ -1106,6 +853,36 @@ document.getElementById('seedingToolForm').addEventListener('submit', async func
     }
 });
 
+// Fill the Run Summary panel. The task echoes back what the tool reported, so
+// the numbers here are the tool's own, not a re-derivation.
+function renderRunSummary(result) {
+    const body = document.getElementById('runSummaryBody');
+    const s = result.summary || {};
+    if (!Object.keys(s).length) {
+        body.innerHTML = '<p class="text-muted small mb-0">Run finished, but the tool reported no summary.</p>';
+        return;
+    }
+    const rows = [
+        ['Products processed', s.products_processed],
+        ['Swath units', s.swath_units],
+        ['Product column', s.product_col_used],
+        ['Width column', s.width_col_used],
+        ['Rate column', s.rate_col_used],
+        ['Boundary generated', s.boundary_generated ? 'yes' : 'no'],
+        ['Clipped to boundary', s.clipped_to_boundary ? 'yes' : 'no'],
+    ].filter(([, v]) => v !== undefined && v !== null && v !== '');
+
+    body.innerHTML =
+        '<dl class="row mb-0 small">' +
+        rows.map(([k, v]) =>
+            `<dt class="col-7 fw-normal text-muted">${k}</dt><dd class="col-5 mb-1">${v}</dd>`
+        ).join('') +
+        '</dl>' +
+        (s.averaged_columns && s.averaged_columns.length
+            ? `<hr class="my-2"><p class="small text-muted mb-0">Averaged: ${s.averaged_columns.join(', ')}</p>`
+            : '');
+}
+
 // Render the run preview. The image is served through the normal file
 // download route, so it inherits the same permissions as every other output.
 function showRunPreview(result) {
@@ -1134,6 +911,7 @@ function showResults(result) {
     filesList.innerHTML = '';
 
     showRunPreview(result);
+    renderRunSummary(result);
 
     const fileTypes = {
         'polygons': { icon: 'fa-draw-polygon', label: 'Seeding Polygons', color: 'success' },

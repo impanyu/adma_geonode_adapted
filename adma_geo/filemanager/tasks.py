@@ -388,7 +388,9 @@ def toggle_file_visibility_task(self, file_id, is_public, file_name):
 
 @shared_task(bind=True)
 def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=None,
-                         product_col=None, width_col=None, rate_col=None):
+                         product_col=None, width_col=None, rate_col=None,
+                         generate_boundary=True, boundary_buffer_ft=None,
+                         polygon_gap_ft=None, max_gap_ft=None):
     """
     Run the Seeding Tool on a .shp or .gpkg file.
 
@@ -501,13 +503,25 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=
             f"{os.path.splitext(os.path.basename(input_path))[0]}_preview.png",
         )
         try:
+            # Only pass the numeric options when the caller set them, so her
+            # own defaults stay the single source of truth for the rest.
+            optional = {}
+            if boundary_buffer_ft is not None:
+                optional['boundary_buffer_ft'] = boundary_buffer_ft
+            if polygon_gap_ft is not None:
+                optional['polygon_gap_ft'] = polygon_gap_ft
+            if max_gap_ft is not None:
+                optional['max_gap_ft'] = max_gap_ft
+
             results = process_seeding_data(
                 input_path,
                 output_folder=output_dir,
                 plot_path=plot_path,
+                generate_boundary=bool(generate_boundary),
                 product_col=product_col or None,
                 width_col=width_col or None,
                 rate_col=rate_col or None,
+                **optional,
             )
         except Exception as exc:
             success, message, output_files = False, str(exc), []
@@ -531,6 +545,10 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=
                 f"columns used -> product: {results['product_col_used']}, "
                 f"width: {results['width_col_used']}, rate: {results['rate_col_used']}"
             )
+            seeding_summary = {
+                k: v for k, v in results.items()
+                if k not in ('polygons_path', 'summary_path', 'plot_path')
+            }
             success = True
 
         if not success:
@@ -641,7 +659,9 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=
             "success": True,
             "message": message,
             "created_files": created_files,
-            "output_files": output_files_result
+            "output_files": output_files_result,
+            # The tool's own report, shown verbatim in the Run Summary panel.
+            "summary": seeding_summary,
         }
         
         logger.info(f"Seeding Tool task completed successfully: {result}")

@@ -2903,6 +2903,24 @@ def run_seeding_tool(request):
         product_col = (data.get('product_col') or '').strip() or None
         width_col = (data.get('width_col') or '').strip() or None
         rate_col = (data.get('rate_col') or '').strip() or None
+
+        def _optional_float(key):
+            """Blank means "use the tool's own default", which is None."""
+            raw = data.get(key)
+            if raw is None or str(raw).strip() == '':
+                return None
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                raise ValueError(f'{key} must be a number')
+
+        try:
+            boundary_buffer_ft = _optional_float('boundary_buffer_ft')
+            polygon_gap_ft = _optional_float('polygon_gap_ft')
+            max_gap_ft = _optional_float('max_gap_ft')
+        except ValueError as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        generate_boundary = bool(data.get('generate_boundary', True))
         
         if not file_id:
             return JsonResponse({'success': False, 'error': 'file_id is required'}, status=400)
@@ -2937,6 +2955,10 @@ def run_seeding_tool(request):
         task = run_seeding_tool_task.delay(
             str(file_id), output_folder_id,
             product_col=product_col, width_col=width_col, rate_col=rate_col,
+            generate_boundary=generate_boundary,
+            boundary_buffer_ft=boundary_buffer_ft,
+            polygon_gap_ft=polygon_gap_ft,
+            max_gap_ft=max_gap_ft,
         )
         
         return JsonResponse({
