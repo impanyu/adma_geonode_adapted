@@ -194,3 +194,34 @@ class NativeToolRegistrationTests(TestCase):
                 self.assertEqual(tool.status, 'available')
                 # reverse() raises if the tool row names a URL that does not exist.
                 self.assertTrue(reverse(tool.url_name))
+
+
+class TaskModuleImportTests(TestCase):
+    """
+    filemanager.tasks is imported by every process that touches the app,
+    including the web container, so importing it must not require the
+    scientific stack. A module-level matplotlib import here once put the
+    Celery worker into a startup crash loop when its image lagged behind
+    requirements.txt -- taking down all background work, not just these tools.
+    """
+
+    def test_the_task_module_does_not_import_the_processing_stack(self):
+        import ast
+        import inspect
+
+        from filemanager import native_tool_tasks
+
+        tree = ast.parse(inspect.getsource(native_tool_tasks))
+        heavy = {'zonal_statistics', 'vegetation_index',
+                 'management_zones', 'raster_clip_reproject'}
+
+        module_level = {
+            node.module
+            for node in tree.body
+            if isinstance(node, ast.ImportFrom) and node.module
+        }
+
+        self.assertFalse(
+            module_level & heavy,
+            f'These belong inside the task bodies: {module_level & heavy}',
+        )

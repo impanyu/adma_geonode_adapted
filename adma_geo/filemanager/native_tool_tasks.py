@@ -11,12 +11,15 @@ import logging
 
 from celery import shared_task
 
-from .management_zones import delineate_management_zones
 from .models import File
-from .raster_clip_reproject import clip_and_reproject
 from .tool_io import register_outputs, resolve_output_folder
-from .vegetation_index import compute_vegetation_index
-from .zonal_statistics import compute_zonal_statistics
+
+# The processing modules are imported inside each task rather than here.
+# They pull in matplotlib, rasterio and geopandas, and a Celery task module is
+# imported by every process that touches filemanager.tasks -- including the web
+# container. When one of those packages was missing from the worker image, a
+# module-level import here took the whole worker down in a crash loop at
+# startup instead of failing the one task that needed it.
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +104,7 @@ def run_zonal_statistics_task(
     band=1, statistics=None, prefix='val', requesting_user_id=None,
 ):
     def body():
+        from .zonal_statistics import compute_zonal_statistics
         zones = _fetch(vector_file_id, 'Zone layer', requesting_user_id)
         raster = _fetch(raster_file_id, 'Raster', requesting_user_id)
         return _finish(
@@ -125,6 +129,7 @@ def run_vegetation_index_task(
     multi-band image supplies everything at once.
     """
     def body():
+        from .vegetation_index import compute_vegetation_index
         sources = {}
         first = None
         for band_name, spec in (band_files or {}).items():
@@ -152,6 +157,7 @@ def run_management_zones_task(
     requesting_user_id=None,
 ):
     def body():
+        from .management_zones import delineate_management_zones
         source = _fetch(file_id, 'Input layer', requesting_user_id)
         return _finish(
             source, output_folder_id, 'management_zones_output',
@@ -170,6 +176,7 @@ def run_raster_clip_reproject_task(
     resampling='bilinear', output_folder_id=None, requesting_user_id=None,
 ):
     def body():
+        from .raster_clip_reproject import clip_and_reproject
         raster = _fetch(raster_file_id, 'Raster', requesting_user_id)
         boundary_path = None
         if boundary_file_id:
