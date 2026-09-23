@@ -58,6 +58,29 @@ class NativeToolPageTests(TestCase):
         for name in ('NDVI', 'NDRE', 'GNDVI', 'SAVI'):
             self.assertContains(response, name)
 
+    def test_each_index_carries_the_bands_its_inputs_are_built_from(self):
+        """
+        The band rows are generated from data-bands. If an option loses it, or
+        names a band the picker has no label for, the page renders an index
+        that cannot be given any input -- and nothing server-side notices.
+        """
+        from filemanager.vegetation_index import INDEX_DEFINITIONS
+
+        html = self.client.get(
+            reverse('filemanager:vegetation_index_tool')
+        ).content.decode()
+
+        for definition in INDEX_DEFINITIONS.values():
+            with self.subTest(index=definition.key):
+                self.assertIn(
+                    f'data-bands="{",".join(definition.bands)}"', html
+                )
+        # Every band named by any index needs a label in the page's BAND_LABELS.
+        for definition in INDEX_DEFINITIONS.values():
+            for band in definition.bands:
+                with self.subTest(band=band):
+                    self.assertIn(f'{band}:', html)
+
 
 class NativeToolEndpointTests(TestCase):
     def setUp(self):
