@@ -15,7 +15,11 @@ from django.test import SimpleTestCase
 from rasterio.transform import from_origin
 from shapely.geometry import Point, box
 
-from filemanager.management_zones import delineate_management_zones, numeric_columns
+from filemanager.management_zones import (
+    _standardise,
+    delineate_management_zones,
+    numeric_columns,
+)
 from filemanager.raster_clip_reproject import clip_and_reproject
 from filemanager.vegetation_index import compute_vegetation_index
 from filemanager.zonal_statistics import compute_zonal_statistics
@@ -249,17 +253,41 @@ class ManagementZoneTests(SimpleTestCase):
         two = gpd.read_file(second[2]['zones_shp'][0])['zone'].tolist()
         self.assertEqual(one, two)
 
-    def test_attributes_are_scaled_before_clustering(self):
+    def test_standardise_gives_every_column_equal_weight(self):
         """
-        Without scaling, a column recorded in larger numbers decides the
-        clustering alone. Here the big column is pure noise and the small one
-        carries the real split, so an unscaled run would get it wrong.
+        k-means measures plain Euclidean distance, so a column recorded in
+        larger numbers would otherwise decide the clustering by itself.
         """
-        rng = np.random.default_rng(1)
+        matrix = np.column_stack([
+            np.array([0.1, 0.2, 0.3, 0.4]),        # small magnitude
+            np.array([5000.0, 6000.0, 7000.0, 8000.0]),  # four orders larger
+        ])
+
+        scaled = _standardise(matrix)
+
+        np.testing.assert_allclose(scaled.mean(axis=0), [0.0, 0.0], atol=1e-12)
+        np.testing.assert_allclose(scaled.std(axis=0), [1.0, 1.0], atol=1e-12)
+        # Having been scaled, the two columns now span the same distance.
+        self.assertAlmostEqual(
+            float(scaled[:, 0].ptp()), float(scaled[:, 1].ptp()), places=10
+        )
+
+    def test_a_constant_column_contributes_nothing_rather_than_nan(self):
+        """Zero spread would divide by zero and poison every distance."""
+        matrix = np.column_stack([
+            np.array([1.0, 2.0, 3.0]),
+            np.array([7.0, 7.0, 7.0]),   # constant
+        ])
+
+        scaled = _standardise(matrix)
+
+        self.assertFalse(np.isnan(scaled).any())
+        np.testing.assert_allclose(scaled[:, 1], [0.0, 0.0, 0.0], atol=1e-12)
+
+    def test_a_constant_column_does_not_disturb_the_clustering(self):
         signal = np.concatenate([np.full(60, 0.1), np.full(60, 0.9)])
-        noise = rng.normal(5000, 500, 120)
         frame = gpd.GeoDataFrame(
-            {'ndvi': signal, 'elev_mm': noise},
+            {'ndvi': signal, 'elev_mm': np.full(120, 5000.0)},
             geometry=[Point(float(i % 12), float(i // 12)) for i in range(120)],
             crs=CRS,
         )
@@ -272,8 +300,7 @@ class ManagementZoneTests(SimpleTestCase):
 
         self.assertTrue(ok, message)
         zones = gpd.read_file(outputs['zones_shp'][0])
-        # The ndvi split should be recovered cleanly despite elev_mm being
-        # four orders of magnitude larger.
+        # Each ndvi level should land wholly in one zone: two occupied cells.
         crosstab = gpd.pd.crosstab(zones['ndvi'].round(1), zones['zone'])
         self.assertEqual(int((crosstab > 0).sum().sum()), 2)
 

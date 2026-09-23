@@ -126,14 +126,25 @@ def compute_zonal_statistics(
                 values = np.array([], dtype='float64')
             else:
                 try:
+                    # filled=False returns a masked array. It matters: crop
+                    # gives the polygon's bounding box, so the corners of that
+                    # box lie outside the polygon, and filling them in would
+                    # average a fill value into the result. Worse, with no
+                    # nodata set on the raster that fill value is 0, which is
+                    # indistinguishable from a real reading of zero. The mask
+                    # says which pixels are genuinely inside; compressed()
+                    # keeps only those, and drops nodata along with them.
                     clipped, _ = rio_mask(
-                        raster, [geometry], crop=True, filled=True,
-                        nodata=nodata, indexes=[band],
+                        raster, [geometry], crop=True, filled=False, indexes=[band],
                     )
-                    values = clipped[0].astype('float64').ravel()
-                    # Drop the sentinel and any NaN the sensor left behind;
-                    # averaging them in is the classic way these numbers go
-                    # quietly wrong.
+                    band_values = clipped[0]
+                    values = (
+                        band_values.compressed()
+                        if np.ma.isMaskedArray(band_values)
+                        else band_values.ravel()
+                    ).astype('float64')
+                    # A raster can also carry its sentinel without declaring
+                    # it masked, and sensors write NaN directly.
                     if nodata is not None:
                         values = values[values != nodata]
                     values = values[~np.isnan(values)]
