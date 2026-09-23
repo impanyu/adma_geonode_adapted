@@ -1,11 +1,12 @@
 {% extends 'base.html' %}
 {% load crispy_forms_tags %}
+{% load socialaccount %}
 
 {% block title %}Register - ADMA{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-8 col-lg-6">
+    <div class="col-md-7 col-lg-5">
         <div class="card shadow">
             <div class="card-body p-5">
                 <div class="text-center mb-4">
@@ -14,11 +15,37 @@
                     <p class="text-muted">Create your account to start managing agricultural data</p>
                 </div>
 
-                <form method="post">
+                {# Offered first: it needs nothing typed, and it is the only
+                   route that gives the account a verified email address. #}
+                <div class="d-grid">
+                    <a href="{% provider_login_url 'google' %}" class="btn btn-outline-secondary btn-lg">
+                        <i class="fab fa-google me-2"></i>Sign up with Google
+                    </a>
+                </div>
+
+                <div class="d-flex align-items-center my-3">
+                    <hr class="flex-grow-1">
+                    <span class="mx-3 text-muted small">or</span>
+                    <hr class="flex-grow-1">
+                </div>
+
+                <form method="post" novalidate>
                     {% csrf_token %}
-                    {{ form|crispy }}
-                    
-                    <div class="d-grid">
+
+                    {% if form.non_field_errors %}
+                        <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+                    {% endif %}
+
+                    <div class="row">
+                        <div class="col-sm-6">{{ form.first_name|as_crispy_field }}</div>
+                        <div class="col-sm-6">{{ form.last_name|as_crispy_field }}</div>
+                    </div>
+
+                    {{ form.username|as_crispy_field }}
+                    {{ form.password1|as_crispy_field }}
+                    {{ form.password2|as_crispy_field }}
+
+                    <div class="d-grid mt-4">
                         <button type="submit" class="btn btn-primary btn-lg">
                             <i class="fas fa-user-plus me-2"></i>Create Account
                         </button>

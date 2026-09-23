@@ -44,6 +44,27 @@ class RegistrationForm(UserCreationForm):
         model = User
         fields = ('username', 'first_name', 'last_name', 'password1', 'password2')
 
+    # UserCreationForm spells out every password validator as a bulleted list,
+    # which is most of the page by height and says little a person can act on.
+    # One line carries the rule they actually have to satisfy.
+    PASSWORD_HELP = 'At least 8 characters, and not a password in common use.'
+
+    PLACEHOLDERS = {
+        'username': 'How you will sign in',
+        'first_name': 'First name',
+        'last_name': 'Last name',
+        'password1': 'Choose a password',
+        'password2': 'Type it again',
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['username'].widget.attrs['autofocus'] = True
+        self.fields['password1'].help_text = self.PASSWORD_HELP
+        self.fields['password2'].help_text = ''
+        for name, placeholder in self.PLACEHOLDERS.items():
+            self.fields[name].widget.attrs['placeholder'] = placeholder
+
 class ProfileForm(forms.ModelForm):
     """
     Edit the parts of a user's account they own.

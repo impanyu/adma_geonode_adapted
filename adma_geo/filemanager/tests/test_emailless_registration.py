@@ -162,3 +162,43 @@ class ProfilePageTests(TestCase):
         user = User.objects.get(username='grower')
         self.assertEqual(user.first_name, 'Pat')
         self.assertEqual(user.email, '')
+
+
+class EntrancePageStyleTests(TestCase):
+    """
+    The entrance pages are ours, not allauth's.
+
+    allauth ships socialaccount/signup.html against its own entrance layout and
+    {% element %} tag system, which renders a page sharing nothing with the
+    rest of the site. We override it, so it has to keep rendering: it reads
+    `account.get_provider.name`, and it is only reachable with a pending social
+    login in the session, which is easy to break without noticing.
+    """
+
+    def test_register_page_offers_google_and_omits_email(self):
+        response = self.client.get('/register/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sign up with Google')
+        self.assertNotContains(response, 'name="email"')
+        # The validator list UserCreationForm renders by default.
+        self.assertNotContains(response, 'too similar to your other personal information')
+
+    def test_social_signup_page_uses_the_site_layout(self):
+        sociallogin = google_login('someone@gmail.com')
+        session = self.client.session
+        session['socialaccount_sociallogin'] = sociallogin.serialize()
+        session.save()
+
+        response = self.client.get('/accounts/3rdparty/signup/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'socialaccount/signup.html')
+        self.assertTemplateUsed(response, 'base.html')
+        self.assertContains(response, 'One more step')
+        # The way out of the dead end has to be on the page.
+        self.assertContains(response, 'Connect Google')
+
+    def test_social_signup_page_without_a_pending_login_redirects(self):
+        response = self.client.get('/accounts/3rdparty/signup/')
+        self.assertEqual(response.status_code, 302)
