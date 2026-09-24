@@ -8,6 +8,7 @@ from .gis_utils import process_gis_file, publish_to_geoserver, bundle_and_publis
 from datetime import date
 import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -411,7 +412,6 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=
                             view callers omit it (None = skip check, already auth'd at view layer).
     """
     from django.conf import settings
-    import os
 
     try:
         logger.info(f"Starting Seeding Tool task for file ID: {file_id}")
@@ -784,7 +784,6 @@ def run_si_tool_task(
                         (buffer_shp_id) belongs to this user or is public.
     """
     from django.conf import settings
-    import os
     import shutil
 
     from .ADMA_SI_Tool_v2 import (
@@ -1028,7 +1027,6 @@ def _generate_all_json_for_device(device_folder, dev_eui, device_name, device_ty
         owner: Owner of the files
     """
     import json
-    import os
     from datetime import datetime
     from django.conf import settings
     from django.core.files.base import ContentFile
@@ -1178,7 +1176,6 @@ def sync_realm5_task(self):
     This task is designed to run daily via Celery Beat.
     """
     import json
-    import os
     from datetime import date, timedelta
     from django.conf import settings
     from django.core.files.base import ContentFile
@@ -1951,7 +1948,6 @@ def run_yield_summary_tool_task(
                             (treatment_file_id) belongs to this user or is public.
     """
     from django.conf import settings
-    import os
 
     try:
         logger.info(f"Starting Yield Summary Tool task for treatment file ID: {treatment_file_id}, yield file ID: {yield_file_id}")
@@ -2359,7 +2355,6 @@ def run_valid_yield_extractor_task(
                             (plots_file_id) belongs to this user or is public.
     """
     from django.conf import settings
-    import os
     import argparse
 
     try:
