@@ -256,9 +256,6 @@ def fetch_open_meteo(aoi, output_dir, start=None, end=None, **_):
 # --- SoilGrids --------------------------------------------------------------
 
 SOILGRIDS_URL = 'https://maps.isric.org/mapserv'
-# Homolosine, the projection SoilGrids is published in. Given as a proj string
-# because the EPSG code for it is not in every proj build.
-SOILGRIDS_CRS = '+proj=igh +lat_0=0 +lon_0=0 +datum=WGS84 +units=m +no_defs'
 
 SOILGRIDS_PROPERTIES = {
     'soc': 'Soil organic carbon',
@@ -273,9 +270,15 @@ SOILGRIDS_DEPTHS = ['0-5cm', '5-15cm', '15-30cm', '30-60cm', '60-100cm']
 
 
 def fetch_soilgrids(aoi, output_dir, soil_property='soc', depth='0-5cm', **_):
-    """A SoilGrids property raster clipped to the area of interest."""
-    from pyproj import Transformer
+    """
+    A SoilGrids property raster clipped to the area of interest.
 
+    Asked for in WGS84 rather than in SoilGrids' native Homolosine. Homolosine
+    has no EPSG code, and GeoServer will not publish a coverage whose SRS it
+    cannot name -- the layer processed cleanly and then failed to publish, so
+    it could not be opened on a map. Letting the WCS do the reprojection also
+    beats resampling it here afterwards.
+    """
     if soil_property not in SOILGRIDS_PROPERTIES:
         raise DatasetError(
             f'Unknown soil property. Available: {", ".join(sorted(SOILGRIDS_PROPERTIES))}.'
@@ -283,28 +286,22 @@ def fetch_soilgrids(aoi, output_dir, soil_property='soc', depth='0-5cm', **_):
     if depth not in SOILGRIDS_DEPTHS:
         raise DatasetError(f'Unknown depth. Available: {", ".join(SOILGRIDS_DEPTHS)}.')
 
-    bbox = aoi['bbox']
-    check_bbox(bbox)
+    minx, miny, maxx, maxy = aoi['bbox']
+    check_bbox(aoi['bbox'])
 
-    transformer = Transformer.from_crs('EPSG:4326', SOILGRIDS_CRS, always_xy=True)
-    x1, y1 = transformer.transform(bbox[0], bbox[1])
-    x2, y2 = transformer.transform(bbox[2], bbox[3])
-    left, right = sorted((x1, x2))
-    bottom, top = sorted((y1, y2))
-
-    crs_uri = 'http://www.opengis.net/def/crs/EPSG/0/152160'
+    crs_uri = 'http://www.opengis.net/def/crs/EPSG/0/4326'
     query = (
         f'map=/map/{soil_property}.map&SERVICE=WCS&VERSION=2.0.1'
         f'&REQUEST=GetCoverage&COVERAGEID={soil_property}_{depth}_mean'
         f'&FORMAT=GEOTIFF_INT16'
-        f'&SUBSET=X({left:.0f},{right:.0f})&SUBSET=Y({bottom:.0f},{top:.0f})'
+        f'&SUBSET=X({minx:.6f},{maxx:.6f})&SUBSET=Y({miny:.6f},{maxy:.6f})'
         f'&SUBSETTINGCRS={crs_uri}&OUTPUTCRS={crs_uri}'
     )
 
     with _open(f'{SOILGRIDS_URL}?{query}') as response:
         payload = response.read()
 
-    if not payload[:2] in (b'II', b'MM'):
+    if payload[:2] not in (b'II', b'MM'):
         raise DatasetError(
             'SoilGrids returned something that is not a GeoTIFF for that area.'
         )
@@ -316,20 +313,17 @@ def fetch_soilgrids(aoi, output_dir, soil_property='soc', depth='0-5cm', **_):
 
     import rasterio
 
-    # The WCS returns the grid without a CRS written into it -- Homolosine has
-    # no EPSG code the server is willing to stamp. Left as is, the file cannot
-    # be placed on a map at all, so record the projection we asked for.
     with rasterio.open(path, 'r+') as source:
+        # The service does not always stamp the CRS even when it honours
+        # OUTPUTCRS, and a raster without one cannot be placed on a map.
         if source.crs is None:
-            source.crs = rasterio.crs.CRS.from_proj4(SOILGRIDS_CRS)
-
-    with rasterio.open(path) as source:
+            source.crs = rasterio.crs.CRS.from_epsg(4326)
         width, height = source.width, source.height
 
     return True, (
         f'{SOILGRIDS_PROPERTIES[soil_property]} at {depth}, '
-        f'{width}x{height} px. Values are in SoilGrids mapped units -- see '
-        'the ISRIC documentation for the conversion factor.'
+        f'{width}x{height} px in WGS84. Values are in SoilGrids mapped units -- '
+        'see the ISRIC documentation for the conversion factor.'
     ), {'soil_tif': path}
 
 
