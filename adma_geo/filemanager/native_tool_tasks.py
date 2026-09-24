@@ -194,3 +194,143 @@ def run_raster_clip_reproject_task(
         )
 
     return _guard('Clip/reproject', raster_file_id)(body)
+
+
+def _area_of_interest(boundary_file, lat=None, lon=None, bbox=None):
+    """
+    Work out the area a public dataset should be fetched for.
+
+    A boundary layer already in ADMA is the good path: its bounds become the
+    box and its centre the point, so a field drawn once serves both the raster
+    datasets and the point ones. Failing that, a box or a point can be typed in.
+    """
+    if boundary_file is not None:
+        import geopandas as gpd
+
+        frame = gpd.read_file(boundary_file.file.path)
+        if frame.empty:
+            raise InputError('The boundary layer has no features.')
+        if frame.crs is None:
+            raise InputError(
+                'The boundary layer has no CRS recorded, so its position is '
+                'unknown. Assign one, or type coordinates instead.'
+            )
+        bounds = frame.to_crs('EPSG:4326').total_bounds  # minx, miny, maxx, maxy
+        minx, miny, maxx, maxy = (float(v) for v in bounds)
+        # A single point or a perfectly thin strip has no area to clip, so give
+        # it a small margin -- about 500 m -- rather than fail.
+        if maxx - minx < 1e-6:
+            minx, maxx = minx - 0.005, maxx + 0.005
+        if maxy - miny < 1e-6:
+            miny, maxy = miny - 0.005, maxy + 0.005
+        return {
+            'lat': (miny + maxy) / 2.0,
+            'lon': (minx + maxx) / 2.0,
+            'bbox': (minx, miny, maxx, maxy),
+        }
+
+    if bbox:
+        minx, miny, maxx, maxy = (float(v) for v in bbox)
+        return {'lat': (miny + maxy) / 2.0, 'lon': (minx + maxx) / 2.0,
+                'bbox': (minx, miny, maxx, maxy)}
+
+    if lat is None or lon is None:
+        raise InputError('Choose a boundary layer, or give a point or a box.')
+
+    lat, lon = float(lat), float(lon)
+    # Roughly a 1 km box around the point, so the raster datasets have
+    # something to clip even when only a point was given.
+    margin = 0.005
+    return {'lat': lat, 'lon': lon,
+            'bbox': (lon - margin, lat - margin, lon + margin, lat + margin)}
+
+
+def _public_data_folder(user, boundary_file, output_folder_id):
+    """Where fetched public data lands."""
+    from .models import Folder
+    from .tool_io import resolve_output_folder
+
+    if output_folder_id:
+        try:
+            return Folder.objects.get(id=output_folder_id)
+        except Folder.DoesNotExist:
+            raise InputError('Output folder not found.')
+
+    if boundary_file is not None:
+        folder, _ = resolve_output_folder(
+            boundary_file, None, default_name='public_data'
+        )
+        return folder
+
+    # No boundary and no chosen folder: a single "Public Data" folder at the
+    # top of the user's files, reused across runs.
+    folder, _ = Folder.objects.get_or_create(
+        name='Public Data', parent=None, owner=user,
+        defaults={'is_public': False},
+    )
+    return folder
+
+
+@shared_task(bind=True)
+def run_public_data_fetch_task(
+    self, dataset_key, boundary_file_id=None, lat=None, lon=None, bbox=None,
+    params=None, output_folder_id=None, requesting_user_id=None,
+):
+    """Fetch one public dataset for an area and register it as the user's files."""
+    def body():
+        import os
+
+        from django.conf import settings
+        from django.contrib.auth import get_user_model
+
+        from .public_datasets import PUBLIC_DATASETS, DatasetError
+        from .tool_io import register_outputs
+
+        dataset = PUBLIC_DATASETS.get(dataset_key)
+        if dataset is None:
+            raise InputError(f'Unknown dataset {dataset_key!r}.')
+
+        boundary = (
+            _fetch(boundary_file_id, 'Boundary layer', requesting_user_id)
+            if boundary_file_id else None
+        )
+
+        owner = boundary.owner if boundary is not None else (
+            get_user_model().objects.get(id=requesting_user_id)
+        )
+
+        aoi = _area_of_interest(boundary, lat=lat, lon=lon, bbox=bbox)
+        folder = _public_data_folder(owner, boundary, output_folder_id)
+        directory = os.path.join(
+            settings.MEDIA_ROOT, 'uploads', folder.get_full_path()
+        )
+        os.makedirs(directory, exist_ok=True)
+
+        try:
+            success, message, output_files = dataset.fetch(
+                aoi, directory, **(params or {})
+            )
+        except DatasetError as exc:
+            return {'success': False, 'error': str(exc)}
+
+        if not success:
+            return {'success': False, 'error': message}
+
+        created = register_outputs(
+            output_files, folder, owner,
+            is_public=False,
+            # This is what puts the results in the Third-Party Data panel.
+            extra_fields={
+                'is_third_party': True,
+                'third_party_source': dataset.source,
+            },
+        )
+
+        return {
+            'success': True,
+            'message': message,
+            'created_files': created,
+            'output_folder_id': str(folder.id),
+        }
+
+    return _guard('Public data fetch', dataset_key)(body)

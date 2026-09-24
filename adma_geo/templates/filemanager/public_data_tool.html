@@ -1,0 +1,193 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-globe{% endblock %}
+{% block tool_tagline %}Pull free agriculture and climate data for one of your fields{% endblock %}
+{% block run_url %}{% url 'filemanager:run_public_data_fetch' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border">
+    All four sources are free and need no account. Point this at a field boundary
+    you already have and it works out the area by itself &mdash; the raster
+    datasets get its bounds, the weather ones its centre. What comes back lands
+    in your files, tagged so it shows up under Third-Party Data.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="mb-3">
+    <label class="form-label fw-semibold" for="datasetSelect">
+        <i class="fas fa-database me-2 text-info"></i>Dataset
+    </label>
+    <select class="form-select" id="datasetSelect">
+        {% for dataset in datasets %}
+            <option value="{{ dataset.key }}" data-needs="{{ dataset.needs }}"
+                    data-kind="{{ dataset.kind }}"
+                    data-description="{{ dataset.description }}">{{ dataset.name }}</option>
+        {% endfor %}
+    </select>
+    <div class="form-text" id="datasetDescription"></div>
+</div>
+
+<div id="datasetOptions" class="row"></div>
+
+<hr>
+
+<div class="mb-3">
+    <label class="form-label fw-semibold">
+        <i class="fas fa-location-crosshairs me-2 text-primary"></i>Area of interest
+    </label>
+
+    <div class="btn-group mb-3 d-block" role="group">
+        <input type="radio" class="btn-check" name="aoiMode" id="aoiBoundary" value="boundary" checked>
+        <label class="btn btn-outline-secondary" for="aoiBoundary">From a boundary layer</label>
+
+        <input type="radio" class="btn-check" name="aoiMode" id="aoiPoint" value="point">
+        <label class="btn btn-outline-secondary" for="aoiPoint">A point</label>
+
+        <input type="radio" class="btn-check" name="aoiMode" id="aoiBox" value="box">
+        <label class="btn btn-outline-secondary" for="aoiBox">A bounding box</label>
+    </div>
+
+    <div id="aoiBoundaryPanel">
+        <div class="input-group">
+            <input type="text" class="form-control" id="boundaryName" placeholder="No file chosen" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="browseBoundary">
+                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+            </button>
+        </div>
+        <input type="hidden" id="boundaryId">
+        <div class="form-text">Its bounds become the box; its centre becomes the point.</div>
+    </div>
+
+    <div id="aoiPointPanel" style="display:none;">
+        <div class="row">
+            <div class="col-sm-6 mb-2">
+                <label class="form-label small" for="aoiLat">Latitude</label>
+                <input type="number" step="any" class="form-control" id="aoiLat" placeholder="40.8136">
+            </div>
+            <div class="col-sm-6 mb-2">
+                <label class="form-label small" for="aoiLon">Longitude</label>
+                <input type="number" step="any" class="form-control" id="aoiLon" placeholder="-96.7026">
+            </div>
+        </div>
+    </div>
+
+    <div id="aoiBoxPanel" style="display:none;">
+        <div class="row">
+            <div class="col-sm-3 mb-2">
+                <label class="form-label small" for="boxMinX">West</label>
+                <input type="number" step="any" class="form-control" id="boxMinX" placeholder="-96.75">
+            </div>
+            <div class="col-sm-3 mb-2">
+                <label class="form-label small" for="boxMinY">South</label>
+                <input type="number" step="any" class="form-control" id="boxMinY" placeholder="40.78">
+            </div>
+            <div class="col-sm-3 mb-2">
+                <label class="form-label small" for="boxMaxX">East</label>
+                <input type="number" step="any" class="form-control" id="boxMaxX" placeholder="-96.68">
+            </div>
+            <div class="col-sm-3 mb-2">
+                <label class="form-label small" for="boxMaxY">North</label>
+                <input type="number" step="any" class="form-control" id="boxMaxY" placeholder="40.83">
+            </div>
+        </div>
+        <div class="form-text">Decimal degrees, WGS84. At most 2 degrees a side.</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tool_script %}
+{{ datasets|json_script:"datasetsData" }}
+<script>
+const DATASETS = JSON.parse(document.getElementById('datasetsData').textContent);
+
+wirePicker('browseBoundary', 'boundaryName', 'boundaryId', {
+    accept: ['.shp', '.gpkg', '.geojson'], title: 'Choose a boundary layer',
+});
+
+function currentDataset() {
+    const key = document.getElementById('datasetSelect').value;
+    return DATASETS.find(d => d.key === key);
+}
+
+// Each dataset declares its own options; the form is built from that rather
+// than hard-coding four different sets of controls here.
+function renderOptions() {
+    const dataset = currentDataset();
+    document.getElementById('datasetDescription').textContent = dataset.description;
+
+    const container = document.getElementById('datasetOptions');
+    container.innerHTML = dataset.options.map(option => {
+        const id = 'opt_' + option.name;
+        if (option.type === 'select') {
+            const choices = option.choices.map(choice => {
+                const label = (option.labels && option.labels[choice]) || choice;
+                const selected = choice === option.default ? ' selected' : '';
+                return `<option value="${choice}"${selected}>${label}</option>`;
+            }).join('');
+            return `<div class="col-md-4 mb-3">
+                <label class="form-label fw-semibold" for="${id}">${option.label}</label>
+                <select class="form-select" id="${id}" data-option="${option.name}">${choices}</select>
+            </div>`;
+        }
+        return `<div class="col-md-4 mb-3">
+            <label class="form-label fw-semibold" for="${id}">${option.label}</label>
+            <input type="date" class="form-control" id="${id}" data-option="${option.name}">
+        </div>`;
+    }).join('');
+}
+
+document.getElementById('datasetSelect').addEventListener('change', renderOptions);
+renderOptions();
+
+function showAoiPanel() {
+    const mode = document.querySelector('input[name="aoiMode"]:checked').value;
+    document.getElementById('aoiBoundaryPanel').style.display = mode === 'boundary' ? '' : 'none';
+    document.getElementById('aoiPointPanel').style.display = mode === 'point' ? '' : 'none';
+    document.getElementById('aoiBoxPanel').style.display = mode === 'box' ? '' : 'none';
+}
+document.querySelectorAll('input[name="aoiMode"]').forEach(
+    radio => radio.addEventListener('change', showAoiPanel)
+);
+
+function numberFrom(id, label) {
+    const raw = document.getElementById(id).value.trim();
+    if (raw === '') throw new Error(`Fill in ${label}.`);
+    const value = parseFloat(raw);
+    if (Number.isNaN(value)) throw new Error(`${label} must be a number.`);
+    return value;
+}
+
+function buildPayload() {
+    const dataset = currentDataset();
+    const mode = document.querySelector('input[name="aoiMode"]:checked').value;
+    const payload = {dataset: dataset.key, params: {}};
+
+    document.querySelectorAll('#datasetOptions [data-option]').forEach(field => {
+        if (field.value) payload.params[field.dataset.option] = field.value;
+    });
+
+    for (const option of dataset.options) {
+        if (option.type === 'date' && !payload.params[option.name]) {
+            throw new Error(`Choose a ${option.label.toLowerCase()}.`);
+        }
+    }
+
+    if (mode === 'boundary') {
+        const id = document.getElementById('boundaryId').value;
+        if (!id) throw new Error('Choose a boundary layer, or switch to a point or box.');
+        payload.boundary_file_id = id;
+    } else if (mode === 'point') {
+        payload.lat = numberFrom('aoiLat', 'latitude');
+        payload.lon = numberFrom('aoiLon', 'longitude');
+    } else {
+        payload.bbox = [
+            numberFrom('boxMinX', 'west'), numberFrom('boxMinY', 'south'),
+            numberFrom('boxMaxX', 'east'), numberFrom('boxMaxY', 'north'),
+        ];
+    }
+
+    return payload;
+}
+</script>
+{% endblock %}

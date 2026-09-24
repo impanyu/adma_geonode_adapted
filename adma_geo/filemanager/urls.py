@@ -107,11 +107,13 @@ urlpatterns = [
     path('tools/vegetation-index/', native_tool_views.VegetationIndexToolView.as_view(), name='vegetation_index_tool'),
     path('tools/management-zones/', native_tool_views.ManagementZonesToolView.as_view(), name='management_zones_tool'),
     path('tools/raster-clip/', native_tool_views.RasterClipToolView.as_view(), name='raster_clip_tool'),
+    path('tools/public-data/', native_tool_views.PublicDataToolView.as_view(), name='public_data_tool'),
 
     path('api/zonal-statistics/run/', native_tool_views.run_zonal_statistics, name='run_zonal_statistics'),
     path('api/vegetation-index/run/', native_tool_views.run_vegetation_index, name='run_vegetation_index'),
     path('api/management-zones/run/', native_tool_views.run_management_zones, name='run_management_zones'),
     path('api/raster-clip/run/', native_tool_views.run_raster_clip_reproject, name='run_raster_clip_reproject'),
+    path('api/public-data/run/', native_tool_views.run_public_data_fetch, name='run_public_data_fetch'),
 
     path('api/native-tools/status/<str:task_id>/', native_tool_views.native_tool_status, name='native_tool_status'),
     path('api/native-tools/columns/<str:file_id>/', native_tool_views.vector_columns, name='native_tool_columns'),

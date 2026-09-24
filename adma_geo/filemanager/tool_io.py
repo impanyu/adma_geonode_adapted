@@ -69,15 +69,20 @@ def _iter_paths(output_files):
             yield role, value
 
 
-def register_outputs(output_files, folder, owner, is_public=False):
+def register_outputs(output_files, folder, owner, is_public=False, extra_fields=None):
     """
     Create (or refresh) a File row per written output.
+
+    ``extra_fields`` is set on every row created or refreshed -- the public
+    dataset fetchers use it to mark their output as third-party, which is what
+    puts it in the Third-Party Data panel.
 
     Returns the list of registered files. A path the processing step named but
     did not actually write is skipped with a warning rather than aborting the
     run: partial output is still worth handing back, and the caller reports
     what it got.
     """
+    extra_fields = extra_fields or {}
     registered = []
 
     for role, path in _iter_paths(output_files):
@@ -94,7 +99,11 @@ def register_outputs(output_files, folder, owner, is_public=False):
         if existing:
             existing.file_size = size
             existing.file.name = relative_path
-            existing.save(update_fields=['file_size', 'file', 'updated_at'])
+            for field, value in extra_fields.items():
+                setattr(existing, field, value)
+            existing.save(update_fields=(
+                ['file_size', 'file', 'updated_at'] + list(extra_fields)
+            ))
             registered.append({'role': role, 'name': name, 'id': str(existing.id), 'updated': True})
         else:
             new_file = File(
@@ -103,6 +112,7 @@ def register_outputs(output_files, folder, owner, is_public=False):
                 owner=owner,
                 file_size=size,
                 is_public=is_public,
+                **extra_fields,
             )
             new_file.file.name = relative_path
             new_file.save()

@@ -1120,6 +1120,29 @@ class Tool(models.Model):
                     'generates': ['raster_tif'],
                 },
             },
+            {
+                'slug': 'public-data',
+                'name': 'Public Data',
+                'short_description': 'Pull free USDA crop layers, NASA and Open-Meteo weather, and ISRIC soil data for a field.',
+                'description': 'Fetches free, key-free public datasets for an area of interest: the USDA '
+                              'Cropland Data Layer (crop type per 30 m pixel), NASA POWER and Open-Meteo '
+                              'daily weather, and SoilGrids soil property rasters. Point it at a field '
+                              'boundary already in ADMA and it derives the area itself. Results are saved '
+                              'to your files and tagged as third-party data.',
+                'category': 'data_management',
+                'icon': 'fa-globe',
+                'icon_color': 'info',
+                'url_name': 'filemanager:public_data_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_public_data_fetch_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.shp', '.gpkg', '.geojson'],
+                    'datasets': ['usda_cdl', 'nasa_power', 'open_meteo', 'soilgrids'],
+                },
+                'output_config': {
+                    'generates': ['cdl_tif', 'soil_tif', 'weather_csv'],
+                },
+            },
         ]
         
         created_tools = []

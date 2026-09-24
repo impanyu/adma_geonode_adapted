@@ -379,3 +379,83 @@ def raster_bands(request, file_id):
         return _internal_error_response(exc)
 
     return JsonResponse({'success': True, 'bands': count, 'crs': crs})
+
+
+class PublicDataToolView(_NativeToolView):
+    template_name = 'filemanager/public_data_tool.html'
+    accepted_extensions = VECTOR_EXTENSIONS
+    page_title = 'Public Data'
+
+    def get_context_data(self, **kwargs):
+        from .public_datasets import PUBLIC_DATASETS
+        context = super().get_context_data(**kwargs)
+        context['datasets'] = [
+            {
+                'key': d.key, 'name': d.name, 'kind': d.kind,
+                'needs': d.needs, 'description': d.description,
+                'options': d.options,
+            }
+            for d in PUBLIC_DATASETS.values()
+        ]
+        return context
+
+
+@api_login_required
+def run_public_data_fetch(request):
+    def build(data):
+        from .native_tool_tasks import run_public_data_fetch_task
+        from .public_datasets import PUBLIC_DATASETS
+
+        dataset = PUBLIC_DATASETS.get(data.get('dataset'))
+        if dataset is None:
+            raise ValueError(
+                f'Choose one of: {", ".join(sorted(PUBLIC_DATASETS))}.'
+            )
+
+        boundary_id = data.get('boundary_file_id') or None
+        if boundary_id:
+            boundary = _readable_file(
+                boundary_id, request.user, 'Boundary layer', VECTOR_EXTENSIONS
+            )
+            boundary_id = str(boundary.id)
+
+        bbox = data.get('bbox') or None
+        lat, lon = data.get('lat'), data.get('lon')
+
+        if not boundary_id and not bbox and (lat is None or lon is None):
+            raise ValueError(
+                'Choose a boundary layer, or give a point or a bounding box.'
+            )
+
+        if bbox:
+            try:
+                bbox = [float(v) for v in bbox]
+            except (TypeError, ValueError):
+                raise ValueError('The bounding box must be four numbers.')
+            if len(bbox) != 4:
+                raise ValueError('The bounding box must be four numbers.')
+
+        if lat is not None and lon is not None:
+            try:
+                lat, lon = float(lat), float(lon)
+            except (TypeError, ValueError):
+                raise ValueError('Latitude and longitude must be numbers.')
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                raise ValueError('That latitude/longitude is not on Earth.')
+
+        # Only the options this dataset declares are passed on, so a request
+        # cannot smuggle extra keyword arguments into a fetcher.
+        allowed = {option['name'] for option in dataset.options}
+        supplied = data.get('params') or {}
+        params = {k: v for k, v in supplied.items() if k in allowed}
+
+        return run_public_data_fetch_task.delay(
+            dataset.key,
+            boundary_file_id=boundary_id,
+            lat=lat, lon=lon, bbox=bbox,
+            params=params,
+            output_folder_id=data.get('output_folder_id'),
+            requesting_user_id=request.user.id,
+        )
+
+    return _dispatch(request, build)
