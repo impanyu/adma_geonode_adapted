@@ -53,20 +53,29 @@ class ToolOutputTests(TestCase):
         file_obj.save()
         return file_obj
 
+    @staticmethod
+    def fake_seeding(input_path, output_folder=None, plot_path=None, **kwargs):
+        """Matches process_seeding_data: writes files, returns a results dict."""
+        base = os.path.join(output_folder, 'polys')
+        for ext in ('.shp', '.shx', '.dbf'):
+            write(output_folder, 'polys' + ext)
+        return {
+            'polygons_path': base + '.shp',
+            'summary_path': write(output_folder, 'summary.csv'),
+            'plot_path': write(output_folder, 'preview.png') if plot_path else None,
+            'products_processed': 1,
+            'product_col_used': 'Product',
+            'width_col_used': 'Width',
+            'rate_col_used': 'Rate',
+        }
+
     # --- seeding tool ------------------------------------------------------
 
     def test_seeding_tool_registers_output_in_its_own_folder(self):
         source = self.make_file('points.shp')
 
-        def fake(*args, **kwargs):
-            out = kwargs.get('output_dir') or args[1]
-            return True, 'done', {
-                'polygons': write(out, 'polys.shp'),
-                'polygons_components': [write(out, 'polys.dbf'),
-                                        write(out, 'polys.shx')],
-            }
-
-        with patch('filemanager.SeedingPolygonTool_SV.process_seeding_data', side_effect=fake):
+        with patch('filemanager.SeedingPolygonTool_SV.process_seeding_data',
+                   side_effect=self.fake_seeding):
             result = tasks.run_seeding_tool_task.apply(args=[str(source.id)]).get()
 
         self.assertTrue(result['success'], result.get('error'))
@@ -74,31 +83,27 @@ class ToolOutputTests(TestCase):
         self.assertEqual(folder.parent, self.folder)
         names = set(File.objects.filter(folder=folder).values_list('name', flat=True))
         # The sidecars matter: a .shp alone cannot be opened.
-        self.assertEqual(names, {'polys.shp', 'polys.dbf', 'polys.shx'})
+        self.assertTrue({'polys.shp', 'polys.dbf', 'polys.shx'} <= names, names)
+        self.assertIn('summary.csv', names)
 
     def test_seeding_tool_reuses_its_folder_on_a_second_run(self):
         source = self.make_file('points.shp')
 
-        def fake(*args, **kwargs):
-            out = kwargs.get('output_dir') or args[1]
-            return True, 'done', {'polygons': write(out, 'polys.shp')}
-
-        with patch('filemanager.SeedingPolygonTool_SV.process_seeding_data', side_effect=fake):
+        with patch('filemanager.SeedingPolygonTool_SV.process_seeding_data',
+                   side_effect=self.fake_seeding):
             tasks.run_seeding_tool_task.apply(args=[str(source.id)]).get()
             tasks.run_seeding_tool_task.apply(args=[str(source.id)]).get()
 
         self.assertEqual(Folder.objects.filter(name='seeding_tool_output').count(), 1)
         self.assertEqual(File.objects.filter(name='polys.shp').count(), 1)
+        self.assertEqual(File.objects.filter(name='summary.csv').count(), 1)
 
     def test_seeding_tool_honours_a_chosen_folder(self):
         source = self.make_file('points.shp')
         chosen = Folder.objects.create(name='chosen', owner=self.user)
 
-        def fake(*args, **kwargs):
-            out = kwargs.get('output_dir') or args[1]
-            return True, 'done', {'polygons': write(out, 'polys.shp')}
-
-        with patch('filemanager.SeedingPolygonTool_SV.process_seeding_data', side_effect=fake):
+        with patch('filemanager.SeedingPolygonTool_SV.process_seeding_data',
+                   side_effect=self.fake_seeding):
             tasks.run_seeding_tool_task.apply(
                 args=[str(source.id)], kwargs={'output_dir_id': str(chosen.id)}
             ).get()
@@ -123,7 +128,7 @@ class ToolOutputTests(TestCase):
         yields = self.make_file('yield.shp')
 
         def fake(*args, **kwargs):
-            out = kwargs.get('output_dir') or args[2]
+            out = kwargs.get('output_dir') or kwargs.get('output_folder') or args[2]
             return True, 'done', {'summary_xlsx': write(out, 'summary.xlsx')}
 
         with patch('filemanager.yield_summary_tool_single_V4.process_yield_summary',
@@ -143,9 +148,8 @@ class ToolOutputTests(TestCase):
         applied = self.make_file('applied.shp')
         harvest = self.make_file('harvest.shp')
 
-        def fake(*args, **kwargs):
-            out = kwargs.get('output_dir') or args[3]
-            return True, 'done', {'clean_yield_points_shp': write(out, 'clean.shp')}
+        def fake(args):
+            write(args.out, 'clean.shp')
 
         with patch('filemanager.ValidYieldExtractorTool.run', side_effect=fake):
             result = tasks.run_valid_yield_extractor_task.apply(
