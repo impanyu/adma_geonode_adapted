@@ -675,29 +675,22 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=
 @shared_task(bind=True)
 def run_shape_to_json_task(self, file_id, output_dir_id=None, requesting_user_id=None):
     """
-    Convert a shapefile to GeoJSON format.
-
-    This task:
-    1. Reads the input shapefile
-    2. Converts to WGS84 (EPSG:4326) for GeoJSON compatibility
-    3. Saves the GeoJSON file
-    4. Creates a File record for the output in Django
+    Convert a shapefile to GeoJSON format, reprojected to WGS84.
 
     Args:
         file_id: ID of the input File object
-        output_dir_id: Optional ID of the Folder object for output. If not specified,
-                       creates a 'geojson_output' subdirectory in the input file's folder.
-        requesting_user_id: If provided, the task verifies the file belongs to this user
-                            (or is public) before processing. Passed by api_run_tool; direct
-                            view callers omit it (None = skip check, already auth'd at view layer).
+        output_dir_id: Optional ID of the Folder object for output. Without one,
+                       a 'geojson_output' folder is made beside the input.
+        requesting_user_id: If provided, the task verifies the file belongs to this
+                            user (or is public) before processing. Passed by
+                            api_run_tool; direct view callers omit it (None = skip
+                            check, already auth'd at the view layer).
     """
-    from django.conf import settings
-    import os
+    from .tool_io import register_outputs, resolve_output_folder
 
     try:
         logger.info(f"Starting Shape to JSON task for file ID: {file_id}")
 
-        # Get the file object
         try:
             file_obj = File.objects.get(id=file_id)
         except File.DoesNotExist:
@@ -712,140 +705,47 @@ def run_shape_to_json_task(self, file_id, output_dir_id=None, requesting_user_id
             )
             return {"success": False, "error": "Permission denied"}
 
-        # Validate file type
         file_ext = os.path.splitext(file_obj.name)[1].lower()
         if file_ext != '.shp':
             error_msg = f"Shape to JSON only supports .shp files, got: {file_ext}"
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
-        
-        # Get the input file path
-        input_path = file_obj.file.path
-        
-        # Determine output directory and folder
-        from .models import Folder
-        output_folder_obj = None
-        
-        if output_dir_id:
-            # Use specified output folder
-            try:
-                output_folder_obj = Folder.objects.get(id=output_dir_id)
-            except Folder.DoesNotExist:
-                logger.error(f"Output folder with ID {output_dir_id} not found")
-                return {"success": False, "error": f"Output folder with ID {output_dir_id} not found"}
-        else:
-            # Auto-create 'geojson_output' folder under the input file's parent folder
-            parent_folder = file_obj.folder
-            
-            # Check if a folder with this name already exists
-            existing_folder = Folder.objects.filter(
-                name="geojson_output",
-                parent=parent_folder,
-                owner=file_obj.owner
-            ).first()
-            
-            if existing_folder:
-                output_folder_obj = existing_folder
-                logger.info(f"Using existing 'geojson_output' folder: {output_folder_obj.id}")
-            else:
-                # Create new folder record
-                output_folder_obj = Folder.objects.create(
-                    name="geojson_output",
-                    parent=parent_folder,
-                    owner=file_obj.owner,
-                    is_public=file_obj.is_public
-                )
-                logger.info(f"Created new 'geojson_output' folder: {output_folder_obj.id}")
-        
-        # Build the full output directory path under MEDIA_ROOT/uploads
-        relative_output_dir = output_folder_obj.get_full_path()
-        output_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', relative_output_dir)
-        
-        # Ensure output directory exists on filesystem
-        os.makedirs(output_dir, exist_ok=True)
-        
-        logger.info(f"Processing file: {input_path}")
-        logger.info(f"Output directory: {output_dir}")
-        
-        # Import and run the shape to json tool
+
+        try:
+            output_folder_obj, output_dir = resolve_output_folder(
+                file_obj, output_dir_id, default_name="geojson_output"
+            )
+        except ValueError as exc:
+            logger.error(str(exc))
+            return {"success": False, "error": str(exc)}
+
+        logger.info(f"Processing file: {file_obj.file.path} -> {output_dir}")
+
         from .Shape_To_Json import process_shape_to_json
-        
-        success, message, output_files = process_shape_to_json(input_path, output_dir)
-        
+        success, message, output_files = process_shape_to_json(file_obj.file.path, output_dir)
+
         if not success:
             logger.error(f"Shape to JSON failed: {message}")
-            file_obj.processing_log = (file_obj.processing_log or "") + f"\n✗ Shape to JSON failed: {message}"
+            file_obj.processing_log = (file_obj.processing_log or "") + f"\n\u2717 Shape to JSON failed: {message}"
             file_obj.save(update_fields=['processing_log'])
             return {"success": False, "error": message}
-        
-        logger.info(f"Shape to JSON completed: {message}")
-        
-        # Create File records for the output files
-        created_files = []
-        
-        for file_type, file_path in output_files.items():
-            if os.path.exists(file_path):
-                try:
-                    media_root = settings.MEDIA_ROOT
-                    if file_path.startswith(str(media_root)):
-                        relative_path = os.path.relpath(file_path, media_root)
-                    else:
-                        relative_path = file_path
-                    
-                    file_name = os.path.basename(file_path)
-                    file_size = os.path.getsize(file_path)
-                    
-                    # Check if file already exists
-                    existing_file = File.objects.filter(
-                        name=file_name,
-                        folder=output_folder_obj,
-                        owner=file_obj.owner
-                    ).first()
-                    
-                    if existing_file:
-                        existing_file.file_size = file_size
-                        existing_file.save(update_fields=['file_size', 'updated_at'])
-                        created_files.append({
-                            'name': file_name,
-                            'id': str(existing_file.id),
-                            'updated': True
-                        })
-                        logger.info(f"Updated existing file: {file_name}")
-                    else:
-                        new_file = File(
-                            name=file_name,
-                            folder=output_folder_obj,
-                            owner=file_obj.owner,
-                            file_size=file_size,
-                            is_public=file_obj.is_public,
-                        )
-                        new_file.file.name = relative_path
-                        new_file.save()
-                        
-                        created_files.append({
-                            'name': file_name,
-                            'id': str(new_file.id),
-                            'updated': False
-                        })
-                        logger.info(f"Created new file record: {file_name}")
-                        
-                except Exception as e:
-                    logger.error(f"Error creating file record for {file_path}: {e}")
-        
-        # Update source file processing log
-        file_obj.processing_log = (file_obj.processing_log or "") + f"\n✓ Shape to JSON completed: {message}"
+
+        created_files = register_outputs(
+            output_files, output_folder_obj, file_obj.owner, is_public=file_obj.is_public
+        )
+
+        file_obj.processing_log = (file_obj.processing_log or "") + f"\n\u2713 Shape to JSON completed: {message}"
         file_obj.save(update_fields=['processing_log'])
-        
+
         result = {
             "success": True,
             "message": message,
             "created_files": created_files,
-            "output_files": {k: os.path.basename(v) for k, v in output_files.items()}
+            "output_files": {k: os.path.basename(v) for k, v in output_files.items()},
         }
-        
         logger.info(f"Shape to JSON task completed successfully: {result}")
         return result
-        
+
     except Exception as e:
         logger.exception("Error in Shape to JSON task for file %s", file_id)
         return {"success": False, "error": f"Shape to JSON task failed (see server logs for file {file_id})"}
