@@ -69,13 +69,19 @@ def _iter_paths(output_files):
             yield role, value
 
 
-def register_outputs(output_files, folder, owner, is_public=False, extra_fields=None):
+def register_outputs(output_files, folder, owner, is_public=False, extra_fields=None,
+                     publish=True):
     """
     Create (or refresh) a File row per written output.
 
     ``extra_fields`` is set on every row created or refreshed -- the public
     dataset fetchers use it to mark their output as third-party, which is what
     puts it in the Third-Party Data panel.
+
+    Spatial output is handed to the GIS pipeline unless ``publish`` is off.
+    Uploading a file schedules that pipeline; creating one here did not, so
+    every raster and shapefile a tool produced sat at gis_status 'pending'
+    with no GeoServer layer -- saved, listed, and impossible to open on a map.
 
     Returns the list of registered files. A path the processing step named but
     did not actually write is skipped with a warning rather than aborting the
@@ -118,4 +124,33 @@ def register_outputs(output_files, folder, owner, is_public=False, extra_fields=
             new_file.save()
             registered.append({'role': role, 'name': name, 'id': str(new_file.id), 'updated': False})
 
+    if publish:
+        _schedule_publishing(registered)
+
     return registered
+
+
+def _schedule_publishing(registered):
+    """
+    Send each newly written spatial file through the GIS pipeline.
+
+    Only the formats the project marks for auto-processing are sent; a
+    shapefile's sidecars are written beside the .shp and are not layers of
+    their own, and a CSV or PNG output is not spatial at all.
+    """
+    from django.conf import settings
+
+    from .tasks import process_gis_file_task
+
+    publishable = {e.lower() for e in getattr(settings, 'GIS_FILE_EXTENSIONS', [])}
+
+    for entry in registered:
+        if os.path.splitext(entry['name'])[1].lower() not in publishable:
+            continue
+        try:
+            process_gis_file_task.delay(entry['id'])
+            logger.info('Queued %s for GIS processing', entry['name'])
+        except Exception:
+            # A broker hiccup should not lose the output that was just
+            # written; it is on disk and registered either way.
+            logger.exception('Could not queue %s for GIS processing', entry['name'])
