@@ -822,49 +822,10 @@ def run_si_tool_task(
         logger.info(f"SI Tool v2 calculation completed for workflow={workflow}")
 
         # --- Create File record for the updated CSV ---
-        created_files = []
-        if os.path.exists(output_csv_path):
-            try:
-                media_root = settings.MEDIA_ROOT
-                if output_csv_path.startswith(str(media_root)):
-                    relative_path = os.path.relpath(output_csv_path, media_root)
-                else:
-                    relative_path = output_csv_path
-
-                file_name = os.path.basename(output_csv_path)
-                file_size = os.path.getsize(output_csv_path)
-
-                existing_file = File.objects.filter(
-                    name=file_name,
-                    folder=output_folder_obj,
-                    owner=buffer_file.owner
-                ).first()
-
-                if existing_file:
-                    existing_file.file_size = file_size
-                    existing_file.save(update_fields=['file_size', 'updated_at'])
-                    created_files.append({
-                        'name': file_name,
-                        'id': str(existing_file.id),
-                        'updated': True
-                    })
-                else:
-                    new_file = File(
-                        name=file_name,
-                        folder=output_folder_obj,
-                        owner=buffer_file.owner,
-                        file_size=file_size,
-                        is_public=buffer_file.is_public,
-                    )
-                    new_file.file.name = relative_path
-                    new_file.save()
-                    created_files.append({
-                        'name': file_name,
-                        'id': str(new_file.id),
-                        'updated': False
-                    })
-            except Exception as e:
-                logger.error(f"Error creating file record for {output_csv_path}: {e}")
+        created_files = register_outputs(
+            {'updated_csv': output_csv_path}, output_folder_obj,
+            buffer_file.owner, is_public=buffer_file.is_public,
+        )
 
         # Update source file processing log
         buffer_file.processing_log = (buffer_file.processing_log or "") + f"\n✓ SI Tool ({workflow}) completed"
@@ -1904,73 +1865,19 @@ def run_yield_summary_tool_task(
         logger.info(f"Yield Summary Tool completed: {message}")
         
         # Create File records for the output files
-        created_files = []
-        
-        def create_file_record(file_path):
-            if not os.path.exists(file_path):
-                return None
-            try:
-                media_root = settings.MEDIA_ROOT
-                if file_path.startswith(str(media_root)):
-                    relative_path = os.path.relpath(file_path, media_root)
-                else:
-                    relative_path = file_path
-                
-                file_name = os.path.basename(file_path)
-                file_size = os.path.getsize(file_path)
-                
-                existing_file = File.objects.filter(
-                    name=file_name,
-                    folder=output_folder_obj,
-                    owner=treatment_file.owner
-                ).first()
-                
-                if existing_file:
-                    existing_file.file_size = file_size
-                    existing_file.save(update_fields=['file_size', 'updated_at'])
-                    logger.info(f"Updated existing file: {file_name}")
-                    return {
-                        'name': file_name,
-                        'id': str(existing_file.id),
-                        'updated': True
-                    }
-                else:
-                    new_file = File(
-                        name=file_name,
-                        folder=output_folder_obj,
-                        owner=treatment_file.owner,
-                        file_size=file_size,
-                        is_public=treatment_file.is_public,
-                    )
-                    new_file.file.name = relative_path
-                    new_file.save()
-                    
-                    logger.info(f"Created new file record: {file_name}")
-                    return {
-                        'name': file_name,
-                        'id': str(new_file.id),
-                        'updated': False
-                    }
-                    
-            except Exception as e:
-                logger.error(f"Error creating file record for {file_path}: {e}")
-                return None
-        
-        # Process shapefile components
-        for component_key in ['buffer_components', 'summary_shp_components']:
-            if component_key in output_files:
-                for file_path in output_files[component_key]:
-                    result = create_file_record(file_path)
-                    if result:
-                        created_files.append(result)
-        
-        # Process Excel files
-        for excel_key in ['summary_xlsx', 'stat_xlsx']:
-            if excel_key in output_files:
-                result = create_file_record(output_files[excel_key])
-                if result:
-                    created_files.append(result)
-        
+        # Same keys as before: the component lists become one row per
+        # shapefile sidecar, the spreadsheets one row each.
+        registered = {
+            key: output_files[key]
+            for key in ('buffer_components', 'summary_shp_components',
+                        'summary_xlsx', 'stat_xlsx')
+            if key in output_files
+        }
+        created_files = register_outputs(
+            registered, output_folder_obj, treatment_file.owner,
+            is_public=treatment_file.is_public,
+        )
+
         # Update source file processing log
         treatment_file.processing_log = (treatment_file.processing_log or "") + f"\n✓ Yield Summary Tool completed: {message}"
         treatment_file.save(update_fields=['processing_log'])
@@ -2301,67 +2208,18 @@ def run_valid_yield_extractor_task(
         logger.info(f"Valid Yield Extractor Tool completed for output directory: {output_dir}")
 
         # Scan the output directory for all generated files and create File records
-        created_files = []
-
-        def create_file_record(file_path):
-            if not os.path.exists(file_path):
-                return None
-            try:
-                media_root = settings.MEDIA_ROOT
-                if file_path.startswith(str(media_root)):
-                    relative_path = os.path.relpath(file_path, media_root)
-                else:
-                    relative_path = file_path
-
-                file_name = os.path.basename(file_path)
-                file_size = os.path.getsize(file_path)
-
-                existing_file = File.objects.filter(
-                    name=file_name,
-                    folder=output_folder_obj,
-                    owner=plots_file.owner
-                ).first()
-
-                if existing_file:
-                    existing_file.file_size = file_size
-                    existing_file.save(update_fields=['file_size', 'updated_at'])
-                    logger.info(f"Updated existing file: {file_name}")
-                    return {
-                        'name': file_name,
-                        'id': str(existing_file.id),
-                        'updated': True
-                    }
-                else:
-                    new_file = File(
-                        name=file_name,
-                        folder=output_folder_obj,
-                        owner=plots_file.owner,
-                        file_size=file_size,
-                        is_public=plots_file.is_public,
-                    )
-                    new_file.file.name = relative_path
-                    new_file.save()
-
-                    logger.info(f"Created new file record: {file_name}")
-                    return {
-                        'name': file_name,
-                        'id': str(new_file.id),
-                        'updated': False
-                    }
-
-            except Exception as e:
-                logger.error(f"Error creating file record for {file_path}: {e}")
-                return None
-
-        # Scan output directory for all generated files
+        # The tool writes into the directory rather than reporting a
+        # file list, so the scan stays; only the registration is shared.
         output_extensions = {'.shp', '.shx', '.dbf', '.prj', '.cpg', '.csv', '.png'}
-        for filename in os.listdir(output_dir):
-            file_ext = os.path.splitext(filename)[1].lower()
-            if file_ext in output_extensions:
-                file_path = os.path.join(output_dir, filename)
-                result = create_file_record(file_path)
-                if result:
-                    created_files.append(result)
+        written = {
+            os.path.splitext(name)[0] + os.path.splitext(name)[1]: os.path.join(output_dir, name)
+            for name in sorted(os.listdir(output_dir))
+            if os.path.splitext(name)[1].lower() in output_extensions
+        }
+        created_files = register_outputs(
+            written, output_folder_obj, plots_file.owner,
+            is_public=plots_file.is_public,
+        )
 
         # Update source file processing log
         plots_file.processing_log = (plots_file.processing_log or "") + f"\n✓ Valid Yield Extractor completed. {len(created_files)} output files created."
