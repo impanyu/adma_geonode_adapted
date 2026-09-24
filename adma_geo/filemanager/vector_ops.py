@@ -73,7 +73,7 @@ def apply_operation(input_path, output_dir, operation='buffer', distance=0.0,
             working_crs = _metric_crs(frame)
             working = frame.to_crs(working_crs)
             working['geometry'] = working.geometry.buffer(distance)
-            working = working[~working.geometry.is_empty & working.geometry.notna()]
+            working = working[~working.geometry.is_empty & ~working.geometry.isna()]
 
             if working.empty:
                 return False, (

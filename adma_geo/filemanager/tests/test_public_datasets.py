@@ -40,7 +40,7 @@ class RegistryTests(TestCase):
         for key, dataset in PUBLIC_DATASETS.items():
             with self.subTest(dataset=key):
                 self.assertEqual(dataset.key, key)
-                self.assertIn(dataset.kind, {'raster', 'table'})
+                self.assertIn(dataset.kind, {'raster', 'table', 'vector'})
                 self.assertIn(dataset.needs, {'bbox', 'point'})
                 self.assertTrue(dataset.name and dataset.description)
                 self.assertTrue(callable(dataset.fetch))

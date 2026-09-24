@@ -212,8 +212,13 @@ class PointSamplingTests(SimpleTestCase):
 
         self.assertTrue(ok, message)
         written = gpd.read_file(outputs['samples_shp'][0])
-        sampled = [c for c in written.columns if c.startswith('soil_organ')]
+        # .dbf caps field names at 10 characters, so both would have been
+        # written as 'soil_organ' and the second would have overwritten the
+        # first. They must survive as two distinct columns.
+        sampled = [c for c in written.columns if c.startswith('soil_org')]
         self.assertEqual(len(sampled), 2, written.columns.tolist())
+        self.assertEqual(len(set(sampled)), 2, sampled)
+        self.assertTrue(all(len(c) <= 10 for c in sampled), sampled)
 
 
 class VectorOperationTests(SimpleTestCase):

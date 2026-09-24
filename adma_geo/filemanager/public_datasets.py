@@ -40,6 +40,10 @@ ALLOWED_HOSTS = frozenset({
     'power.larc.nasa.gov',
     'archive-api.open-meteo.com',
     'maps.isric.org',
+    'elevation.nationalmap.gov',
+    'hydro.nationalmap.gov',
+    'overpass.kumi.systems',
+    'sdmdataaccess.sc.egov.usda.gov',
 })
 
 
@@ -338,6 +342,323 @@ def fetch_soilgrids(aoi, output_dir, soil_property='soc', depth='0-5cm', **_):
     ), {'soil_tif': path}
 
 
+
+# --- USGS 3DEP elevation ----------------------------------------------------
+
+ELEVATION_URL = (
+    'https://elevation.nationalmap.gov/arcgis/rest/services/'
+    '3DEPElevation/ImageServer/exportImage'
+)
+# The service returns whatever grid is asked for, so this caps the request
+# rather than the ground it covers.
+ELEVATION_MAX_PIXELS = 2048
+
+
+def fetch_elevation(aoi, output_dir, resolution=512, **_):
+    """A bare-earth elevation raster for the area, from USGS 3DEP."""
+    import rasterio
+
+    bbox = aoi['bbox']
+    check_bbox(bbox)
+
+    try:
+        size = int(resolution)
+    except (TypeError, ValueError):
+        raise DatasetError('Resolution must be a number of pixels.')
+    size = max(64, min(size, ELEVATION_MAX_PIXELS))
+
+    query = urllib.parse.urlencode({
+        'bbox': ','.join(f'{v:.6f}' for v in bbox),
+        'bboxSR': 4326, 'imageSR': 4326,
+        'size': f'{size},{size}',
+        'format': 'tiff', 'pixelType': 'F32', 'f': 'image',
+    })
+
+    with _open(f'{ELEVATION_URL}?{query}') as response:
+        payload = response.read()
+
+    if payload[:2] not in (b'II', b'MM'):
+        raise DatasetError(
+            'USGS returned something that is not a GeoTIFF. 3DEP covers the '
+            'United States and its territories only.'
+        )
+
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, 'usgs_3dep_elevation.tif')
+    with open(path, 'wb') as handle:
+        handle.write(payload)
+
+    import numpy as np
+    with rasterio.open(path, 'r+') as source:
+        if source.crs is None:
+            source.crs = rasterio.crs.CRS.from_epsg(4326)
+        band = source.read(1, masked=True)
+        width, height = source.width, source.height
+
+    valid = band.compressed() if np.ma.isMaskedArray(band) else band.ravel()
+    valid = valid[np.isfinite(valid)]
+    if valid.size == 0:
+        raise DatasetError('No elevation data covers that area.')
+
+    return True, (
+        f'USGS 3DEP elevation, {width}x{height} px. '
+        f'Ground runs {valid.min():.1f} to {valid.max():.1f} m, '
+        f'a relief of {valid.max() - valid.min():.1f} m.'
+    ), {'elevation_tif': path}
+
+
+# --- USGS watershed boundaries ---------------------------------------------
+
+WATERSHED_URL = (
+    'https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer'
+)
+# The Watershed Boundary Dataset nests from region down to subwatershed; the
+# smaller units are the ones a field sits inside.
+WATERSHED_LAYERS = {
+    'huc8': (4, 'Subbasin (HUC8)'),
+    'huc10': (5, 'Watershed (HUC10)'),
+    'huc12': (6, 'Subwatershed (HUC12)'),
+}
+
+
+def fetch_watersheds(aoi, output_dir, level='huc12', **_):
+    """The watershed polygons a field sits inside."""
+    import geopandas as gpd
+
+    if level not in WATERSHED_LAYERS:
+        raise DatasetError(
+            f'Unknown level. Available: {", ".join(sorted(WATERSHED_LAYERS))}.'
+        )
+    layer_id, label = WATERSHED_LAYERS[level]
+
+    bbox = aoi['bbox']
+    check_bbox(bbox)
+
+    query = urllib.parse.urlencode({
+        'geometry': ','.join(f'{v:.6f}' for v in bbox),
+        'geometryType': 'esriGeometryEnvelope',
+        'inSR': 4326, 'outSR': 4326,
+        'spatialRel': 'esriSpatialRelIntersects',
+        'outFields': '*', 'f': 'geojson', 'resultRecordCount': 50,
+    })
+
+    with _open(f'{WATERSHED_URL}/{layer_id}/query?{query}') as response:
+        payload = json.loads(response.read().decode('utf-8'))
+
+    features = payload.get('features') or []
+    if not features:
+        raise DatasetError(
+            f'No {label} polygon covers that area. The Watershed Boundary '
+            'Dataset covers the United States only.'
+        )
+
+    frame = gpd.GeoDataFrame.from_features(features, crs='EPSG:4326')
+
+    os.makedirs(output_dir, exist_ok=True)
+    base = f'wbd_{level}'
+    shp_path = os.path.join(output_dir, f'{base}.shp')
+    # Field names are written to a .dbf, which caps them at 10 characters.
+    frame = frame.rename(columns={c: c[:10] for c in frame.columns
+                                  if c != frame.geometry.name})
+    frame.to_file(shp_path)
+
+    return True, (
+        f'{label}: {len(frame)} polygon(s) intersecting the area.'
+    ), {
+        'watersheds_shp': [
+            os.path.join(output_dir, f'{base}{ext}')
+            for ext in ('.shp', '.shx', '.dbf', '.prj', '.cpg')
+        ]
+    }
+
+
+# --- OpenStreetMap ----------------------------------------------------------
+
+# The main overpass-api.de instance is frequently saturated and answers 504.
+OVERPASS_URL = 'https://overpass.kumi.systems/api/interpreter'
+
+OSM_FEATURES = {
+    'roads': ('highway', 'Roads and tracks, including field access.'),
+    'waterways': ('waterway', 'Streams, ditches and drains.'),
+    'buildings': ('building', 'Buildings, including farmsteads and bins.'),
+    'landuse': ('landuse', 'Land use polygons: farmland, meadow, forest.'),
+}
+
+
+def _osm_to_features(payload):
+    """Turn an Overpass element list into GeoJSON features."""
+    from shapely.geometry import LineString, Point, Polygon
+
+    records = []
+    for element in payload.get('elements', []):
+        tags = element.get('tags') or {}
+        kind = element.get('type')
+
+        if kind == 'node' and element.get('lat') is not None:
+            geometry = Point(element['lon'], element['lat'])
+        elif kind == 'way' and element.get('geometry'):
+            points = [(p['lon'], p['lat']) for p in element['geometry']]
+            if len(points) < 2:
+                continue
+            closed = points[0] == points[-1] and len(points) >= 4
+            # A closed way is an area only when its tags say so; a roundabout
+            # is closed too and is still a road.
+            area_like = closed and (
+                'building' in tags or 'landuse' in tags or tags.get('area') == 'yes'
+            )
+            geometry = Polygon(points) if area_like else LineString(points)
+        else:
+            continue
+
+        records.append({
+            'geometry': geometry,
+            'osm_id': element.get('id'),
+            'osm_type': kind,
+            'name': tags.get('name'),
+            'category': (
+                tags.get('highway') or tags.get('waterway')
+                or tags.get('building') or tags.get('landuse')
+            ),
+        })
+    return records
+
+
+def fetch_osm(aoi, output_dir, feature='roads', **_):
+    """Map features around a field, from OpenStreetMap."""
+    import geopandas as gpd
+
+    if feature not in OSM_FEATURES:
+        raise DatasetError(
+            f'Unknown feature type. Available: {", ".join(sorted(OSM_FEATURES))}.'
+        )
+    key, _description = OSM_FEATURES[feature]
+
+    minx, miny, maxx, maxy = aoi['bbox']
+    check_bbox(aoi['bbox'])
+
+    # Overpass takes south,west,north,east.
+    query = (
+        f'[out:json][timeout:60];'
+        f'(way["{key}"]({miny:.6f},{minx:.6f},{maxy:.6f},{maxx:.6f});'
+        f' node["{key}"]({miny:.6f},{minx:.6f},{maxy:.6f},{maxx:.6f}););'
+        f'out geom;'
+    )
+    body = urllib.parse.urlencode({'data': query}).encode()
+
+    with _open(OVERPASS_URL, data=body,
+               headers={'Content-Type': 'application/x-www-form-urlencoded'}) as response:
+        payload = json.loads(response.read().decode('utf-8'))
+
+    records = _osm_to_features(payload)
+    if not records:
+        raise DatasetError(f'OpenStreetMap has no {feature} mapped in that area.')
+
+    frame = gpd.GeoDataFrame(records, crs='EPSG:4326')
+
+    os.makedirs(output_dir, exist_ok=True)
+    base = f'osm_{feature}'
+    shp_path = os.path.join(output_dir, f'{base}.shp')
+    frame.to_file(shp_path)
+
+    kinds = frame['category'].value_counts().head(3)
+    summary = ', '.join(f'{k} {v}' for k, v in kinds.items())
+    return True, (
+        f'{len(frame)} OpenStreetMap {feature} feature(s). Mostly {summary}. '
+        'Data \u00a9 OpenStreetMap contributors, ODbL.'
+    ), {
+        'osm_shp': [
+            os.path.join(output_dir, f'{base}{ext}')
+            for ext in ('.shp', '.shx', '.dbf', '.prj', '.cpg')
+        ]
+    }
+
+
+# --- USDA SSURGO soil survey ------------------------------------------------
+
+SDA_URL = 'https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest'
+
+
+def _sda_query(sql):
+    body = json.dumps({'query': sql, 'format': 'JSON'}).encode()
+    with _open(SDA_URL, data=body,
+               headers={'Content-Type': 'application/json'}) as response:
+        raw = response.read().decode('utf-8', errors='replace')
+    if not raw.lstrip().startswith('{'):
+        raise DatasetError(
+            'The USDA Soil Data Access service returned an error. It goes down '
+            'for maintenance nightly around 12:30 AM US Central.'
+        )
+    return json.loads(raw).get('Table', []) or []
+
+
+def fetch_ssurgo(aoi, output_dir, **_):
+    """
+    SSURGO soil map units as polygons, with the dominant soil named.
+
+    SoilGrids is a 250 m global model; SSURGO is the surveyed map of the United
+    States, mapped at field scale, and names the soil series the local
+    agronomy is written about.
+    """
+    import geopandas as gpd
+    from shapely import wkt as shapely_wkt
+
+    minx, miny, maxx, maxy = aoi['bbox']
+    check_bbox(aoi['bbox'])
+
+    polygon = (
+        f'polygon(({minx:.6f} {miny:.6f},{maxx:.6f} {miny:.6f},'
+        f'{maxx:.6f} {maxy:.6f},{minx:.6f} {maxy:.6f},{minx:.6f} {miny:.6f}))'
+    )
+
+    sql = (
+        "SELECT TOP 200 p.mupolygongeo.STAsText() AS wkt, m.mukey, m.musym, "
+        "       m.muname "
+        "FROM mupolygon p "
+        "JOIN mapunit m ON m.mukey = p.mukey "
+        f"WHERE p.mupolygonkey IN (SELECT mupolygonkey FROM "
+        f"  SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84('{polygon}'))"
+    )
+
+    rows = _sda_query(sql)
+    if not rows:
+        raise DatasetError(
+            'No SSURGO soil survey covers that area. SSURGO is the United '
+            'States survey; elsewhere, use SoilGrids.'
+        )
+
+    records = []
+    for wkt_text, mukey, musym, muname in rows:
+        try:
+            geometry = shapely_wkt.loads(wkt_text)
+        except Exception:
+            continue
+        records.append({
+            'geometry': geometry, 'mukey': mukey,
+            'musym': musym, 'muname': muname,
+        })
+
+    if not records:
+        raise DatasetError('SSURGO returned map units without usable geometry.')
+
+    frame = gpd.GeoDataFrame(records, crs='EPSG:4326')
+
+    os.makedirs(output_dir, exist_ok=True)
+    base = 'ssurgo_map_units'
+    shp_path = os.path.join(output_dir, f'{base}.shp')
+    frame.to_file(shp_path)
+
+    names = frame['muname'].value_counts().head(2)
+    summary = '; '.join(f'{k}' for k in names.index)
+    return True, (
+        f'{len(frame)} SSURGO map unit polygon(s). Mostly {summary}.'
+    ), {
+        'ssurgo_shp': [
+            os.path.join(output_dir, f'{base}{ext}')
+            for ext in ('.shp', '.shx', '.dbf', '.prj', '.cpg')
+        ]
+    }
+
+
 # --- registry ---------------------------------------------------------------
 
 class PublicDataset:
@@ -377,6 +698,40 @@ PUBLIC_DATASETS = {d.key: d for d in [
         fetch_open_meteo,
         options=[{'name': 'start', 'label': 'Start date', 'type': 'date'},
                  {'name': 'end', 'label': 'End date', 'type': 'date'}],
+    ),
+    PublicDataset(
+        'usgs_elevation', 'USGS 3DEP elevation', 'usgs_3dep', 'raster', 'bbox',
+        'Bare-earth elevation for the United States. Feeds the Terrain tool '
+        'for slope, aspect and where water collects.',
+        fetch_elevation,
+        options=[{'name': 'resolution', 'label': 'Grid size (px)', 'type': 'select',
+                  'choices': ['256', '512', '1024', '2048'], 'default': '512'}],
+    ),
+    PublicDataset(
+        'usgs_watersheds', 'USGS watershed boundaries', 'usgs_wbd', 'vector', 'bbox',
+        'The nested watersheds a field drains into, from the USGS Watershed '
+        'Boundary Dataset -- the unit most nutrient-loss rules are written in.',
+        fetch_watersheds,
+        options=[{'name': 'level', 'label': 'Level', 'type': 'select',
+                  'choices': sorted(WATERSHED_LAYERS),
+                  'labels': {k: v[1] for k, v in WATERSHED_LAYERS.items()},
+                  'default': 'huc12'}],
+    ),
+    PublicDataset(
+        'openstreetmap', 'OpenStreetMap features', 'openstreetmap', 'vector', 'bbox',
+        'Roads, waterways, buildings and land use around a field, for context '
+        'on a map or for measuring distance to a road or stream.',
+        fetch_osm,
+        options=[{'name': 'feature', 'label': 'Features', 'type': 'select',
+                  'choices': sorted(OSM_FEATURES),
+                  'default': 'roads'}],
+    ),
+    PublicDataset(
+        'ssurgo', 'USDA SSURGO soil survey', 'ssurgo', 'vector', 'bbox',
+        'The surveyed soil map of the United States, at field scale, naming '
+        'the soil series local agronomy is written about. Where it covers, it '
+        'beats the 250 m global SoilGrids model.',
+        fetch_ssurgo,
     ),
     PublicDataset(
         'soilgrids', 'SoilGrids soil properties', 'soilgrids', 'raster', 'bbox',
