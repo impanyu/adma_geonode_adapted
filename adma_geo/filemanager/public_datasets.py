@@ -582,20 +582,20 @@ def fetch_osm(aoi, output_dir, feature='roads', **_):
 
     os.makedirs(output_dir, exist_ok=True)
     base = f'osm_{feature}'
-    shp_path = os.path.join(output_dir, f'{base}.shp')
-    frame.to_file(shp_path)
+    # GeoJSON rather than a shapefile: one query returns points and lines
+    # together -- a mapped stream and the gauge on it -- and a shapefile holds
+    # exactly one geometry type, so the write fails partway through. GeoJSON
+    # also keeps full-length field names, and the map viewer draws it directly.
+    path = os.path.join(output_dir, f'{base}.geojson')
+    frame.to_file(path, driver='GeoJSON')
 
     kinds = frame['category'].value_counts().head(3)
     summary = ', '.join(f'{k} {v}' for k, v in kinds.items())
+    shapes = ', '.join(sorted(frame.geom_type.unique()))
     return True, (
-        f'{len(frame)} OpenStreetMap {feature} feature(s). Mostly {summary}. '
-        'Data \u00a9 OpenStreetMap contributors, ODbL.'
-    ), {
-        'osm_shp': [
-            os.path.join(output_dir, f'{base}{ext}')
-            for ext in ('.shp', '.shx', '.dbf', '.prj', '.cpg')
-        ]
-    }
+        f'{len(frame)} OpenStreetMap {feature} feature(s) ({shapes}). '
+        f'Mostly {summary}. Data \u00a9 OpenStreetMap contributors, ODbL.'
+    ), {'osm_geojson': path}
 
 
 # --- USDA SSURGO soil survey ------------------------------------------------
