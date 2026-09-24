@@ -5,6 +5,9 @@ from celery import shared_task
 from django.contrib.auth import get_user_model
 from .models import File, Folder
 from .gis_utils import process_gis_file, publish_to_geoserver, bundle_and_publish_shapefile
+# tool_io imports this module back, but only inside a function, so a plain
+# import here does not create a cycle.
+from .tool_io import register_outputs, resolve_output_folder
 from datetime import date
 import json
 import logging
@@ -445,46 +448,13 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=
         from .models import Folder
         output_folder_obj = None
         
-        if output_dir_id:
-            # Use specified output folder
-            try:
-                output_folder_obj = Folder.objects.get(id=output_dir_id)
-            except Folder.DoesNotExist:
-                logger.error(f"Output folder with ID {output_dir_id} not found")
-                return {"success": False, "error": f"Output folder with ID {output_dir_id} not found"}
-        else:
-            # Auto-create 'seeding_tool_output' folder under the input file's parent folder
-            # First, create a Django Folder record
-            parent_folder = file_obj.folder  # This is the input file's parent folder (can be None for root)
-            
-            # Check if a folder with this name already exists
-            existing_folder = Folder.objects.filter(
-                name="seeding_tool_output",
-                parent=parent_folder,
-                owner=file_obj.owner
-            ).first()
-            
-            if existing_folder:
-                output_folder_obj = existing_folder
-                logger.info(f"Using existing 'seeding_tool_output' folder: {output_folder_obj.id}")
-            else:
-                # Create new folder record
-                output_folder_obj = Folder.objects.create(
-                    name="seeding_tool_output",
-                    parent=parent_folder,
-                    owner=file_obj.owner,
-                    is_public=file_obj.is_public  # Inherit visibility from source file
-                )
-                logger.info(f"Created new 'seeding_tool_output' folder: {output_folder_obj.id}")
-        
-        # Build the full output directory path under MEDIA_ROOT/uploads
-        # output_folder_obj.get_full_path() returns relative path like "All the Strips/.../seeding_tool_output"
-        # Files must be under MEDIA_ROOT/uploads/ for Django FileField to find them
-        relative_output_dir = output_folder_obj.get_full_path()
-        output_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', relative_output_dir)
-        
-        # Ensure output directory exists on filesystem
-        os.makedirs(output_dir, exist_ok=True)
+        try:
+            output_folder_obj, output_dir = resolve_output_folder(
+                file_obj, output_dir_id, default_name="seeding_tool_output"
+            )
+        except ValueError as exc:
+            logger.error(str(exc))
+            return {"success": False, "error": str(exc)}
         
         logger.info(f"Processing file: {input_path}")
         logger.info(f"Output directory: {output_dir}")
@@ -686,8 +656,6 @@ def run_shape_to_json_task(self, file_id, output_dir_id=None, requesting_user_id
                             api_run_tool; direct view callers omit it (None = skip
                             check, already auth'd at the view layer).
     """
-    from .tool_io import register_outputs, resolve_output_folder
-
     try:
         logger.info(f"Starting Shape to JSON task for file ID: {file_id}")
 
@@ -874,32 +842,13 @@ def run_si_tool_task(
         from .models import Folder
         output_folder_obj = None
 
-        if output_folder_id:
-            try:
-                output_folder_obj = Folder.objects.get(id=output_folder_id)
-            except Folder.DoesNotExist:
-                return {"success": False, "error": "Output folder not found"}
-        else:
-            parent_folder = buffer_file.folder
-            existing_folder = Folder.objects.filter(
-                name="si_tool_output",
-                parent=parent_folder,
-                owner=buffer_file.owner
-            ).first()
-
-            if existing_folder:
-                output_folder_obj = existing_folder
-            else:
-                output_folder_obj = Folder.objects.create(
-                    name="si_tool_output",
-                    parent=parent_folder,
-                    owner=buffer_file.owner,
-                    is_public=buffer_file.is_public
-                )
-
-        relative_output_dir = output_folder_obj.get_full_path()
-        output_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', relative_output_dir)
-        os.makedirs(output_dir, exist_ok=True)
+        try:
+            output_folder_obj, output_dir = resolve_output_folder(
+                buffer_file, output_folder_id, default_name="si_tool_output"
+            )
+        except ValueError as exc:
+            logger.error(str(exc))
+            return {"success": False, "error": str(exc)}
 
         logger.info(f"Processing SI Tool: workflow={workflow}, output_dir={output_dir}")
 
@@ -1996,39 +1945,13 @@ def run_yield_summary_tool_task(
         from .models import Folder
         output_folder_obj = None
         
-        if output_dir_id:
-            try:
-                output_folder_obj = Folder.objects.get(id=output_dir_id)
-            except Folder.DoesNotExist:
-                logger.error(f"Output folder with ID {output_dir_id} not found")
-                return {"success": False, "error": f"Output folder with ID {output_dir_id} not found"}
-        else:
-            # Auto-create 'yield_summary_output' folder under the treatment file's parent folder
-            parent_folder = treatment_file.folder
-            
-            existing_folder = Folder.objects.filter(
-                name="yield_summary_output",
-                parent=parent_folder,
-                owner=treatment_file.owner
-            ).first()
-            
-            if existing_folder:
-                output_folder_obj = existing_folder
-                logger.info(f"Using existing 'yield_summary_output' folder: {output_folder_obj.id}")
-            else:
-                output_folder_obj = Folder.objects.create(
-                    name="yield_summary_output",
-                    parent=parent_folder,
-                    owner=treatment_file.owner,
-                    is_public=treatment_file.is_public
-                )
-                logger.info(f"Created new 'yield_summary_output' folder: {output_folder_obj.id}")
-        
-        # Build the full output directory path under MEDIA_ROOT/uploads
-        relative_output_dir = output_folder_obj.get_full_path()
-        output_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', relative_output_dir)
-        
-        os.makedirs(output_dir, exist_ok=True)
+        try:
+            output_folder_obj, output_dir = resolve_output_folder(
+                treatment_file, output_dir_id, default_name="yield_summary_output"
+            )
+        except ValueError as exc:
+            logger.error(str(exc))
+            return {"success": False, "error": str(exc)}
         
         logger.info(f"Processing treatment file: {treatment_path}")
         logger.info(f"Processing yield file: {yield_path}")
@@ -2418,39 +2341,13 @@ def run_valid_yield_extractor_task(
         from .models import Folder
         output_folder_obj = None
 
-        if output_folder_id:
-            try:
-                output_folder_obj = Folder.objects.get(id=output_folder_id)
-            except Folder.DoesNotExist:
-                logger.error(f"Output folder with ID {output_folder_id} not found")
-                return {"success": False, "error": f"Output folder with ID {output_folder_id} not found"}
-        else:
-            # Auto-create 'yield_cleaning_output' folder under the plots file's parent folder
-            parent_folder = plots_file.folder
-
-            existing_folder = Folder.objects.filter(
-                name="yield_cleaning_output",
-                parent=parent_folder,
-                owner=plots_file.owner
-            ).first()
-
-            if existing_folder:
-                output_folder_obj = existing_folder
-                logger.info(f"Using existing 'yield_cleaning_output' folder: {output_folder_obj.id}")
-            else:
-                output_folder_obj = Folder.objects.create(
-                    name="yield_cleaning_output",
-                    parent=parent_folder,
-                    owner=plots_file.owner,
-                    is_public=plots_file.is_public
-                )
-                logger.info(f"Created new 'yield_cleaning_output' folder: {output_folder_obj.id}")
-
-        # Build the full output directory path under MEDIA_ROOT/uploads
-        relative_output_dir = output_folder_obj.get_full_path()
-        output_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', relative_output_dir)
-
-        os.makedirs(output_dir, exist_ok=True)
+        try:
+            output_folder_obj, output_dir = resolve_output_folder(
+                plots_file, output_folder_id, default_name="yield_cleaning_output"
+            )
+        except ValueError as exc:
+            logger.error(str(exc))
+            return {"success": False, "error": str(exc)}
 
         logger.info(f"Processing plots file: {plots_path}")
         logger.info(f"Processing app file: {app_path}")
