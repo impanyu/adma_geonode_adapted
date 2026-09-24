@@ -97,3 +97,28 @@ class RasterMetadataTests(TestCase):
         self.assertIn('no coordinate reference system', file_obj.processing_log)
         # Crucially it did not invent one.
         self.assertFalse(file_obj.crs)
+
+    def test_a_crs_without_an_epsg_code_still_fits_the_column(self):
+        """
+        File.crs is 50 characters. SoilGrids ships Homolosine, which has no
+        EPSG code and a PROJ string far longer than that -- writing it raw
+        made the whole processing task die on a database error.
+        """
+        import rasterio
+
+        homolosine = rasterio.crs.CRS.from_proj4(
+            '+proj=igh +lat_0=0 +lon_0=0 +datum=WGS84 +units=m +no_defs'
+        )
+        file_obj, path = self._raster('soil.tif', homolosine,
+                                      origin=(-10857928.0, 4545172.0), pixel=250.0)
+
+        ok, message = process_raster_file(file_obj, path)
+
+        self.assertTrue(ok, message)
+        self.assertLessEqual(len(file_obj.crs), 50)
+        self.assertIn('igh', file_obj.crs)
+        # The full definition is not lost, just moved somewhere it fits.
+        self.assertIn('+proj=igh', file_obj.processing_log)
+
+        file_obj.refresh_from_db()
+        self.assertEqual(file_obj.gis_status, 'processed')

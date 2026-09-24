@@ -462,7 +462,17 @@ def process_raster_file(file_obj, file_path):
             file_obj.save()
             return False, 'The raster has no CRS recorded.'
 
-        file_obj.crs = crs.to_string()
+        # File.crs is 50 characters. An EPSG code always fits; a projection
+        # with no EPSG code -- SoilGrids' Homolosine, say -- has only a full
+        # PROJ string, which does not, and truncating one leaves something
+        # worse than useless. Record a short honest identifier and keep the
+        # full definition in the log.
+        epsg = crs.to_epsg()
+        if epsg:
+            file_obj.crs = f'EPSG:{epsg}'
+        else:
+            projection = (crs.to_dict() or {}).get('proj')
+            file_obj.crs = f'PROJ:{projection}'[:50] if projection else 'unknown'
 
         # The extent is stored in WGS84: it is read by map code, and a map can
         # do nothing with bounds in a projection it was never told about.
@@ -486,6 +496,7 @@ def process_raster_file(file_obj, file_path):
         file_obj.processing_log = (
             f'Raster processed - CRS: {file_obj.crs}, '
             f'{width}x{height} px, {band_count} band(s)'
+            f'\nFull CRS definition: {crs.to_string()}'
         )
         file_obj.save()
 
