@@ -1143,6 +1143,67 @@ class Tool(models.Model):
                     'generates': ['cdl_tif', 'soil_tif', 'weather_csv'],
                 },
             },
+            {
+                'slug': 'terrain-analysis',
+                'name': 'Terrain Analysis',
+                'short_description': 'Slope, aspect, hillshade and topographic position from an elevation model.',
+                'description': 'Derives the standard terrain products from a DEM: steepness, the direction '
+                              'the ground faces, shaded relief, and height above or below the local '
+                              'surroundings. Terrain drives where water goes, and so where a field is wet, '
+                              'where it erodes and where yield falls away. A raster in degrees is '
+                              'reprojected to its local UTM zone before anything is measured.',
+                'category': 'analysis',
+                'icon': 'fa-mountain-sun',
+                'icon_color': 'dark',
+                'url_name': 'filemanager:terrain_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_terrain_analysis_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.tif', '.tiff'],
+                    'products': ['slope', 'aspect', 'hillshade', 'tpi'],
+                },
+                'output_config': {'generates': ['slope_tif', 'aspect_tif', 'hillshade_tif', 'tpi_tif']},
+            },
+            {
+                'slug': 'point-sampling',
+                'name': 'Sample Rasters at Points',
+                'short_description': 'Read the value of one or more rasters at every point in a layer.',
+                'description': 'Zonal Statistics answers what the average is over a whole field; this '
+                              'answers what the value was at each point. Sample several rasters at once -- '
+                              'crop layer, elevation, soil property -- and every point comes back with a '
+                              'column for each, which is how a field becomes a table you can regress.',
+                'category': 'analysis',
+                'icon': 'fa-crosshairs',
+                'icon_color': 'success',
+                'url_name': 'filemanager:point_sampling_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_point_sampling_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.shp', '.gpkg', '.geojson', '.tif', '.tiff'],
+                    'required_inputs': ['points_file_id', 'rasters'],
+                },
+                'output_config': {'generates': ['samples_csv', 'samples_shp']},
+            },
+            {
+                'slug': 'vector-ops',
+                'name': 'Buffer, Clip & Dissolve',
+                'short_description': 'The everyday vector edits: grow or shrink features, cut to an area, merge groups.',
+                'description': 'Pull a headland back from the field edge, cut a county-wide layer down to '
+                              'one farm, or merge strips into treatments. Buffer distances are in metres, '
+                              'so a layer in degrees is reprojected to its local UTM zone first and handed '
+                              'back in the CRS it arrived in.',
+                'category': 'gis_processing',
+                'icon': 'fa-object-group',
+                'icon_color': 'primary',
+                'url_name': 'filemanager:vector_ops_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_vector_operation_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.shp', '.gpkg', '.geojson'],
+                    'operations': ['buffer', 'clip', 'dissolve'],
+                },
+                'output_config': {'generates': ['result_shp']},
+            },
         ]
         
         created_tools = []

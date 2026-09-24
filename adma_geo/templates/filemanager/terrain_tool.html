@@ -1,0 +1,101 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-mountain-sun{% endblock %}
+{% block tool_tagline %}Slope, aspect and shaded relief from an elevation model{% endblock %}
+{% block run_url %}{% url 'filemanager:run_terrain_analysis' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border">
+    Terrain decides where water goes, and so where a field is wet, where it
+    erodes and where yield falls away. Need a DEM? The
+    <a href="{% url 'filemanager:public_data_tool' %}">Public Data</a> tool fetches
+    one from USGS. A raster in degrees is reprojected before anything is measured
+    &mdash; a degree is not a distance.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="mb-3">
+    <label class="form-label fw-semibold">
+        <i class="fas fa-layer-group me-2 text-info"></i>Elevation raster
+    </label>
+    <div class="input-group">
+        <input type="text" class="form-control" id="demName" placeholder="No file chosen" readonly>
+        <button class="btn btn-outline-secondary" type="button" id="browseDem">
+            <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+        </button>
+    </div>
+    <input type="hidden" id="demId">
+    <div class="form-text" id="demInfo">A bare-earth DEM.</div>
+</div>
+
+<div class="mb-3">
+    <label class="form-label fw-semibold d-block">Products</label>
+    <div class="row g-2">
+        {% for product in products %}
+        <div class="col-sm-6">
+            <div class="form-check">
+                <input class="form-check-input product" type="checkbox" value="{{ product.key }}"
+                       id="p_{{ product.key }}" {% if product.default %}checked{% endif %}>
+                <label class="form-check-label" for="p_{{ product.key }}">
+                    <strong>{{ product.key }}</strong>
+                    <span class="d-block text-muted small">{{ product.description }}</span>
+                </label>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="row" id="hillshadeRow">
+    <div class="col-sm-4 mb-3">
+        <label class="form-label fw-semibold" for="azimuth">Sun azimuth</label>
+        <input type="number" class="form-control" id="azimuth" value="315" min="0" max="360">
+        <div class="form-text">Degrees from north.</div>
+    </div>
+    <div class="col-sm-4 mb-3">
+        <label class="form-label fw-semibold" for="altitude">Sun altitude</label>
+        <input type="number" class="form-control" id="altitude" value="45" min="0" max="90">
+        <div class="form-text">Degrees above the horizon.</div>
+    </div>
+    <div class="col-sm-4 mb-3">
+        <label class="form-label fw-semibold" for="tpiRadius">TPI radius</label>
+        <input type="number" class="form-control" id="tpiRadius" value="3" min="1" max="30">
+        <div class="form-text">In pixels.</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tool_script %}
+<script>
+wirePicker('browseDem', 'demName', 'demId', {
+    accept: ['.tif', '.tiff'], title: 'Choose the elevation raster',
+    onSelect: async (id) => {
+        try {
+            const response = await fetch(`/api/native-tools/bands/${id}/`);
+            const data = await response.json();
+            if (data.success) {
+                document.getElementById('demInfo').textContent =
+                    `${data.bands} band(s)` + (data.crs ? `, ${data.crs}` : ', no CRS recorded');
+            }
+        } catch (err) { /* the hint is optional */ }
+    },
+});
+
+function buildPayload() {
+    const dem = document.getElementById('demId').value;
+    if (!dem) throw new Error('Choose an elevation raster.');
+
+    const products = [...document.querySelectorAll('.product:checked')].map(c => c.value);
+    if (!products.length) throw new Error('Choose at least one product.');
+
+    return {
+        dem_file_id: dem,
+        products: products,
+        azimuth: parseFloat(document.getElementById('azimuth').value) || 315,
+        altitude: parseFloat(document.getElementById('altitude').value) || 45,
+        tpi_radius: parseInt(document.getElementById('tpiRadius').value, 10) || 3,
+    };
+}
+</script>
+{% endblock %}

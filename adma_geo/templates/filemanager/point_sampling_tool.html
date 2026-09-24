@@ -1,0 +1,111 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-crosshairs{% endblock %}
+{% block tool_tagline %}Read raster values at each point{% endblock %}
+{% block run_url %}{% url 'filemanager:run_point_sampling' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border">
+    <a href="{% url 'filemanager:zonal_statistics_tool' %}">Zonal Statistics</a>
+    answers &ldquo;what is the average over this field&rdquo;. This answers the other
+    half &mdash; what the value was <em>right here</em> &mdash; for every yield
+    monitor ping. Sample several rasters at once and each point comes back with a
+    column for every layer, ready to analyse.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="mb-3">
+    <label class="form-label fw-semibold">
+        <i class="fas fa-location-dot me-2 text-primary"></i>Point layer
+    </label>
+    <div class="input-group">
+        <input type="text" class="form-control" id="pointsName" placeholder="No file chosen" readonly>
+        <button class="btn btn-outline-secondary" type="button" id="browsePoints">
+            <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+        </button>
+    </div>
+    <input type="hidden" id="pointsId">
+</div>
+
+<label class="form-label fw-semibold d-block">Rasters to sample</label>
+<div id="rasterRows"></div>
+<button type="button" class="btn btn-sm btn-outline-secondary mb-3" id="addRaster">
+    <i class="fas fa-plus me-1"></i>Add another raster
+</button>
+{% endblock %}
+
+{% block tool_script %}
+<script>
+wirePicker('browsePoints', 'pointsName', 'pointsId', {
+    accept: ['.shp', '.gpkg', '.geojson'], title: 'Choose the point layer',
+});
+
+let rasterCount = 0;
+
+function addRasterRow() {
+    const index = rasterCount++;
+    const row = document.createElement('div');
+    row.className = 'row g-2 align-items-end mb-2 raster-row';
+    row.innerHTML = `
+        <div class="col-12 col-md-5">
+            <div class="input-group">
+                <input type="text" class="form-control" id="rName_${index}"
+                       placeholder="No file chosen" readonly>
+                <button class="btn btn-outline-secondary" type="button" id="rBrowse_${index}">
+                    <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+                </button>
+            </div>
+            <input type="hidden" id="rId_${index}">
+        </div>
+        <div class="col-6 col-md-2">
+            <input type="number" class="form-control" id="rBand_${index}" value="1" min="1"
+                   title="Band number">
+        </div>
+        <div class="col-6 col-md-4">
+            <input type="text" class="form-control" id="rLabel_${index}"
+                   placeholder="Column name" maxlength="10">
+        </div>
+        <div class="col-12 col-md-1 d-grid">
+            <button type="button" class="btn btn-outline-danger btn-sm remove-raster">
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>`;
+    document.getElementById('rasterRows').appendChild(row);
+
+    wirePicker(`rBrowse_${index}`, `rName_${index}`, `rId_${index}`, {
+        accept: ['.tif', '.tiff'], title: 'Choose a raster',
+        onSelect: (id, name) => {
+            const label = document.getElementById(`rLabel_${index}`);
+            // A sensible default column name, still editable.
+            if (!label.value) label.value = name.replace(/\.[^.]+$/, '').slice(0, 10);
+        },
+    });
+
+    row.querySelector('.remove-raster').addEventListener('click', () => row.remove());
+}
+
+document.getElementById('addRaster').addEventListener('click', addRasterRow);
+addRasterRow();
+
+function buildPayload() {
+    const points = document.getElementById('pointsId').value;
+    if (!points) throw new Error('Choose a point layer.');
+
+    const rasters = [];
+    document.querySelectorAll('.raster-row').forEach(row => {
+        const hidden = row.querySelector('input[type=hidden]');
+        if (!hidden || !hidden.value) return;
+        const index = hidden.id.split('_')[1];
+        rasters.push({
+            file_id: hidden.value,
+            band: parseInt(document.getElementById(`rBand_${index}`).value, 10) || 1,
+            label: document.getElementById(`rLabel_${index}`).value,
+        });
+    });
+
+    if (!rasters.length) throw new Error('Choose at least one raster to sample.');
+    return {points_file_id: points, rasters: rasters};
+}
+</script>
+{% endblock %}

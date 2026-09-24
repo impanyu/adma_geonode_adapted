@@ -1,0 +1,135 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-object-group{% endblock %}
+{% block tool_tagline %}Buffer, clip or dissolve a vector layer{% endblock %}
+{% block run_url %}{% url 'filemanager:run_vector_operation' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border">
+    The everyday edits between a layer as delivered and one you can analyse: pull
+    a headland back from the field edge, cut a county-wide layer down to one farm,
+    merge strips into treatments. Buffers are in metres, so a layer in degrees is
+    reprojected first and handed back in the CRS it arrived in.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="row">
+    <div class="col-md-7 mb-3">
+        <label class="form-label fw-semibold">
+            <i class="fas fa-draw-polygon me-2 text-primary"></i>Input layer
+        </label>
+        <div class="input-group">
+            <input type="text" class="form-control" id="inputName" placeholder="No file chosen" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="browseInput">
+                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+            </button>
+        </div>
+        <input type="hidden" id="inputId">
+    </div>
+
+    <div class="col-md-5 mb-3">
+        <label class="form-label fw-semibold" for="operationSelect">Operation</label>
+        <select class="form-select" id="operationSelect">
+            {% for op in operations %}
+                <option value="{{ op.key }}" data-description="{{ op.description }}">{{ op.key }}</option>
+            {% endfor %}
+        </select>
+        <div class="form-text" id="operationDescription"></div>
+    </div>
+</div>
+
+<div id="bufferPanel">
+    <div class="row">
+        <div class="col-md-5 mb-3">
+            <label class="form-label fw-semibold" for="distance">Distance (metres)</label>
+            <input type="number" step="any" class="form-control" id="distance" value="10">
+            <div class="form-text">Negative shrinks the feature inward.</div>
+        </div>
+    </div>
+</div>
+
+<div id="clipPanel" style="display:none;">
+    <div class="mb-3">
+        <label class="form-label fw-semibold">Clip to</label>
+        <div class="input-group">
+            <input type="text" class="form-control" id="clipName" placeholder="No file chosen" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="browseClip">
+                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+            </button>
+        </div>
+        <input type="hidden" id="clipId">
+    </div>
+</div>
+
+<div id="dissolvePanel" style="display:none;">
+    <div class="mb-3">
+        <label class="form-label fw-semibold" for="dissolveBy">Group by column</label>
+        <select class="form-select" id="dissolveBy">
+            <option value="">Merge everything into one feature</option>
+        </select>
+        <div class="form-text">Choose an input layer first to list its columns.</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tool_script %}
+<script>
+wirePicker('browseInput', 'inputName', 'inputId', {
+    accept: ['.shp', '.gpkg', '.geojson'], title: 'Choose the input layer',
+    onSelect: async (id) => {
+        const select = document.getElementById('dissolveBy');
+        select.innerHTML = '<option value="">Merge everything into one feature</option>';
+        try {
+            const response = await fetch(`/api/native-tools/all-columns/${id}/`);
+            const data = await response.json();
+            if (data.success) {
+                for (const column of data.columns) {
+                    const option = document.createElement('option');
+                    option.value = column;
+                    option.textContent = column;
+                    select.appendChild(option);
+                }
+            }
+        } catch (err) { /* dissolving everything still works */ }
+    },
+});
+
+wirePicker('browseClip', 'clipName', 'clipId', {
+    accept: ['.shp', '.gpkg', '.geojson'], title: 'Choose the layer to clip to',
+});
+
+function showPanels() {
+    const option = document.getElementById('operationSelect').selectedOptions[0];
+    document.getElementById('operationDescription').textContent = option.dataset.description;
+    document.getElementById('bufferPanel').style.display = option.value === 'buffer' ? '' : 'none';
+    document.getElementById('clipPanel').style.display = option.value === 'clip' ? '' : 'none';
+    document.getElementById('dissolvePanel').style.display = option.value === 'dissolve' ? '' : 'none';
+}
+document.getElementById('operationSelect').addEventListener('change', showPanels);
+showPanels();
+
+function buildPayload() {
+    const input = document.getElementById('inputId').value;
+    if (!input) throw new Error('Choose an input layer.');
+
+    const operation = document.getElementById('operationSelect').value;
+    const payload = {file_id: input, operation: operation};
+
+    if (operation === 'buffer') {
+        const raw = document.getElementById('distance').value.trim();
+        if (raw === '') throw new Error('Give a buffer distance in metres.');
+        payload.distance = parseFloat(raw);
+        if (Number.isNaN(payload.distance)) throw new Error('The distance must be a number.');
+    } else if (operation === 'clip') {
+        const clip = document.getElementById('clipId').value;
+        if (!clip) throw new Error('Choose a layer to clip to.');
+        payload.clip_file_id = clip;
+    } else {
+        payload.dissolve_by = document.getElementById('dissolveBy').value || null;
+    }
+
+    return payload;
+}
+</script>
+{% endblock %}

@@ -459,3 +459,160 @@ def run_public_data_fetch(request):
         )
 
     return _dispatch(request, build)
+
+
+class TerrainToolView(_NativeToolView):
+    template_name = 'filemanager/terrain_tool.html'
+    accepted_extensions = RASTER_EXTENSIONS
+    page_title = 'Terrain Analysis'
+
+    def get_context_data(self, **kwargs):
+        from .terrain_analysis import DEFAULT_PRODUCTS, PRODUCTS
+        context = super().get_context_data(**kwargs)
+        context['products'] = [
+            {'key': k, 'description': v, 'default': k in DEFAULT_PRODUCTS}
+            for k, v in PRODUCTS.items()
+        ]
+        return context
+
+
+class PointSamplingToolView(_NativeToolView):
+    template_name = 'filemanager/point_sampling_tool.html'
+    accepted_extensions = VECTOR_EXTENSIONS + RASTER_EXTENSIONS
+    page_title = 'Sample Rasters at Points'
+
+
+class VectorOpsToolView(_NativeToolView):
+    template_name = 'filemanager/vector_ops_tool.html'
+    accepted_extensions = VECTOR_EXTENSIONS
+    page_title = 'Buffer, Clip & Dissolve'
+
+    def get_context_data(self, **kwargs):
+        from .vector_ops import OPERATIONS
+        context = super().get_context_data(**kwargs)
+        context['operations'] = [
+            {'key': k, 'description': v} for k, v in OPERATIONS.items()
+        ]
+        return context
+
+
+@api_login_required
+def run_terrain_analysis(request):
+    def build(data):
+        from .native_tool_tasks import run_terrain_analysis_task
+        from .terrain_analysis import PRODUCTS
+
+        dem = _readable_file(
+            data.get('dem_file_id'), request.user, 'Elevation raster', RASTER_EXTENSIONS
+        )
+        products = [p for p in (data.get('products') or []) if p in PRODUCTS]
+        if not products:
+            raise ValueError(
+                f'Choose at least one of: {", ".join(sorted(PRODUCTS))}.'
+            )
+
+        return run_terrain_analysis_task.delay(
+            str(dem.id), products=products,
+            azimuth=float(data.get('azimuth') or 315.0),
+            altitude=float(data.get('altitude') or 45.0),
+            tpi_radius=int(data.get('tpi_radius') or 3),
+            output_folder_id=data.get('output_folder_id'),
+            requesting_user_id=request.user.id,
+        )
+
+    return _dispatch(request, build)
+
+
+@api_login_required
+def run_point_sampling(request):
+    def build(data):
+        from .native_tool_tasks import run_point_sampling_task
+
+        points = _readable_file(
+            data.get('points_file_id'), request.user, 'Point layer', VECTOR_EXTENSIONS
+        )
+
+        specs = []
+        for spec in data.get('rasters') or []:
+            raster = _readable_file(
+                spec.get('file_id'), request.user, 'Raster', RASTER_EXTENSIONS
+            )
+            specs.append({
+                'file_id': str(raster.id),
+                'band': int(spec.get('band') or 1),
+                'label': (spec.get('label') or '').strip() or None,
+            })
+
+        if not specs:
+            raise ValueError('Choose at least one raster to sample.')
+
+        return run_point_sampling_task.delay(
+            str(points.id), specs,
+            output_folder_id=data.get('output_folder_id'),
+            requesting_user_id=request.user.id,
+        )
+
+    return _dispatch(request, build)
+
+
+@api_login_required
+def run_vector_operation(request):
+    def build(data):
+        from .native_tool_tasks import run_vector_operation_task
+        from .vector_ops import OPERATIONS
+
+        operation = data.get('operation')
+        if operation not in OPERATIONS:
+            raise ValueError(
+                f'Choose one of: {", ".join(sorted(OPERATIONS))}.'
+            )
+
+        source = _readable_file(
+            data.get('file_id'), request.user, 'Input layer', VECTOR_EXTENSIONS
+        )
+
+        clip_id = None
+        if operation == 'clip':
+            clip = _readable_file(
+                data.get('clip_file_id'), request.user, 'Clip layer', VECTOR_EXTENSIONS
+            )
+            clip_id = str(clip.id)
+
+        distance = data.get('distance')
+        if operation == 'buffer':
+            try:
+                distance = float(distance)
+            except (TypeError, ValueError):
+                raise ValueError('The buffer distance must be a number of metres.')
+
+        return run_vector_operation_task.delay(
+            str(source.id), operation=operation,
+            distance=distance or 0.0,
+            clip_file_id=clip_id,
+            dissolve_by=(data.get('dissolve_by') or None),
+            output_folder_id=data.get('output_folder_id'),
+            requesting_user_id=request.user.id,
+        )
+
+    return _dispatch(request, build)
+
+
+@api_login_required
+def vector_all_columns(request, file_id):
+    """Every attribute column of a vector file, for the dissolve picker."""
+    try:
+        file_obj = _readable_file(file_id, request.user, 'Input layer', VECTOR_EXTENSIONS)
+    except PermissionError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=403)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    try:
+        import geopandas as gpd
+        frame = gpd.read_file(file_obj.file.path, rows=1)
+        geometry_name = frame.geometry.name if frame.geometry is not None else None
+        columns = [c for c in frame.columns if c != geometry_name]
+    except Exception as exc:
+        return _internal_error_response(exc)
+
+    return JsonResponse({'success': True, 'columns': columns})

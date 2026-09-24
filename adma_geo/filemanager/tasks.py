@@ -2257,8 +2257,11 @@ def cleanup_idle_agents_task():
 # are pulled in here to get themselves registered on the worker.
 from .native_tool_tasks import (  # noqa: E402,F401
     run_management_zones_task,
+    run_point_sampling_task,
     run_public_data_fetch_task,
+    run_terrain_analysis_task,
     run_raster_clip_reproject_task,
+    run_vector_operation_task,
     run_vegetation_index_task,
     run_zonal_statistics_task,
 )

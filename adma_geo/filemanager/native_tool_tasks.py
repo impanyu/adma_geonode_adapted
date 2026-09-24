@@ -8,6 +8,7 @@ raster_clip_reproject, which take and return plain paths so they can be tested
 without Celery or a database.
 """
 import logging
+import os
 
 from celery import shared_task
 
@@ -343,3 +344,80 @@ def run_public_data_fetch_task(
         }
 
     return _guard('Public data fetch', dataset_key)(body)
+
+
+@shared_task(bind=True)
+def run_terrain_analysis_task(
+    self, dem_file_id, products=None, azimuth=315.0, altitude=45.0,
+    tpi_radius=3, output_folder_id=None, requesting_user_id=None,
+):
+    def body():
+        from .terrain_analysis import analyse_terrain
+        dem = _fetch(dem_file_id, 'Elevation raster', requesting_user_id)
+        return _finish(
+            dem, output_folder_id, 'terrain_output',
+            lambda out: analyse_terrain(
+                dem.file.path, out, products=products,
+                azimuth=float(azimuth), altitude=float(altitude),
+                tpi_radius=int(tpi_radius),
+            ),
+        )
+
+    return _guard('Terrain analysis', dem_file_id)(body)
+
+
+@shared_task(bind=True)
+def run_point_sampling_task(
+    self, points_file_id, raster_specs, output_folder_id=None,
+    requesting_user_id=None,
+):
+    """``raster_specs`` is a list of ``{'file_id', 'band', 'label'}``."""
+    def body():
+        from .point_sampling import sample_rasters_at_points
+
+        points = _fetch(points_file_id, 'Point layer', requesting_user_id)
+
+        resolved = []
+        for spec in raster_specs or []:
+            raster = _fetch(spec.get('file_id'), 'Raster', requesting_user_id)
+            resolved.append({
+                'path': raster.file.path,
+                'band': int(spec.get('band') or 1),
+                'label': spec.get('label') or os.path.splitext(raster.name)[0],
+            })
+
+        if not resolved:
+            raise InputError('Choose at least one raster to sample.')
+
+        return _finish(
+            points, output_folder_id, 'sampling_output',
+            lambda out: sample_rasters_at_points(points.file.path, resolved, out),
+        )
+
+    return _guard('Point sampling', points_file_id)(body)
+
+
+@shared_task(bind=True)
+def run_vector_operation_task(
+    self, file_id, operation='buffer', distance=0.0, clip_file_id=None,
+    dissolve_by=None, output_folder_id=None, requesting_user_id=None,
+):
+    def body():
+        from .vector_ops import apply_operation
+
+        source = _fetch(file_id, 'Input layer', requesting_user_id)
+        clip_path = None
+        if clip_file_id:
+            clip = _fetch(clip_file_id, 'Clip layer', requesting_user_id)
+            clip_path = clip.file.path
+
+        return _finish(
+            source, output_folder_id, 'vector_output',
+            lambda out: apply_operation(
+                source.file.path, out, operation=operation,
+                distance=distance, clip_path=clip_path,
+                dissolve_by=dissolve_by,
+            ),
+        )
+
+    return _guard('Vector operation', file_id)(body)
