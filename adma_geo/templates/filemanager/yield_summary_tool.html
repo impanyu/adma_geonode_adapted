@@ -411,28 +411,30 @@
                             </h6>
                             <div class="card bg-light">
                                 <div class="card-body">
-                                    <table class="table table-sm table-borderless mb-0">
-                                        <tr>
-                                            <td><i class="fas fa-file text-primary me-2"></i>Treatment File:</td>
-                                            <td id="summaryTreatment" class="text-muted">Not selected</td>
-                                        </tr>
-                                        <tr>
-                                            <td><i class="fas fa-file text-success me-2"></i>Yield File:</td>
-                                            <td id="summaryYield" class="text-muted">Not selected</td>
-                                        </tr>
-                                        <tr>
-                                            <td><i class="fas fa-list-ol text-info me-2"></i>Total N Values:</td>
-                                            <td id="summaryTotalN" class="text-muted">Not entered</td>
-                                        </tr>
-                                        <tr>
-                                            <td><i class="fas fa-compress-arrows-alt text-warning me-2"></i>Buffer:</td>
-                                            <td id="summaryBuffer">{{ default_buffer_distance }} m</td>
-                                        </tr>
-                                        <tr>
-                                            <td><i class="fas fa-dollar-sign text-success me-2"></i>Prices:</td>
-                                            <td id="summaryPrices">${{ default_corn_price }}/bu, ${{ default_n_price }}/lb N</td>
-                                        </tr>
-                                    </table>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-borderless mb-0">
+                                            <tr>
+                                                <td><i class="fas fa-file text-primary me-2"></i>Treatment File:</td>
+                                                <td id="summaryTreatment" class="text-muted">Not selected</td>
+                                            </tr>
+                                            <tr>
+                                                <td><i class="fas fa-file text-success me-2"></i>Yield File:</td>
+                                                <td id="summaryYield" class="text-muted">Not selected</td>
+                                            </tr>
+                                            <tr>
+                                                <td><i class="fas fa-list-ol text-info me-2"></i>Total N Values:</td>
+                                                <td id="summaryTotalN" class="text-muted">Not entered</td>
+                                            </tr>
+                                            <tr>
+                                                <td><i class="fas fa-compress-arrows-alt text-warning me-2"></i>Buffer:</td>
+                                                <td id="summaryBuffer">{{ default_buffer_distance }} m</td>
+                                            </tr>
+                                            <tr>
+                                                <td><i class="fas fa-dollar-sign text-success me-2"></i>Prices:</td>
+                                                <td id="summaryPrices">${{ default_corn_price }}/bu, ${{ default_n_price }}/lb N</td>
+                                            </tr>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>

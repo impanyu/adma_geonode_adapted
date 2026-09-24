@@ -119,7 +119,7 @@
 <!-- Folder Header -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
             <div>
                 <h1 class="h2 mb-1">
                     <i class="fas fa-folder me-2" style="color: #ffc107;"></i>{{ folder.name }}
@@ -132,7 +132,7 @@
                 </p>
             </div>
             {% if can_edit %}
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-outline-primary" onclick="showCreateFolderModal()">
                     <i class="fas fa-folder-plus me-2"></i>New Folder
                 </button>
@@ -162,72 +162,76 @@
                 <div class="row">
                     <div class="col-md-6">
                         <h6>Folder Details</h6>
-                        <table class="table table-sm">
-                            <tr>
-                                <th width="30%">Name:</th>
-                                <td>{{ folder.name }}</td>
-                            </tr>
-                            <tr>
-                                <th>Contents:</th>
-                                <td>{{ total_subfolders|default:subfolders.count }} folders, {{ total_files|default:files.count }} files</td>
-                            </tr>
-                            <tr>
-                                <th>Owner:</th>
-                                <td>{{ folder.owner.username }}</td>
-                            </tr>
-                            <tr>
-                                <th>Visibility:</th>
-                                <td>
-                                    <span id="visibility-badge" class="badge {% if folder.is_public %}bg-success{% else %}bg-secondary{% endif %}">
-                                        {% if folder.is_public %}Public{% else %}Private{% endif %}
-                                    </span>
-                                    {% if can_edit %}
-                                    <button id="toggle-visibility-btn" class="btn btn-sm btn-outline-primary ms-2" onclick="toggleVisibility()">
-                                        <i class="fas fa-exchange-alt me-1"></i>Toggle
-                                    </button>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% if folder.parent %}
-                            <tr>
-                                <th>Parent Folder:</th>
-                                <td>
-                                    {% if is_public_view %}
-                                        <a href="{% url 'filemanager:public_folder_detail' folder.parent.id %}" class="text-decoration-none">
-                                            <i class="fas fa-folder me-1"></i>{{ folder.parent.name }}
-                                        </a>
-                                    {% else %}
-                                        <a href="{% url 'filemanager:folder_detail' folder.parent.id %}" class="text-decoration-none">
-                                            <i class="fas fa-folder me-1"></i>{{ folder.parent.name }}
-                                        </a>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endif %}
-                        </table>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tr>
+                                    <th width="30%">Name:</th>
+                                    <td>{{ folder.name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Contents:</th>
+                                    <td>{{ total_subfolders|default:subfolders.count }} folders, {{ total_files|default:files.count }} files</td>
+                                </tr>
+                                <tr>
+                                    <th>Owner:</th>
+                                    <td>{{ folder.owner.username }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Visibility:</th>
+                                    <td>
+                                        <span id="visibility-badge" class="badge {% if folder.is_public %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {% if folder.is_public %}Public{% else %}Private{% endif %}
+                                        </span>
+                                        {% if can_edit %}
+                                        <button id="toggle-visibility-btn" class="btn btn-sm btn-outline-primary ms-2" onclick="toggleVisibility()">
+                                            <i class="fas fa-exchange-alt me-1"></i>Toggle
+                                        </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% if folder.parent %}
+                                <tr>
+                                    <th>Parent Folder:</th>
+                                    <td>
+                                        {% if is_public_view %}
+                                            <a href="{% url 'filemanager:public_folder_detail' folder.parent.id %}" class="text-decoration-none">
+                                                <i class="fas fa-folder me-1"></i>{{ folder.parent.name }}
+                                            </a>
+                                        {% else %}
+                                            <a href="{% url 'filemanager:folder_detail' folder.parent.id %}" class="text-decoration-none">
+                                                <i class="fas fa-folder me-1"></i>{{ folder.parent.name }}
+                                            </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <h6>Timestamps</h6>
-                        <table class="table table-sm">
-                            <tr>
-                                <th width="30%">Created:</th>
-                                <td>{{ folder.created_at|date:"M d, Y H:i" }}</td>
-                            </tr>
-                            <tr>
-                                <th>Modified:</th>
-                                <td>{{ folder.updated_at|date:"M d, Y H:i" }}</td>
-                            </tr>
-                            <tr>
-                                <th>Total Size:</th>
-                                <td>
-                                    {% if folder.get_total_size > 0 %}
-                                        {{ folder.get_total_size|filesizeformat }}
-                                    {% else %}
-                                        <span class="text-muted">0 bytes</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        </table>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tr>
+                                    <th width="30%">Created:</th>
+                                    <td>{{ folder.created_at|date:"M d, Y H:i" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Modified:</th>
+                                    <td>{{ folder.updated_at|date:"M d, Y H:i" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Total Size:</th>
+                                    <td>
+                                        {% if folder.get_total_size > 0 %}
+                                            {{ folder.get_total_size|filesizeformat }}
+                                        {% else %}
+                                            <span class="text-muted">0 bytes</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -240,7 +244,7 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0">
                     <i class="fas fa-map me-2"></i>All Field Boundaries
                     <span class="badge bg-success ms-2">{{ jd_all_field_boundaries|length }} fields</span>
@@ -279,7 +283,7 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0">
                     <i class="fas fa-map-marked-alt me-2"></i>Field Boundary Map
                 </h5>
@@ -311,7 +315,7 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0">
                     <i class="fas fa-tractor me-2"></i>Operation Boundary Map
                 </h5>
@@ -343,7 +347,7 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0">
                     <i class="fas fa-cloud-sun me-2"></i>Weather Station Locations
                     <span class="badge bg-info ms-2">{{ realm5_device_locations|length }} stations</span>
@@ -382,7 +386,7 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0">
                     <i class="fas fa-map-marker-alt me-2"></i>Device Location
                 </h5>
@@ -472,7 +476,7 @@
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0">
                     <i class="fas fa-list me-2"></i>Contents
                     <span class="text-muted">({{ total_subfolders|default:subfolders.count }} folders, {{ total_files|default:files.count }} files)</span>

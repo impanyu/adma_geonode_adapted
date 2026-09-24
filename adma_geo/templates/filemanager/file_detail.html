@@ -218,62 +218,66 @@
                 <div class="row">
                     <div class="col-md-6">
                         <h6>File Information</h6>
-                        <table class="table table-sm">
-                            <tr>
-                                <th width="30%">Name:</th>
-                                <td>{{ file.name }}</td>
-                            </tr>
-                            <tr>
-                                <th>Size:</th>
-                                <td>{{ file.get_size_display }}</td>
-                            </tr>
-                            <tr>
-                                <th>Type:</th>
-                                <td>
-                                    <span class="badge bg-info">{{ file.file_type|title }}</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>Owner:</th>
-                                <td>{{ file.owner.username }}</td>
-                            </tr>
-                            <tr>
-                                <th>Visibility:</th>
-                                <td>
-                                    <span id="visibility-badge" class="badge {% if file.is_public %}bg-success{% else %}bg-secondary{% endif %}">
-                                        {% if file.is_public %}Public{% else %}Private{% endif %}
-                                    </span>
-                                    {% if can_edit %}
-                                    <button id="toggle-visibility-btn" class="btn btn-sm btn-outline-primary ms-2" onclick="toggleVisibility()">
-                                        <i class="fas fa-exchange-alt me-1"></i>Toggle
-                                    </button>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        </table>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tr>
+                                    <th width="30%">Name:</th>
+                                    <td>{{ file.name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Size:</th>
+                                    <td>{{ file.get_size_display }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Type:</th>
+                                    <td>
+                                        <span class="badge bg-info">{{ file.file_type|title }}</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Owner:</th>
+                                    <td>{{ file.owner.username }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Visibility:</th>
+                                    <td>
+                                        <span id="visibility-badge" class="badge {% if file.is_public %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {% if file.is_public %}Public{% else %}Private{% endif %}
+                                        </span>
+                                        {% if can_edit %}
+                                        <button id="toggle-visibility-btn" class="btn btn-sm btn-outline-primary ms-2" onclick="toggleVisibility()">
+                                            <i class="fas fa-exchange-alt me-1"></i>Toggle
+                                        </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <h6>Timestamps</h6>
-                        <table class="table table-sm">
-                            <tr>
-                                <th width="30%">Created:</th>
-                                <td>{{ file.created_at|date:"M d, Y H:i" }}</td>
-                            </tr>
-                            <tr>
-                                <th>Modified:</th>
-                                <td>{{ file.updated_at|date:"M d, Y H:i" }}</td>
-                            </tr>
-                            {% if file.folder %}
-                            <tr>
-                                <th>Folder:</th>
-                                <td>
-                                    <a href="{% url 'filemanager:folder_detail' file.folder.id %}" class="text-decoration-none">
-                                        <i class="fas fa-folder me-1"></i>{{ file.folder.name }}
-                                    </a>
-                                </td>
-                            </tr>
-                            {% endif %}
-                        </table>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tr>
+                                    <th width="30%">Created:</th>
+                                    <td>{{ file.created_at|date:"M d, Y H:i" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Modified:</th>
+                                    <td>{{ file.updated_at|date:"M d, Y H:i" }}</td>
+                                </tr>
+                                {% if file.folder %}
+                                <tr>
+                                    <th>Folder:</th>
+                                    <td>
+                                        <a href="{% url 'filemanager:folder_detail' file.folder.id %}" class="text-decoration-none">
+                                            <i class="fas fa-folder me-1"></i>{{ file.folder.name }}
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
                     </div>
                 </div>
                 
@@ -282,42 +286,44 @@
                 <div class="row mt-4">
                     <div class="col-12">
                         <h6>Spatial Data Information</h6>
-                        <table class="table table-sm">
-                            <tr>
-                                <th width="30%">Processing Status:</th>
-                                <td>
-                                    {% if file.gis_status == 'pending' %}
-                                        <span class="badge bg-warning">Pending Processing</span>
-                                    {% elif file.gis_status == 'processing' %}
-                                        <span class="badge bg-info">Processing</span>
-                                    {% elif file.gis_status == 'processed' %}
-                                        <span class="badge bg-success">Processed</span>
-                                    {% elif file.gis_status == 'published' %}
-                                        <span class="badge bg-primary">Published to GeoServer</span>
-                                    {% elif file.gis_status == 'error' %}
-                                        <span class="badge bg-danger">Processing Error</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% if file.crs %}
-                            <tr>
-                                <th>Coordinate System:</th>
-                                <td>{{ file.crs }}</td>
-                            </tr>
-                            {% endif %}
-                            {% if file.geoserver_layer_name %}
-                            <tr>
-                                <th>GeoServer Layer:</th>
-                                <td><small>{{ file.geoserver_layer_name }}</small></td>
-                            </tr>
-                            {% endif %}
-                            {% if file.spatial_extent %}
-                            <tr>
-                                <th>Spatial Extent:</th>
-                                <td><small class="text-success">Available</small></td>
-                            </tr>
-                            {% endif %}
-                        </table>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tr>
+                                    <th width="30%">Processing Status:</th>
+                                    <td>
+                                        {% if file.gis_status == 'pending' %}
+                                            <span class="badge bg-warning">Pending Processing</span>
+                                        {% elif file.gis_status == 'processing' %}
+                                            <span class="badge bg-info">Processing</span>
+                                        {% elif file.gis_status == 'processed' %}
+                                            <span class="badge bg-success">Processed</span>
+                                        {% elif file.gis_status == 'published' %}
+                                            <span class="badge bg-primary">Published to GeoServer</span>
+                                        {% elif file.gis_status == 'error' %}
+                                            <span class="badge bg-danger">Processing Error</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% if file.crs %}
+                                <tr>
+                                    <th>Coordinate System:</th>
+                                    <td>{{ file.crs }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if file.geoserver_layer_name %}
+                                <tr>
+                                    <th>GeoServer Layer:</th>
+                                    <td><small>{{ file.geoserver_layer_name }}</small></td>
+                                </tr>
+                                {% endif %}
+                                {% if file.spatial_extent %}
+                                <tr>
+                                    <th>Spatial Extent:</th>
+                                    <td><small class="text-success">Available</small></td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
                         
                         {% if file.processing_log %}
                         <details class="mt-2">

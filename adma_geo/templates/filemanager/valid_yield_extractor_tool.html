@@ -464,28 +464,30 @@
                             </h6>
                             <div class="card bg-light">
                                 <div class="card-body">
-                                    <table class="table table-sm table-borderless mb-0">
-                                        <tr>
-                                            <td><i class="fas fa-file text-primary me-2"></i>Plots File:</td>
-                                            <td id="summaryPlots" class="text-muted">Not selected</td>
-                                        </tr>
-                                        <tr>
-                                            <td><i class="fas fa-file text-success me-2"></i>As-Applied File:</td>
-                                            <td id="summaryApp" class="text-muted">Not selected</td>
-                                        </tr>
-                                        <tr>
-                                            <td><i class="fas fa-file text-warning me-2"></i>Harvest File:</td>
-                                            <td id="summaryHarv" class="text-muted">Not selected</td>
-                                        </tr>
-                                        <tr>
-                                            <td><i class="fas fa-globe text-info me-2"></i>CRS:</td>
-                                            <td id="summaryCrs">{{ default_crs }}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><i class="fas fa-percentage text-secondary me-2"></i>Rate Tolerance:</td>
-                                            <td id="summaryTolerance">{{ default_rate_tolerance }}</td>
-                                        </tr>
-                                    </table>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-borderless mb-0">
+                                            <tr>
+                                                <td><i class="fas fa-file text-primary me-2"></i>Plots File:</td>
+                                                <td id="summaryPlots" class="text-muted">Not selected</td>
+                                            </tr>
+                                            <tr>
+                                                <td><i class="fas fa-file text-success me-2"></i>As-Applied File:</td>
+                                                <td id="summaryApp" class="text-muted">Not selected</td>
+                                            </tr>
+                                            <tr>
+                                                <td><i class="fas fa-file text-warning me-2"></i>Harvest File:</td>
+                                                <td id="summaryHarv" class="text-muted">Not selected</td>
+                                            </tr>
+                                            <tr>
+                                                <td><i class="fas fa-globe text-info me-2"></i>CRS:</td>
+                                                <td id="summaryCrs">{{ default_crs }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><i class="fas fa-percentage text-secondary me-2"></i>Rate Tolerance:</td>
+                                                <td id="summaryTolerance">{{ default_rate_tolerance }}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
