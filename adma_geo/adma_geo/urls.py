@@ -3,6 +3,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import RedirectView, TemplateView
 
 # Only the auth views that work here, rather than the whole contrib.auth set.
 # That set includes password reset, which needs to send mail: there is no SMTP
@@ -33,6 +34,25 @@ auth_patterns = [
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include(auth_patterns)),
+    # allauth brings its own local-account views along with the social ones,
+    # and two of them should not be served here. Django resolves on the first
+    # match, so shadowing the paths ahead of the include is enough, and every
+    # allauth url name still reverses to a path that answers.
+    #
+    # Its password reset has the same problem as contrib.auth's -- no mail can
+    # be sent -- and its signup form is a second way to create an account that
+    # bypasses ours, asking for the email address registration deliberately
+    # stopped collecting.
+    path(
+        'accounts/password/reset/',
+        TemplateView.as_view(template_name='registration/no_password_recovery.html'),
+        name='account_reset_password',
+    ),
+    path(
+        'accounts/signup/',
+        RedirectView.as_view(pattern_name='filemanager:register', permanent=False),
+        name='account_signup',
+    ),
     # Mounted after contrib.auth on purpose: Django takes the first match, so
     # /accounts/login/ and friends stay with the existing password views and
     # allauth only serves what they do not define (/accounts/google/login/
