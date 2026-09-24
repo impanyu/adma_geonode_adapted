@@ -138,9 +138,20 @@ def fetch_cdl(aoi, output_dir, year=2021, **_):
             transform=source.window_transform(window),
             count=1, compress='lzw', driver='GTiff',
         )
+        # The pixel values are class codes, not brightness, so the palette is
+        # what makes the raster mean anything: corn yellow, soybeans green,
+        # water blue. USDA ships it inside the GeoTIFF. Carrying it across
+        # keeps the clip readable in GeoServer, QGIS and a plain download
+        # alike -- without it every class renders as a shade of grey.
+        try:
+            palette = source.colormap(1)
+        except ValueError:
+            palette = None
 
     with rasterio.open(out_path, 'w', **profile) as destination:
         destination.write(data, 1)
+        if palette:
+            destination.write_colormap(1, palette)
 
     classes, counts = np.unique(data, return_counts=True)
     ranked = sorted(zip(classes.tolist(), counts.tolist()), key=lambda p: -p[1])

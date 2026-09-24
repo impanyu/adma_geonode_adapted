@@ -235,3 +235,64 @@ class SourceLabelTests(TestCase):
     def test_a_missing_source_falls_back(self):
         self.assertEqual(source_label(''), 'External')
         self.assertEqual(source_label(None), 'External')
+
+
+class CroplandPaletteTests(TestCase):
+    """
+    The Cropland Data Layer's pixel values are class codes, not brightness.
+    Without the palette USDA ships inside the GeoTIFF, every crop renders as a
+    shade of grey and the raster tells the reader nothing.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='adma-cdl-')
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def test_the_clip_carries_the_palette_across(self):
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # A stand-in for the USDA source: paletted, with the real colours for
+        # corn, soybeans and water.
+        source_path = os.path.join(self.tmp, 'source.tif')
+        palette = {
+            1: (255, 210, 0, 255),      # corn
+            5: (37, 111, 0, 255),       # soybeans
+            111: (74, 111, 162, 255),   # open water
+        }
+        values = np.array([[1, 5], [111, 1]], dtype='uint8')
+        with rasterio.open(
+            source_path, 'w', driver='GTiff', height=2, width=2, count=1,
+            dtype='uint8', crs='EPSG:5070',
+            transform=from_origin(-62777.0, 1980202.0, 30.0, 30.0),
+        ) as destination:
+            destination.write(values, 1)
+            destination.write_colormap(1, palette)
+
+        # Re-clip it the way fetch_cdl does, and check the palette survives.
+        out_path = os.path.join(self.tmp, 'clip.tif')
+        with rasterio.open(source_path) as source:
+            data = source.read(1)
+            profile = source.profile.copy()
+            carried = source.colormap(1)
+        with rasterio.open(out_path, 'w', **profile) as destination:
+            destination.write(data, 1)
+            destination.write_colormap(1, carried)
+
+        with rasterio.open(out_path) as written:
+            self.assertEqual(written.colorinterp[0], rasterio.enums.ColorInterp.palette)
+            result = written.colormap(1)
+
+        for code, colour in palette.items():
+            self.assertEqual(result[code], colour, f'class {code} lost its colour')
+
+    def test_fetch_cdl_asks_for_the_palette(self):
+        """Guard the call itself: dropping it is silent and only shows on a map."""
+        import inspect
+
+        from filemanager.public_datasets import fetch_cdl
+
+        body = inspect.getsource(fetch_cdl)
+        self.assertIn('colormap(1)', body)
+        self.assertIn('write_colormap', body)
