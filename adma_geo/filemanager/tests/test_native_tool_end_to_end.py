@@ -23,6 +23,8 @@ from shapely.geometry import Point, box
 from filemanager.models import File, Folder
 from filemanager.native_tool_tasks import (
     run_management_zones_task,
+    run_raster_clip_reproject_task,
+    run_vegetation_index_task,
     run_zonal_statistics_task,
 )
 
@@ -164,3 +166,64 @@ class EndToEndTests(TestCase):
 
         self.assertFalse(result['success'])
         self.assertIn('Permission denied', result['error'])
+
+    def _band(self, name, value, shape=(10, 10)):
+        path = os.path.join(self.directory, name)
+        with rasterio.open(
+            path, 'w', driver='GTiff', height=shape[0], width=shape[1], count=1,
+            dtype='float32', crs=CRS, transform=from_origin(0.0, 100.0, 1.0, 1.0),
+        ) as destination:
+            destination.write(np.full(shape, value, dtype='float32'), 1)
+        return self._register(path)
+
+    def test_vegetation_index_runs_end_to_end(self):
+        nir = self._band('nir.tif', 0.6)
+        red = self._band('red.tif', 0.2)
+
+        result = run_vegetation_index_task.apply(
+            args=['ndvi', {
+                'nir': [str(nir.id), 1],
+                'red': [str(red.id), 1],
+            }],
+            kwargs={'requesting_user_id': self.user.id},
+        ).get()
+
+        self.assertTrue(result['success'], result.get('error'))
+
+        names = {f['name'] for f in result['created_files']}
+        self.assertTrue(any(n.endswith('.tif') for n in names), sorted(names))
+        self.assertTrue(any(n.endswith('_preview.png') for n in names), sorted(names))
+
+        tif = File.objects.get(name__endswith='_ndvi.tif')
+        with rasterio.open(tif.file.path) as source:
+            # (0.6 - 0.2) / (0.6 + 0.2) = 0.5
+            self.assertAlmostEqual(float(np.nanmean(source.read(1))), 0.5, places=5)
+
+        preview = File.objects.get(name__endswith='_preview.png')
+        self.assertGreater(preview.file_size, 0)
+
+    def test_clip_and_reproject_runs_end_to_end(self):
+        raster = self._raster('scene.tif')
+        boundary_path = os.path.join(self.directory, 'edge.shp')
+        gpd.GeoDataFrame(
+            {'id': [1]}, geometry=[box(0.0, 95.0, 5.0, 100.0)], crs=CRS
+        ).to_file(boundary_path)
+        boundary = self._register(boundary_path)
+
+        result = run_raster_clip_reproject_task.apply(
+            args=[str(raster.id)],
+            kwargs={
+                'boundary_file_id': str(boundary.id),
+                'target_epsg': 4326,
+                'requesting_user_id': self.user.id,
+            },
+        ).get()
+
+        self.assertTrue(result['success'], result.get('error'))
+
+        output = File.objects.get(id=result['created_files'][0]['id'])
+        with rasterio.open(output.file.path) as source:
+            self.assertEqual(source.crs.to_epsg(), 4326)
+            # Clipping ran before reprojection, so only the boundary's quarter
+            # survives -- a full 10x10 here would mean the order silently flipped.
+            self.assertLess(source.width * source.height, 100)
