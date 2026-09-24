@@ -68,6 +68,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # django, celery and celery-beat build the same context with the same
+    # Dockerfile, so they are the same image and share one tag. Left as three
+    # separate tags they drift: rebuilding django after adding a package to
+    # requirements.txt left the worker on a stale image missing it, and the
+    # worker then crash-looped at startup rather than failing one task.
+    image: adma_geo-app
     container_name: adma_geo_django
     command: >
       sh -c "pip install docker websockets &&
@@ -140,6 +146,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: adma_geo-app          # see django above
     container_name: adma_geo_celery
     command: >
       sh -c "pip install docker websockets &&
@@ -204,6 +211,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: adma_geo-app          # see django above
     container_name: adma_geo_celery_beat
     # Some Celery versions (5.6.x) have multiple missing defaults in
     # app.conf when config_from_object uses namespace='CELERY'. Click
