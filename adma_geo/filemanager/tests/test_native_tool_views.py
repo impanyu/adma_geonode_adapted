@@ -21,6 +21,10 @@ TOOL_PAGES = [
     'filemanager:vegetation_index_tool',
     'filemanager:management_zones_tool',
     'filemanager:raster_clip_tool',
+    'filemanager:public_data_tool',
+    'filemanager:terrain_tool',
+    'filemanager:point_sampling_tool',
+    'filemanager:vector_ops_tool',
 ]
 
 RUN_ENDPOINTS = [
@@ -28,6 +32,10 @@ RUN_ENDPOINTS = [
     'filemanager:run_vegetation_index',
     'filemanager:run_management_zones',
     'filemanager:run_raster_clip_reproject',
+    'filemanager:run_public_data_fetch',
+    'filemanager:run_terrain_analysis',
+    'filemanager:run_point_sampling',
+    'filemanager:run_vector_operation',
 ]
 
 
@@ -210,7 +218,9 @@ class NativeToolRegistrationTests(TestCase):
         Tool.create_system_tools()
 
         for slug in ['zonal-statistics', 'vegetation-index',
-                     'management-zones', 'raster-clip-reproject']:
+                     'management-zones', 'raster-clip-reproject',
+                     'public-data', 'terrain-analysis', 'point-sampling',
+                     'vector-ops']:
             with self.subTest(tool=slug):
                 tool = Tool.objects.get(slug=slug)
                 self.assertTrue(tool.is_system_tool)
