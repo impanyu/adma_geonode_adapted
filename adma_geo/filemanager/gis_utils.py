@@ -429,51 +429,72 @@ def process_vector_file(file_obj, file_path):
         return False, "GIS file processing failed (see server logs)"
 
 def process_raster_file(file_obj, file_path):
-    """Process raster file (GeoTIFF, TIFF)"""
+    """
+    Read a raster's real CRS and extent.
+
+    This used to guess: it looked for 'utm' or '4326' in the filename, fell
+    back to EPSG:32614 regardless, and wrote a fixed envelope around one file
+    the author happened to have. Every raster on the platform therefore
+    claimed the same few hundred metres of Nebraska, which is why one would
+    not open where it belongs on a map. rasterio is installed, so read the
+    file instead.
+    """
     try:
-        # Try to get basic info about the raster file
-        # For now, we'll use a simple approach without heavy dependencies
-        
-        # We'll assume the file has spatial info and set reasonable defaults
-        # In a full implementation, this would use GDAL to read actual CRS and extent
-        
-        # For Nebraska data, common CRS values:
-        # - EPSG:32614 (UTM Zone 14N) 
-        # - EPSG:4326 (WGS84)
-        # - EPSG:3857 (Web Mercator)
-        
-        # Set CRS based on filename or location hints
-        if any(hint in file_obj.name.lower() for hint in ['utm', '32614', 'zone14']):
-            file_obj.crs = 'EPSG:32614'  # UTM Zone 14N (common for Nebraska)
-        elif any(hint in file_obj.name.lower() for hint in ['4326', 'wgs84', 'latlon']):
-            file_obj.crs = 'EPSG:4326'  # WGS84
-        else:
-            # Default to UTM for Nebraska area since that's what your file uses
-            file_obj.crs = 'EPSG:32614'
-        
-        # Set a reasonable extent for Nebraska area
-        if file_obj.crs == 'EPSG:32614':
-            # UTM coordinates for Nebraska area (based on your file's bbox)
-            file_obj.spatial_extent = json.dumps({
-                "type": "envelope", 
-                "coordinates": [[712000, 4560000], [714000, 4562000]]  # Around your file's area
-            })
-        else:
-            # WGS84 coordinates for Nebraska
-            file_obj.spatial_extent = json.dumps({
-                "type": "envelope", 
-                "coordinates": [[-104.5, 39.5], [-95.5, 43.0]]  # Nebraska lat/lon extent
-            })
-        
+        import rasterio
+        from rasterio.warp import transform_bounds
+
+        with rasterio.open(file_path) as source:
+            crs = source.crs
+            bounds = source.bounds
+            width, height = source.width, source.height
+            band_count = source.count
+
+        if crs is None:
+            # Better to say so than to invent a location. Without a CRS the
+            # pixels cannot be placed on the earth at all, and a guess puts
+            # the layer somewhere confidently wrong.
+            file_obj.gis_status = 'error'
+            file_obj.processing_log = (
+                (file_obj.processing_log or '')
+                + '\n\u2717 This raster carries no coordinate reference system, '
+                  'so it cannot be placed on a map.'
+            )
+            file_obj.save()
+            return False, 'The raster has no CRS recorded.'
+
+        file_obj.crs = crs.to_string()
+
+        # The extent is stored in WGS84: it is read by map code, and a map can
+        # do nothing with bounds in a projection it was never told about.
+        try:
+            west, south, east, north = transform_bounds(
+                crs, 'EPSG:4326', *bounds, densify_pts=21
+            )
+        except Exception:
+            logger.warning(
+                'Could not express %s bounds in WGS84; storing native bounds',
+                file_obj.name,
+            )
+            west, south, east, north = bounds
+
+        file_obj.spatial_extent = json.dumps({
+            'type': 'envelope',
+            'coordinates': [[west, south], [east, north]],
+        })
+
         file_obj.gis_status = 'processed'
-        file_obj.processing_log = f"Raster file processed - CRS: {file_obj.crs}"
+        file_obj.processing_log = (
+            f'Raster processed - CRS: {file_obj.crs}, '
+            f'{width}x{height} px, {band_count} band(s)'
+        )
         file_obj.save()
-        
-        return True, f"Raster file processed with CRS {file_obj.crs}"
-        
+
+        return True, f'Raster file processed with CRS {file_obj.crs}'
+
     except Exception as e:
         logger.exception("Error processing raster file for %s", file_obj.name)
         return False, "GIS file processing failed (see server logs)"
+
 
 def process_csv_file(file_obj, file_path):
     """Process CSV file (assuming it has lat/lon columns) - simplified version"""

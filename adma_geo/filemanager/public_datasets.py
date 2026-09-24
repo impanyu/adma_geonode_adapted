@@ -315,6 +315,14 @@ def fetch_soilgrids(aoi, output_dir, soil_property='soc', depth='0-5cm', **_):
         handle.write(payload)
 
     import rasterio
+
+    # The WCS returns the grid without a CRS written into it -- Homolosine has
+    # no EPSG code the server is willing to stamp. Left as is, the file cannot
+    # be placed on a map at all, so record the projection we asked for.
+    with rasterio.open(path, 'r+') as source:
+        if source.crs is None:
+            source.crs = rasterio.crs.CRS.from_proj4(SOILGRIDS_CRS)
+
     with rasterio.open(path) as source:
         width, height = source.width, source.height
 
