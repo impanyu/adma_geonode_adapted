@@ -530,89 +530,14 @@ def run_seeding_tool_task(self, file_id, output_dir_id=None, requesting_user_id=
         
         logger.info(f"Seeding Tool completed: {message}")
         
-        # Create File records for the output files
-        created_files = []
-        
-        # Helper function to create/update a file record
-        def create_file_record(file_path):
-            if not os.path.exists(file_path):
-                return None
-            try:
-                # Calculate relative path for Django FileField
-                media_root = settings.MEDIA_ROOT
-                if file_path.startswith(str(media_root)):
-                    relative_path = os.path.relpath(file_path, media_root)
-                else:
-                    relative_path = file_path
-                
-                file_name = os.path.basename(file_path)
-                file_size = os.path.getsize(file_path)
-                
-                # Check if file already exists (by name and folder)
-                existing_file = File.objects.filter(
-                    name=file_name,
-                    folder=output_folder_obj,
-                    owner=file_obj.owner
-                ).first()
-                
-                if existing_file:
-                    # Update existing file
-                    existing_file.file_size = file_size
-                    existing_file.save(update_fields=['file_size', 'updated_at'])
-                    logger.info(f"Updated existing file: {file_name}")
-                    return {
-                        'name': file_name,
-                        'id': str(existing_file.id),
-                        'updated': True
-                    }
-                else:
-                    # Create new file record in the output folder
-                    new_file = File(
-                        name=file_name,
-                        folder=output_folder_obj,
-                        owner=file_obj.owner,
-                        file_size=file_size,
-                        is_public=file_obj.is_public,  # Inherit visibility from source file
-                    )
-                    # Set the file field to the relative path
-                    new_file.file.name = relative_path
-                    new_file.save()
-                    
-                    logger.info(f"Created new file record: {file_name}")
-                    return {
-                        'name': file_name,
-                        'id': str(new_file.id),
-                        'updated': False
-                    }
-                    
-            except Exception as e:
-                logger.error(f"Error creating file record for {file_path}: {e}")
-                return None
-        
-        # Process shapefile components (all files in polygons_components and boundary_components)
-        for component_key in ['polygons_components', 'boundary_components']:
-            if component_key in output_files:
-                for file_path in output_files[component_key]:
-                    result = create_file_record(file_path)
-                    if result:
-                        created_files.append(result)
-        
-        # Process the run preview image
-        if 'preview' in output_files:
-            result = create_file_record(output_files['preview'])
-            if result:
-                created_files.append(result)
+        # register_outputs takes the same shape this built by hand: a list
+        # value becomes one File row per shapefile sidecar, a scalar one
+        # row, and a path nothing was written to is skipped.
+        created_files = register_outputs(
+            output_files, output_folder_obj, file_obj.owner,
+            is_public=file_obj.is_public,
+        )
 
-        # Process CSV summary file
-        if 'summary' in output_files:
-            summary_path = output_files['summary']
-            logger.info(f"Processing summary CSV: {summary_path}")
-            result = create_file_record(summary_path)
-            if result:
-                created_files.append(result)
-            else:
-                logger.warning(f"Failed to create file record for summary: {summary_path}")
-        
         # Update source file processing log
         file_obj.processing_log = (file_obj.processing_log or "") + f"\n✓ Seeding Tool completed: {message}"
         file_obj.save(update_fields=['processing_log'])
