@@ -70,6 +70,15 @@
                     </button>
                 </form>
 
+                <hr class="my-4">
+                <p class="text-muted small mb-2">
+                    There is no password recovery on this site, so this is the only
+                    way to change yours.
+                </p>
+                <a href="{% url 'password_change' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-key me-2"></i>Change password
+                </a>
+
                 {% if not social_accounts %}
                 {% comment %}Lets a password account pick up one-click Google
                 sign-in. The link is matched on the provider's account id, so it
