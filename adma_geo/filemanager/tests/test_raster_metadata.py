@@ -122,3 +122,116 @@ class RasterMetadataTests(TestCase):
 
         file_obj.refresh_from_db()
         self.assertEqual(file_obj.gis_status, 'processed')
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
+class VectorMetadataTests(TestCase):
+    """process_vector_file assumed EPSG:4326 and a whole-world envelope."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('vgrower', password='x')
+        self.folder = Folder.objects.create(name='vectors', owner=self.user)
+        self.directory = os.path.join(MEDIA, 'uploads', self.folder.get_full_path())
+        os.makedirs(self.directory, exist_ok=True)
+
+    def _layer(self, name, crs, geometry=None):
+        import geopandas as gpd
+        from shapely.geometry import Point
+
+        path = os.path.join(self.directory, name)
+        gpd.GeoDataFrame(
+            {'plot': ['a', 'b']},
+            geometry=geometry or [Point(500000, 4500000), Point(500300, 4500300)],
+            crs=crs,
+        ).to_file(path)
+
+        file_obj = File(name=name, folder=self.folder, owner=self.user,
+                        file_size=os.path.getsize(path))
+        file_obj.file.name = os.path.relpath(path, MEDIA)
+        file_obj.save()
+        return file_obj, path
+
+    def test_the_crs_is_read_not_assumed(self):
+        from filemanager.gis_utils import process_vector_file
+
+        file_obj, path = self._layer('plots.shp', 'EPSG:32614')
+
+        ok, message = process_vector_file(file_obj, path)
+
+        self.assertTrue(ok, message)
+        self.assertEqual(file_obj.crs, 'EPSG:32614')
+
+    def test_the_extent_is_the_layer_not_the_world(self):
+        from filemanager.gis_utils import process_vector_file
+
+        file_obj, path = self._layer('plots.shp', 'EPSG:32614')
+
+        process_vector_file(file_obj, path)
+
+        (west, south), (east, north) = json.loads(file_obj.spatial_extent)['coordinates']
+        self.assertNotEqual([west, south, east, north], [-180, -90, 180, 90])
+        self.assertTrue(-99 < west < -95, west)
+        self.assertTrue(39 < south < 43, south)
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
+class CsvMetadataTests(TestCase):
+    """process_csv_file recorded a whole-world envelope for any CSV at all."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('cgrower', password='x')
+        self.folder = Folder.objects.create(name='tables', owner=self.user)
+        self.directory = os.path.join(MEDIA, 'uploads', self.folder.get_full_path())
+        os.makedirs(self.directory, exist_ok=True)
+
+    def _csv(self, name, text):
+        path = os.path.join(self.directory, name)
+        with open(path, 'w') as handle:
+            handle.write(text)
+        file_obj = File(name=name, folder=self.folder, owner=self.user,
+                        file_size=os.path.getsize(path))
+        file_obj.file.name = os.path.relpath(path, MEDIA)
+        file_obj.save()
+        return file_obj, path
+
+    def test_the_extent_comes_from_the_coordinates(self):
+        from filemanager.gis_utils import process_csv_file
+
+        file_obj, path = self._csv('points.csv', (
+            'latitude,longitude,yield\n'
+            '40.80,-96.70,180\n'
+            '40.85,-96.65,190\n'
+        ))
+
+        ok, message = process_csv_file(file_obj, path)
+
+        self.assertTrue(ok, message)
+        (west, south), (east, north) = json.loads(file_obj.spatial_extent)['coordinates']
+        self.assertAlmostEqual(west, -96.70, places=4)
+        self.assertAlmostEqual(north, 40.85, places=4)
+
+    def test_a_csv_with_no_coordinates_is_not_a_map_layer(self):
+        from filemanager.gis_utils import process_csv_file
+
+        file_obj, path = self._csv('weather.csv', 'date,tmax\n2024-06-01,25.1\n')
+
+        ok, message = process_csv_file(file_obj, path)
+
+        self.assertFalse(ok)
+        self.assertEqual(file_obj.gis_status, 'error')
+        self.assertIn('No latitude/longitude columns', file_obj.processing_log)
+
+    def test_projected_metres_are_not_taken_for_degrees(self):
+        """x/y columns are often metres; guessing would misplace the data."""
+        from filemanager.gis_utils import process_csv_file
+
+        file_obj, path = self._csv('utm.csv', (
+            'x,y,yield\n'
+            '712000,4560000,180\n'
+            '713000,4561000,190\n'
+        ))
+
+        ok, message = process_csv_file(file_obj, path)
+
+        self.assertFalse(ok)
+        self.assertIn('not lat/lon degrees', file_obj.processing_log)

@@ -408,22 +408,56 @@ def process_zip_file(file_obj, file_path):
             return False, "GIS file processing failed (see server logs)"
 
 def process_vector_file(file_obj, file_path):
-    """Process vector file (GeoJSON, Shapefile, GeoPackage) - simplified version"""
+    """
+    Read a vector layer's real CRS and extent.
+
+    Like the raster path, this used to assume: EPSG:4326 for everything and a
+    whole-world envelope. geopandas is installed, so read the file.
+    """
     try:
-        # For now, just mark as processed with basic metadata
-        # In a full implementation, this would use GDAL/GeoPandas to read the file
-        
-        file_obj.crs = 'EPSG:4326'  # Default assumption
+        import geopandas as gpd
+
+        frame = gpd.read_file(file_path)
+
+        if frame.empty:
+            file_obj.gis_status = 'error'
+            file_obj.processing_log = (
+                (file_obj.processing_log or '')
+                + '\n\u2717 This layer contains no features.'
+            )
+            file_obj.save()
+            return False, 'The layer contains no features.'
+
+        if frame.crs is None:
+            file_obj.gis_status = 'error'
+            file_obj.processing_log = (
+                (file_obj.processing_log or '')
+                + '\n\u2717 This layer carries no coordinate reference system, '
+                  'so it cannot be placed on a map.'
+            )
+            file_obj.save()
+            return False, 'The layer has no CRS recorded.'
+
+        epsg = frame.crs.to_epsg()
+        file_obj.crs = f'EPSG:{epsg}' if epsg else str(frame.crs)[:50]
+
+        # Stored in WGS84 for the same reason as rasters: map code reads it.
+        west, south, east, north = frame.to_crs('EPSG:4326').total_bounds
         file_obj.spatial_extent = json.dumps({
-            "type": "envelope", 
-            "coordinates": [[-180, -90], [180, 90]]  # World extent as default
+            'type': 'envelope',
+            'coordinates': [[float(west), float(south)], [float(east), float(north)]],
         })
+
+        geometry_types = sorted(set(frame.geom_type.dropna().unique()))
         file_obj.gis_status = 'processed'
-        file_obj.processing_log = "Successfully processed vector file (basic processing)"
+        file_obj.processing_log = (
+            f'Vector processed - CRS: {file_obj.crs}, {len(frame)} feature(s), '
+            f'{", ".join(geometry_types) or "no geometry"}'
+        )
         file_obj.save()
-        
-        return True, "Processed vector file (basic processing)"
-        
+
+        return True, f'Vector file processed with CRS {file_obj.crs}'
+
     except Exception as e:
         logger.exception("Error processing vector file for %s", file_obj.name)
         return False, "GIS file processing failed (see server logs)"
@@ -508,22 +542,76 @@ def process_raster_file(file_obj, file_path):
 
 
 def process_csv_file(file_obj, file_path):
-    """Process CSV file (assuming it has lat/lon columns) - simplified version"""
+    """
+    Find a CSV's coordinate columns and take the extent from them.
+
+    This used to record a whole-world envelope for any CSV at all, spatial or
+    not. A CSV with no coordinate columns is not a map layer, and saying so is
+    more useful than claiming it covers the planet.
+    """
     try:
-        # Basic CSV processing without heavy dependencies
-        # In a full implementation, this would use pandas/geopandas
-        
+        import pandas as pd
+
+        frame = pd.read_csv(file_path, nrows=50000)
+        lowered = {str(c).strip().lower(): c for c in frame.columns}
+
+        def find(candidates):
+            for name in candidates:
+                if name in lowered:
+                    return lowered[name]
+            return None
+
+        lat_column = find(['latitude', 'lat', 'y', 'ycoord', 'y_coord', 'northing'])
+        lon_column = find(['longitude', 'lon', 'lng', 'long', 'x', 'xcoord',
+                           'x_coord', 'easting'])
+
+        if not lat_column or not lon_column:
+            file_obj.gis_status = 'error'
+            file_obj.processing_log = (
+                (file_obj.processing_log or '')
+                + '\n\u2717 No latitude/longitude columns found, so this CSV '
+                  'cannot be placed on a map.'
+            )
+            file_obj.save()
+            return False, 'No latitude/longitude columns found.'
+
+        latitudes = pd.to_numeric(frame[lat_column], errors='coerce').dropna()
+        longitudes = pd.to_numeric(frame[lon_column], errors='coerce').dropna()
+
+        # Columns named 'x'/'y' are often projected metres, not degrees, and a
+        # guess either way would misplace the data.
+        in_range = (
+            not latitudes.empty and not longitudes.empty
+            and latitudes.between(-90, 90).all()
+            and longitudes.between(-180, 180).all()
+        )
+        if not in_range:
+            file_obj.gis_status = 'error'
+            file_obj.processing_log = (
+                (file_obj.processing_log or '')
+                + f'\n\u2717 Columns {lat_column}/{lon_column} are not lat/lon '
+                  'degrees, so the coordinate system is unknown.'
+            )
+            file_obj.save()
+            return False, 'Coordinate columns are not in lat/lon degrees.'
+
         file_obj.crs = 'EPSG:4326'
         file_obj.spatial_extent = json.dumps({
-            "type": "envelope", 
-            "coordinates": [[-180, -90], [180, 90]]  # World extent as default
+            'type': 'envelope',
+            'coordinates': [
+                [float(longitudes.min()), float(latitudes.min())],
+                [float(longitudes.max()), float(latitudes.max())],
+            ],
         })
         file_obj.gis_status = 'processed'
-        file_obj.processing_log = "CSV processed (basic processing - assumed to contain geographic data)"
+        file_obj.processing_log = (
+            f'CSV processed - {len(latitudes)} point(s) from '
+            f'{lon_column}/{lat_column}'
+        )
         file_obj.save()
-        
-        return True, "Processed CSV with geographic data (basic processing)"
-        
+
+        return True, f'Processed CSV with {len(latitudes)} geographic point(s)'
+
     except Exception as e:
         logger.exception("Error processing CSV file for %s", file_obj.name)
         return False, "GIS file processing failed (see server logs)"
