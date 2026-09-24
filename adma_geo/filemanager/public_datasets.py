@@ -22,6 +22,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from .dbf_names import dbf_safe_columns
+
 logger = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = 120
@@ -43,6 +45,7 @@ ALLOWED_HOSTS = frozenset({
     'elevation.nationalmap.gov',
     'hydro.nationalmap.gov',
     'overpass.kumi.systems',
+    'overpass-api.de',
     'sdmdataaccess.sc.egov.usda.gov',
 })
 
@@ -457,10 +460,10 @@ def fetch_watersheds(aoi, output_dir, level='huc12', **_):
     os.makedirs(output_dir, exist_ok=True)
     base = f'wbd_{level}'
     shp_path = os.path.join(output_dir, f'{base}.shp')
-    # Field names are written to a .dbf, which caps them at 10 characters.
-    frame = frame.rename(columns={c: c[:10] for c in frame.columns
-                                  if c != frame.geometry.name})
-    frame.to_file(shp_path)
+    # WBD ships long field names, several of which share their first ten
+    # characters -- truncating alone produced duplicates and geopandas
+    # refused the write.
+    dbf_safe_columns(frame).to_file(shp_path)
 
     return True, (
         f'{label}: {len(frame)} polygon(s) intersecting the area.'
@@ -474,8 +477,14 @@ def fetch_watersheds(aoi, output_dir, level='huc12', **_):
 
 # --- OpenStreetMap ----------------------------------------------------------
 
-# The main overpass-api.de instance is frequently saturated and answers 504.
-OVERPASS_URL = 'https://overpass.kumi.systems/api/interpreter'
+# Overpass instances are shared and often saturated: the main one answered 504
+# outright, and a mirror can still take well over a minute. Try them in turn
+# and allow more time than the other services get.
+OVERPASS_URLS = [
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass-api.de/api/interpreter',
+]
+OVERPASS_TIMEOUT = 180
 
 OSM_FEATURES = {
     'roads': ('highway', 'Roads and tracks, including field access.'),
@@ -545,9 +554,25 @@ def fetch_osm(aoi, output_dir, feature='roads', **_):
     )
     body = urllib.parse.urlencode({'data': query}).encode()
 
-    with _open(OVERPASS_URL, data=body,
-               headers={'Content-Type': 'application/x-www-form-urlencoded'}) as response:
-        payload = json.loads(response.read().decode('utf-8'))
+    payload, last_error = None, None
+    for url in OVERPASS_URLS:
+        try:
+            with _open(
+                url, data=body,
+                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                timeout=OVERPASS_TIMEOUT,
+            ) as response:
+                payload = json.loads(response.read().decode('utf-8'))
+            break
+        except DatasetError as exc:
+            logger.warning('Overpass instance %s unavailable: %s', url, exc)
+            last_error = exc
+
+    if payload is None:
+        raise DatasetError(
+            f'No OpenStreetMap server answered. They are shared and often '
+            f'busy -- trying again shortly usually works. ({last_error})'
+        )
 
     records = _osm_to_features(payload)
     if not records:

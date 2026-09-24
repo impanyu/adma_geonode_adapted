@@ -16,25 +16,12 @@ import geopandas as gpd
 import numpy as np
 import rasterio
 
+from .dbf_names import unique_dbf_name
+
 logger = logging.getLogger(__name__)
 
-# .dbf truncates field names past 10 characters, silently, which would collide
-# two sampled layers into one column.
-DBF_FIELD_LIMIT = 10
-
-
 def _column_name(label, taken):
-    base = label[:DBF_FIELD_LIMIT]
-    if base not in taken:
-        taken.add(base)
-        return base
-    for n in range(1, 100):
-        suffix = str(n)
-        candidate = f'{base[:DBF_FIELD_LIMIT - len(suffix)]}{suffix}'
-        if candidate not in taken:
-            taken.add(candidate)
-            return candidate
-    raise ValueError(f'Cannot build a unique column name for {label}')
+    return unique_dbf_name(label, taken)
 
 
 def sample_rasters_at_points(points_path, raster_specs, output_dir,

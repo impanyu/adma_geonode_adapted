@@ -19,6 +19,8 @@ import numpy as np
 import rasterio
 from rasterio.mask import mask as rio_mask
 
+from .dbf_names import unique_dbf_name
+
 logger = logging.getLogger(__name__)
 
 # Keep this in step with STAT_FUNCTIONS below.
@@ -35,25 +37,9 @@ STAT_FUNCTIONS = {
     'range': lambda a: float(np.max(a) - np.min(a)),
 }
 
-# .dbf caps field names at 10 characters and silently truncates past that,
-# which turns 'ndre_median' and 'ndre_mean' into the same column. Names are
-# built short enough to survive the write.
-DBF_FIELD_LIMIT = 10
-
-
 def _column_name(prefix, stat, taken):
     """A per-statistic column name that fits in a .dbf field and stays unique."""
-    base = f'{prefix}_{stat}'[:DBF_FIELD_LIMIT]
-    if base not in taken:
-        taken.add(base)
-        return base
-    for n in range(1, 100):
-        suffix = str(n)
-        candidate = f'{base[:DBF_FIELD_LIMIT - len(suffix)]}{suffix}'
-        if candidate not in taken:
-            taken.add(candidate)
-            return candidate
-    raise ValueError(f'Cannot build a unique column name for {prefix}_{stat}')
+    return unique_dbf_name(f'{prefix}_{stat}', taken)
 
 
 def compute_zonal_statistics(

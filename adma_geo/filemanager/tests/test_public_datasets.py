@@ -296,3 +296,68 @@ class CroplandPaletteTests(TestCase):
         body = inspect.getsource(fetch_cdl)
         self.assertIn('colormap(1)', body)
         self.assertIn('write_colormap', body)
+
+
+class DbfNameTests(TestCase):
+    """
+    A shapefile's .dbf caps field names at 10 characters. Truncating without
+    then making them unique either loses a column silently or, in recent
+    geopandas, fails the write outright -- which is how the watershed fetcher
+    first broke.
+    """
+
+    def test_long_names_are_shortened_and_kept_distinct(self):
+        from filemanager.dbf_names import unique_dbf_name
+
+        taken = set()
+        first = unique_dbf_name('soil_organic_carbon', taken)
+        second = unique_dbf_name('soil_organic_matter', taken)
+
+        self.assertEqual(first, 'soil_organ')
+        self.assertNotEqual(first, second)
+        self.assertLessEqual(len(second), 10)
+
+    def test_a_frame_with_colliding_columns_can_be_written(self):
+        import geopandas as gpd
+        from shapely.geometry import Point
+
+        from filemanager.dbf_names import dbf_safe_columns
+
+        frame = gpd.GeoDataFrame(
+            {'areaacres_total': [1], 'areaacres_public': [2],
+             'areaacres_private': [3]},
+            geometry=[Point(0, 0)], crs='EPSG:4326',
+        )
+
+        safe = dbf_safe_columns(frame)
+        attributes = [c for c in safe.columns if c != safe.geometry.name]
+
+        self.assertEqual(len(attributes), 3)
+        self.assertEqual(len(set(attributes)), 3)
+        self.assertTrue(all(len(c) <= 10 for c in attributes), attributes)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            safe.to_file(os.path.join(tmp, 'ok.shp'))
+
+    def test_the_geometry_column_is_left_alone(self):
+        import geopandas as gpd
+        from shapely.geometry import Point
+
+        from filemanager.dbf_names import dbf_safe_columns
+
+        frame = gpd.GeoDataFrame({'a': [1]}, geometry=[Point(0, 0)], crs='EPSG:4326')
+        self.assertEqual(dbf_safe_columns(frame).geometry.name, 'geometry')
+
+
+class OverpassFallbackTests(TestCase):
+    """Overpass instances are shared and often busy; one being down is normal."""
+
+    def test_more_than_one_instance_is_tried(self):
+        from filemanager.public_datasets import ALLOWED_HOSTS, OVERPASS_URLS
+        import urllib.parse
+
+        self.assertGreater(len(OVERPASS_URLS), 1)
+        for url in OVERPASS_URLS:
+            host = urllib.parse.urlparse(url).hostname
+            # A fallback the host allowlist refuses is not a fallback.
+            self.assertIn(host, ALLOWED_HOSTS, host)
