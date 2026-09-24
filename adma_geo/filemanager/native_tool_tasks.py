@@ -245,10 +245,18 @@ def _area_of_interest(boundary_file, lat=None, lon=None, bbox=None):
             'bbox': (lon - margin, lat - margin, lon + margin, lat + margin)}
 
 
-def _public_data_folder(user, boundary_file, output_folder_id):
-    """Where fetched public data lands."""
+def _public_data_folder(user, dataset, output_folder_id):
+    """
+    Where fetched public data lands: one top-level folder per source.
+
+    Top-level matters. The Third-Party Data panel lists third-party folders
+    with ``parent=None`` and third-party files with no folder at all, so
+    results tucked into a subfolder beside the field they were fetched for
+    would never appear there -- which is the whole point of fetching them.
+    One folder per source also gives the panel the same shape it already has
+    for John Deere and Realm5.
+    """
     from .models import Folder
-    from .tool_io import resolve_output_folder
 
     if output_folder_id:
         try:
@@ -256,18 +264,19 @@ def _public_data_folder(user, boundary_file, output_folder_id):
         except Folder.DoesNotExist:
             raise InputError('Output folder not found.')
 
-    if boundary_file is not None:
-        folder, _ = resolve_output_folder(
-            boundary_file, None, default_name='public_data'
-        )
-        return folder
-
-    # No boundary and no chosen folder: a single "Public Data" folder at the
-    # top of the user's files, reused across runs.
-    folder, _ = Folder.objects.get_or_create(
-        name='Public Data', parent=None, owner=user,
-        defaults={'is_public': False},
+    folder, created = Folder.objects.get_or_create(
+        name=dataset.name, parent=None, owner=user,
+        defaults={
+            'is_public': False,
+            'is_third_party': True,
+            'third_party_source': dataset.source,
+        },
     )
+    if not created and not folder.is_third_party:
+        # An older run, or a folder the user made by hand under the same name.
+        folder.is_third_party = True
+        folder.third_party_source = dataset.source
+        folder.save(update_fields=['is_third_party', 'third_party_source'])
     return folder
 
 
@@ -300,7 +309,7 @@ def run_public_data_fetch_task(
         )
 
         aoi = _area_of_interest(boundary, lat=lat, lon=lon, bbox=bbox)
-        folder = _public_data_folder(owner, boundary, output_folder_id)
+        folder = _public_data_folder(owner, dataset, output_folder_id)
         directory = os.path.join(
             settings.MEDIA_ROOT, 'uploads', folder.get_full_path()
         )

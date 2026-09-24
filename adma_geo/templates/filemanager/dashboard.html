@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load third_party %}
 
 {% block title %}Dashboard - ADMA{% endblock %}
 
@@ -647,7 +648,7 @@
                                     <td><span class="text-muted">{{ folder.content_summary }}</span></td>
                                     <td>
                                         <span class="badge bg-purple" style="background-color: #6f42c1;">
-                                            <i class="fas fa-cloud me-1"></i>{{ folder.third_party_source|default:"External" }}
+                                            <i class="fas {{ folder.third_party_source|source_icon }} me-1"></i>{{ folder.third_party_source|source_label }}
                                         </span>
                                     </td>
                                     <td><small>{{ folder.created_at|date:"M d, Y" }}</small></td>
@@ -692,7 +693,7 @@
                                     <td>{{ file.get_size_display }}</td>
                                     <td>
                                         <span class="badge bg-purple" style="background-color: #6f42c1;">
-                                            <i class="fas fa-cloud me-1"></i>{{ file.third_party_source|default:"External" }}
+                                            <i class="fas {{ file.third_party_source|source_icon }} me-1"></i>{{ file.third_party_source|source_label }}
                                         </span>
                                     </td>
                                     <td><small>{{ file.created_at|date:"M d, Y" }}</small></td>
@@ -707,7 +708,7 @@
                                                 </a></li>
                                                 {% if file.third_party_url %}
                                                 <li><a class="dropdown-item" href="{{ file.third_party_url }}" target="_blank">
-                                                    <i class="fas fa-external-link-alt me-2"></i>View on {{ file.third_party_source|default:"Source" }}
+                                                    <i class="fas fa-external-link-alt me-2"></i>View on {{ file.third_party_source|source_label }}
                                                 </a></li>
                                                 {% endif %}
                                                 {% if file.is_spatial %}
@@ -748,7 +749,7 @@
                                             <br>
                                             <small>
                                                 <span class="badge bg-purple" style="background-color: #6f42c1;">
-                                                    <i class="fas fa-cloud me-1"></i>{{ folder.third_party_source|default:"External" }}
+                                                    <i class="fas {{ folder.third_party_source|source_icon }} me-1"></i>{{ folder.third_party_source|source_label }}
                                                 </span>
                                                 {% if folder.is_public %}
                                                 <span class="badge bg-info ms-1">Public</span>
@@ -794,7 +795,7 @@
                                             <br>
                                             <small>
                                                 <span class="badge bg-purple" style="background-color: #6f42c1;">
-                                                    <i class="fas fa-cloud me-1"></i>{{ file.third_party_source|default:"External" }}
+                                                    <i class="fas {{ file.third_party_source|source_icon }} me-1"></i>{{ file.third_party_source|source_label }}
                                                 </span>
                                                 {% if file.is_public %}
                                                 <span class="badge bg-info ms-1">Public</span>
@@ -811,7 +812,7 @@
                                                 </a></li>
                                                 {% if file.third_party_url %}
                                                 <li><a class="dropdown-item" href="{{ file.third_party_url }}" target="_blank">
-                                                    <i class="fas fa-external-link-alt me-2"></i>View on {{ file.third_party_source|default:"Source" }}
+                                                    <i class="fas fa-external-link-alt me-2"></i>View on {{ file.third_party_source|source_label }}
                                                 </a></li>
                                                 {% endif %}
                                                 <li><a class="dropdown-item text-danger" href="#" onclick="deleteItem('file', '{{ file.id }}', '{{ file.name }}')">
