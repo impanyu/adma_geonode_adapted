@@ -70,8 +70,8 @@ And it must set `run_url` to the endpoint that queues the task.
                 </div>
                 <input type="hidden" id="outputFolderId">
                 <div class="form-text">
-                    Leave this alone and the tool puts its results in a new subfolder
-                    beside the input.
+                    {% block output_hint %}Leave this alone and the tool puts its
+                    results in a new subfolder beside the input.{% endblock %}
                 </div>
             </div>
 

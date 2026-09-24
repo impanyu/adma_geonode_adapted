@@ -4,6 +4,9 @@
 {% block tool_tagline %}Pull free agriculture and climate data for one of your fields{% endblock %}
 {% block run_url %}{% url 'filemanager:run_public_data_fetch' %}{% endblock %}
 
+{% block output_hint %}Leave this alone and the data goes to a top-level
+folder named after its source, where the Third-Party Data panel will list it.{% endblock %}
+
 {% block tool_blurb %}
 <div class="alert alert-light border">
     All four sources are free and need no account. Point this at a field boundary
