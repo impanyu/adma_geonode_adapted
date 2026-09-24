@@ -170,8 +170,11 @@ class VectorMetadataTests(TestCase):
 
         (west, south), (east, north) = json.loads(file_obj.spatial_extent)['coordinates']
         self.assertNotEqual([west, south, east, north], [-180, -90, 180, 90])
-        self.assertTrue(-99 < west < -95, west)
-        self.assertTrue(39 < south < 43, south)
+        # Easting 500000 in zone 14N is the central meridian itself, -99.
+        self.assertAlmostEqual(west, -99.0, places=4)
+        self.assertTrue(40 < south < 41, south)
+        self.assertLess(west, east)
+        self.assertLess(south, north)
 
 
 @override_settings(MEDIA_ROOT=MEDIA)
