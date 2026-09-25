@@ -451,3 +451,32 @@ class CroplandMaskTests(TestCase):
                 self.assertEqual(src.colormap(1)[1], (255, 210, 0, 255))
                 masked = src.read(1, masked=True)
                 self.assertEqual(int(masked.count()), 2)
+
+
+class SourceLabelCoverageTests(TestCase):
+    """
+    Every registered dataset must have a readable badge. A separate hand-kept
+    list of names went stale the moment four datasets were added: their badges
+    read "Ssurgo" and "Usgs Wbd" on the dashboard.
+    """
+
+    def test_every_dataset_source_has_a_proper_name_and_icon(self):
+        from filemanager.public_datasets import PUBLIC_DATASETS
+        from filemanager.templatetags.third_party import (
+            DEFAULT_ICON, source_icon, source_label,
+        )
+
+        for dataset in PUBLIC_DATASETS.values():
+            with self.subTest(source=dataset.source):
+                label = source_label(dataset.source)
+                self.assertEqual(label, dataset.name)
+                # The title-cased fallback is what we are guarding against.
+                self.assertNotEqual(label, dataset.source.replace('_', ' ').title())
+                self.assertNotEqual(source_icon(dataset.source), DEFAULT_ICON)
+
+    def test_the_sync_platforms_are_still_named(self):
+        from filemanager.templatetags.third_party import source_icon, source_label
+
+        self.assertEqual(source_label('johndeere'), 'John Deere')
+        self.assertEqual(source_icon('johndeere'), 'fa-tractor')
+        self.assertEqual(source_label('realm5'), 'Realm5')

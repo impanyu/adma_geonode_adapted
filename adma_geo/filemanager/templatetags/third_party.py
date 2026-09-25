@@ -11,16 +11,40 @@ from django import template
 
 register = template.Library()
 
-SOURCES = {
+# Platforms ADMA syncs from, which have no dataset registry of their own.
+SYNC_SOURCES = {
     'johndeere': ('John Deere', 'fa-tractor'),
     'realm5': ('Realm5', 'fa-cloud'),
-    'usda_cdl': ('USDA Cropland Data Layer', 'fa-seedling'),
-    'nasa_power': ('NASA POWER', 'fa-satellite'),
-    'open_meteo': ('Open-Meteo', 'fa-cloud-sun-rain'),
-    'soilgrids': ('SoilGrids', 'fa-mountain'),
+}
+
+# An icon per public dataset. The names come from the dataset registry itself
+# rather than being repeated here: a second list is a list that goes stale,
+# and it did -- four datasets were added and their badges read 'Ssurgo' and
+# 'Usgs Wbd' until someone looked.
+DATASET_ICONS = {
+    'usda_cdl': 'fa-seedling',
+    'nasa_power': 'fa-satellite',
+    'open_meteo': 'fa-cloud-sun-rain',
+    'soilgrids': 'fa-mountain',
+    'usgs_3dep': 'fa-mountain-sun',
+    'usgs_wbd': 'fa-water',
+    'openstreetmap': 'fa-map',
+    'ssurgo': 'fa-layer-group',
 }
 
 DEFAULT_ICON = 'fa-cloud'
+
+
+def _sources():
+    """source key -> (display name, icon), built from the dataset registry."""
+    from filemanager.public_datasets import PUBLIC_DATASETS
+
+    sources = dict(SYNC_SOURCES)
+    for dataset in PUBLIC_DATASETS.values():
+        sources[dataset.source] = (
+            dataset.name, DATASET_ICONS.get(dataset.source, DEFAULT_ICON)
+        )
+    return sources
 
 
 @register.filter
@@ -28,7 +52,7 @@ def source_label(value):
     """A readable name for a third-party source key."""
     if not value:
         return 'External'
-    known = SOURCES.get(value)
+    known = _sources().get(value)
     if known:
         return known[0]
     # Unknown key: 'some_source' reads better as 'Some Source' than as-is.
@@ -38,5 +62,5 @@ def source_label(value):
 @register.filter
 def source_icon(value):
     """The FontAwesome icon class for a third-party source key."""
-    known = SOURCES.get(value or '')
+    known = _sources().get(value or '')
     return known[1] if known else DEFAULT_ICON
