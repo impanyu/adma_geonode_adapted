@@ -1204,6 +1204,31 @@ class Tool(models.Model):
                 },
                 'output_config': {'generates': ['result_shp']},
             },
+            {
+                'slug': 'boundary-generator',
+                'name': 'Field Boundary Generator',
+                'short_description': 'Draw a field boundary from the GPS points of a field operation.',
+                'description': 'Takes the GPS points recorded during a field operation -- yield monitor, '
+                              'as-applied, planting -- removes stray fixes, and fits a boundary around what '
+                              'is left, following a real curve or notch where there is one. The boundary can '
+                              'be grown or shrunk by a distance in feet. Alongside the shapefile it writes a '
+                              'QGIS style and an ArcGIS Pro layer file, both outline-only, so the boundary '
+                              'draws over imagery without hiding it. Written by Sreeja Vinod.',
+                'category': 'gis_processing',
+                'icon': 'fa-vector-square',
+                'icon_color': 'success',
+                'url_name': 'filemanager:boundary_generator_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_boundary_generator_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.shp', '.gpkg', '.geojson', '.csv'],
+                    'required_inputs': ['file_id'],
+                    'shapes': ['auto', 'convex', 'concave', 'rectangle'],
+                },
+                'output_config': {
+                    'generates': ['boundary_components', 'qgis_style', 'arcgis_layer'],
+                },
+            },
         ]
         
         created_tools = []

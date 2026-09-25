@@ -616,3 +616,52 @@ def vector_all_columns(request, file_id):
         return _internal_error_response(exc)
 
     return JsonResponse({'success': True, 'columns': columns})
+
+
+class BoundaryGeneratorToolView(_NativeToolView):
+    template_name = 'filemanager/boundary_generator_tool.html'
+    accepted_extensions = VECTOR_EXTENSIONS + ['.csv']
+    page_title = 'Field Boundary Generator'
+
+    def get_context_data(self, **kwargs):
+        from .BoundaryGeneratorTool_SV import SHAPE_CHOICES
+        context = super().get_context_data(**kwargs)
+        context['shapes'] = [
+            {'key': k, 'description': v} for k, v in SHAPE_CHOICES.items()
+        ]
+        return context
+
+
+@api_login_required
+def run_boundary_generator(request):
+    def build(data):
+        from .BoundaryGeneratorTool_SV import SHAPE_CHOICES
+        from .native_tool_tasks import run_boundary_generator_task
+
+        source = _readable_file(
+            data.get('file_id'), request.user, 'Point layer',
+            VECTOR_EXTENSIONS + ['.csv'],
+        )
+
+        shape = data.get('shape') or 'auto'
+        if shape not in SHAPE_CHOICES:
+            raise ValueError(f'Choose one of: {", ".join(sorted(SHAPE_CHOICES))}.')
+
+        try:
+            buffer_ft = float(data.get('buffer_ft') or 0.0)
+        except (TypeError, ValueError):
+            raise ValueError('The buffer distance must be a number of feet.')
+
+        return run_boundary_generator_task.delay(
+            str(source.id),
+            buffer_ft=buffer_ft,
+            shape=shape,
+            concavity=float(data.get('concavity') or 0.3),
+            outlier_threshold=float(data.get('outlier_threshold') or 6.0),
+            remove_outliers=bool(data.get('remove_outliers', True)),
+            curve_depth_threshold_ft=float(data.get('curve_depth_threshold_ft') or 15.0),
+            output_folder_id=data.get('output_folder_id'),
+            requesting_user_id=request.user.id,
+        )
+
+    return _dispatch(request, build)

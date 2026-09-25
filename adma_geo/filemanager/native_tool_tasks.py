@@ -421,3 +421,27 @@ def run_vector_operation_task(
         )
 
     return _guard('Vector operation', file_id)(body)
+
+
+@shared_task(bind=True)
+def run_boundary_generator_task(
+    self, file_id, buffer_ft=0.0, shape='auto', concavity=0.3,
+    outlier_threshold=6.0, remove_outliers=True, curve_depth_threshold_ft=15.0,
+    output_folder_id=None, requesting_user_id=None,
+):
+    def body():
+        from .BoundaryGeneratorTool_SV import process_boundary_generation
+
+        source = _fetch(file_id, 'Point layer', requesting_user_id)
+        return _finish(
+            source, output_folder_id, 'boundary_output',
+            lambda out: process_boundary_generation(
+                source.file.path, out,
+                buffer_ft=buffer_ft, shape=shape, concavity=concavity,
+                outlier_threshold=outlier_threshold,
+                remove_outliers=remove_outliers,
+                curve_depth_threshold_ft=curve_depth_threshold_ft,
+            ),
+        )
+
+    return _guard('Boundary generator', file_id)(body)

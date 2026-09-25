@@ -1,0 +1,118 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-vector-square{% endblock %}
+{% block tool_tagline %}Draw a field boundary from GPS points{% endblock %}
+{% block run_url %}{% url 'filemanager:run_boundary_generator' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border">
+    Takes the GPS points recorded during a field operation &mdash; yield monitor,
+    as-applied, planting &mdash; drops the stray fixes, and fits a boundary around
+    what is left. Along with the shapefile it writes a QGIS style and an ArcGIS Pro
+    layer file, both outline-only, so the boundary draws over imagery without
+    hiding it.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="row">
+    <div class="col-md-7 mb-3">
+        <label class="form-label fw-semibold">
+            <i class="fas fa-location-dot me-2 text-primary"></i>Point data
+        </label>
+        <div class="input-group">
+            <input type="text" class="form-control" id="inputName" placeholder="No file chosen" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="browseInput">
+                <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+            </button>
+        </div>
+        <input type="hidden" id="inputId">
+        <div class="form-text">
+            A shapefile, GeoJSON, GeoPackage, or a CSV with latitude/longitude columns.
+        </div>
+    </div>
+
+    <div class="col-md-5 mb-3">
+        <label class="form-label fw-semibold" for="bufferFt">Buffer (feet)</label>
+        <input type="number" step="any" class="form-control" id="bufferFt" value="0">
+        <div class="form-text">Positive grows the boundary outward, negative pulls it in.</div>
+    </div>
+</div>
+
+<div class="mb-3">
+    <label class="form-label fw-semibold" for="shapeSelect">Boundary shape</label>
+    <select class="form-select" id="shapeSelect">
+        {% for shape in shapes %}
+            <option value="{{ shape.key }}" data-description="{{ shape.description }}">{{ shape.key }}</option>
+        {% endfor %}
+    </select>
+    <div class="form-text" id="shapeDescription"></div>
+</div>
+
+<div class="row">
+    <div class="col-md-4 mb-3" id="curveRow">
+        <label class="form-label fw-semibold" for="curveDepth">Curve sensitivity (ft)</label>
+        <input type="number" step="any" class="form-control" id="curveDepth" value="15">
+        <div class="form-text">
+            How deep a notch must be before it counts as real rather than GPS jitter.
+        </div>
+    </div>
+
+    <div class="col-md-4 mb-3" id="concavityRow" style="display:none;">
+        <label class="form-label fw-semibold" for="concavity">Concavity</label>
+        <input type="number" step="0.05" min="0" max="1" class="form-control" id="concavity" value="0.3">
+        <div class="form-text">0 hugs the points, 1 is a straight-sided hull.</div>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label class="form-label fw-semibold" for="outlierThreshold">Outlier sensitivity</label>
+        <input type="number" step="any" class="form-control" id="outlierThreshold" value="6">
+        <div class="form-text">Lower drops more stray points.</div>
+    </div>
+
+    <div class="col-md-4 mb-3 d-flex align-items-center">
+        <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="removeOutliers" checked>
+            <label class="form-check-label" for="removeOutliers">
+                Drop stray GPS fixes
+            </label>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tool_script %}
+<script>
+wirePicker('browseInput', 'inputName', 'inputId', {
+    accept: ['.shp', '.gpkg', '.geojson', '.csv'], title: 'Choose the point data',
+});
+
+function showShapeOptions() {
+    const option = document.getElementById('shapeSelect').selectedOptions[0];
+    document.getElementById('shapeDescription').textContent = option.dataset.description;
+    document.getElementById('curveRow').style.display = option.value === 'auto' ? '' : 'none';
+    document.getElementById('concavityRow').style.display = option.value === 'concave' ? '' : 'none';
+}
+document.getElementById('shapeSelect').addEventListener('change', showShapeOptions);
+showShapeOptions();
+
+function buildPayload() {
+    const fileId = document.getElementById('inputId').value;
+    if (!fileId) throw new Error('Choose a point file.');
+
+    const buffer = document.getElementById('bufferFt').value.trim();
+    if (buffer === '') throw new Error('Give a buffer distance in feet (0 for none).');
+    if (Number.isNaN(parseFloat(buffer))) throw new Error('The buffer must be a number.');
+
+    return {
+        file_id: fileId,
+        buffer_ft: parseFloat(buffer),
+        shape: document.getElementById('shapeSelect').value,
+        concavity: parseFloat(document.getElementById('concavity').value) || 0.3,
+        outlier_threshold: parseFloat(document.getElementById('outlierThreshold').value) || 6.0,
+        remove_outliers: document.getElementById('removeOutliers').checked,
+        curve_depth_threshold_ft: parseFloat(document.getElementById('curveDepth').value) || 15.0,
+    };
+}
+</script>
+{% endblock %}

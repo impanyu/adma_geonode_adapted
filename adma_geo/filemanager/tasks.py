@@ -2256,6 +2256,7 @@ def cleanup_idle_agents_task():
 # -- which live in their own module to keep this one from growing further --
 # are pulled in here to get themselves registered on the worker.
 from .native_tool_tasks import (  # noqa: E402,F401
+    run_boundary_generator_task,
     run_management_zones_task,
     run_point_sampling_task,
     run_public_data_fetch_task,
