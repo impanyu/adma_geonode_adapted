@@ -361,3 +361,88 @@ class OverpassFallbackTests(TestCase):
             host = urllib.parse.urlparse(url).hostname
             # A fallback the host allowlist refuses is not a fallback.
             self.assertIn(host, ALLOWED_HOSTS, host)
+
+
+class CroplandMaskTests(TestCase):
+    """
+    USDA gives all four developed classes the same grey, so a town reads as one
+    flat block that can swamp the field. Masking drops chosen classes to CDL's
+    own background value, marks that value nodata, and makes its palette entry
+    transparent -- so they vanish from the map and from Zonal Statistics
+    instead of being counted as a crop.
+    """
+
+    def test_the_presets_name_the_grey_classes(self):
+        from filemanager.public_datasets import CDL_MASK_PRESETS
+
+        self.assertEqual(CDL_MASK_PRESETS['none'], ())
+        # 121-124 are the four developed classes.
+        self.assertEqual(set(CDL_MASK_PRESETS['developed']), {121, 122, 123, 124})
+        # The wider preset has to include them too.
+        self.assertTrue(
+            {121, 122, 123, 124} <= set(CDL_MASK_PRESETS['non_agricultural'])
+        )
+        # ...and must not hide the crops themselves.
+        for crop in (1, 5, 24, 36, 176):
+            self.assertNotIn(crop, CDL_MASK_PRESETS['non_agricultural'])
+
+    def test_an_unknown_mask_is_refused(self):
+        from filemanager.public_datasets import DatasetError, fetch_cdl
+
+        with self.assertRaises(DatasetError) as caught:
+            fetch_cdl({'bbox': (-96.75, 40.78, -96.68, 40.83)}, '/tmp', mask='nope')
+        self.assertIn('developed', str(caught.exception))
+
+    def test_masked_pixels_become_transparent_nodata(self):
+        """The mechanism, on a raster built to contain known classes."""
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        from filemanager.public_datasets import CDL_MASK_PRESETS
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'cdl.tif')
+            # Half corn, half developed.
+            values = np.array([[1, 1], [123, 124]], dtype='uint8')
+            palette = {
+                0: (0, 0, 0, 255),
+                1: (255, 210, 0, 255),
+                123: (154, 154, 154, 255),
+                124: (154, 154, 154, 255),
+            }
+            with rasterio.open(
+                path, 'w', driver='GTiff', height=2, width=2, count=1,
+                dtype='uint8', crs='EPSG:5070',
+                transform=from_origin(-62777.0, 1980202.0, 30.0, 30.0),
+            ) as dst:
+                dst.write(values, 1)
+                dst.write_colormap(1, palette)
+
+            # Apply the same steps fetch_cdl does.
+            hidden = CDL_MASK_PRESETS['developed']
+            with rasterio.open(path) as src:
+                data = src.read(1)
+                profile = src.profile.copy()
+                carried = dict(src.colormap(1))
+
+            drop = np.isin(data, hidden)
+            data = np.where(drop, 0, data).astype('uint8')
+            profile['nodata'] = 0
+            carried[0] = (0, 0, 0, 0)
+
+            out = os.path.join(tmp, 'masked.tif')
+            with rasterio.open(out, 'w', **profile) as dst:
+                dst.write(data, 1)
+                dst.write_colormap(1, carried)
+
+            with rasterio.open(out) as src:
+                self.assertEqual(src.nodata, 0)
+                # The developed pixels are gone...
+                self.assertNotIn(123, src.read(1).tolist()[0] + src.read(1).tolist()[1])
+                # ...their palette entry is fully transparent...
+                self.assertEqual(src.colormap(1)[0][3], 0)
+                # ...and corn is untouched.
+                self.assertEqual(src.colormap(1)[1], (255, 210, 0, 255))
+                masked = src.read(1, masked=True)
+                self.assertEqual(int(masked.count()), 2)

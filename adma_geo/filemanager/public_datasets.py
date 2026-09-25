@@ -91,13 +91,45 @@ CDL_STAC_SEARCH = 'https://planetarycomputer.microsoft.com/api/stac/v1/search'
 CDL_SAS_TOKEN = f'https://planetarycomputer.microsoft.com/api/sas/v1/token/{CDL_COLLECTION}'
 CDL_FIRST_YEAR, CDL_LAST_YEAR = 2008, 2021
 
+# CDL codes 121-124 are the four developed classes, and USDA gives all four
+# the same grey -- so a town reads as one flat grey block that can swamp the
+# field you actually came to look at. These presets drop chosen classes out of
+# the raster so the crops underneath stand out.
+#
+# Masked pixels become 0, which is CDL's own background value, and 0 is set as
+# the raster's nodata with a fully transparent palette entry. That makes them
+# transparent on a map and, because the rest of the platform honours nodata,
+# leaves them out of Zonal Statistics rather than counted as a crop.
+CDL_MASK_PRESETS = {
+    'none': (),
+    'developed': (121, 122, 123, 124),
+    'non_agricultural': (
+        111, 112,                 # water, ice
+        121, 122, 123, 124,       # developed
+        131,                      # barren
+        141, 142, 143,            # forest
+        152,                      # shrubland
+        190, 195,                 # wetlands
+    ),
+}
+CDL_MASK_LABELS = {
+    'none': 'Show everything',
+    'developed': 'Hide developed land (the grey)',
+    'non_agricultural': 'Hide everything but crops and pasture',
+}
 
-def fetch_cdl(aoi, output_dir, year=2021, **_):
+
+def fetch_cdl(aoi, output_dir, year=2021, mask='none', **_):
     """Clip the USDA crop-type raster to the area of interest."""
     import numpy as np
     import rasterio
     from rasterio.warp import transform_bounds
     from rasterio.windows import from_bounds
+
+    if mask not in CDL_MASK_PRESETS:
+        raise DatasetError(
+            f'Unknown mask. Available: {", ".join(sorted(CDL_MASK_PRESETS))}.'
+        )
 
     year = int(year)
     if not CDL_FIRST_YEAR <= year <= CDL_LAST_YEAR:
@@ -155,21 +187,40 @@ def fetch_cdl(aoi, output_dir, year=2021, **_):
         except ValueError:
             palette = None
 
+    hidden = CDL_MASK_PRESETS[mask]
+    hidden_share = 0.0
+    if hidden:
+        drop = np.isin(data, hidden)
+        hidden_share = 100.0 * drop.sum() / data.size if data.size else 0.0
+        data = np.where(drop, 0, data).astype(profile['dtype'])
+        profile['nodata'] = 0
+        if palette:
+            palette = dict(palette)
+            palette[0] = (0, 0, 0, 0)
+
     with rasterio.open(out_path, 'w', **profile) as destination:
         destination.write(data, 1)
         if palette:
             destination.write_colormap(1, palette)
 
     classes, counts = np.unique(data, return_counts=True)
-    ranked = sorted(zip(classes.tolist(), counts.tolist()), key=lambda p: -p[1])
+    ranked = [
+        (code, n) for code, n in
+        sorted(zip(classes.tolist(), counts.tolist()), key=lambda p: -p[1])
+        if not (hidden and code == 0)
+    ]
     named = [
         f'{CDL_CLASS_NAMES.get(code, f"class {code}")} {100.0 * n / data.size:.0f}%'
         for code, n in ranked[:4]
     ]
     message = (
         f'Cropland Data Layer {year} clipped to {data.shape[1]}x{data.shape[0]} px. '
-        f'Mostly {", ".join(named)}.'
+        f'Mostly {", ".join(named) or "nothing left after masking"}.'
     )
+    if hidden:
+        message += (
+            f' {hidden_share:.0f}% of the area was masked out and is transparent.'
+        )
     return True, message, {'cdl_tif': out_path}
 
 
@@ -704,9 +755,14 @@ PUBLIC_DATASETS = {d.key: d for d in [
         'Crop type for every 30 m pixel, from USDA. Feeds straight into Zonal '
         'Statistics to get the crop make-up of each field.',
         fetch_cdl,
-        options=[{'name': 'year', 'label': 'Year', 'type': 'select',
-                  'choices': [str(y) for y in range(CDL_LAST_YEAR, CDL_FIRST_YEAR - 1, -1)],
-                  'default': str(CDL_LAST_YEAR)}],
+        options=[
+            {'name': 'year', 'label': 'Year', 'type': 'select',
+             'choices': [str(y) for y in range(CDL_LAST_YEAR, CDL_FIRST_YEAR - 1, -1)],
+             'default': str(CDL_LAST_YEAR)},
+            {'name': 'mask', 'label': 'Hide', 'type': 'select',
+             'choices': ['none', 'developed', 'non_agricultural'],
+             'labels': CDL_MASK_LABELS, 'default': 'none'},
+        ],
     ),
     PublicDataset(
         'nasa_power', 'NASA POWER agroclimatology', 'nasa_power', 'table', 'point',
