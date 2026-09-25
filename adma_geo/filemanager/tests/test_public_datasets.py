@@ -441,12 +441,12 @@ class CroplandMaskTests(TestCase):
                 # The developed pixels are gone...
                 self.assertNotIn(123, src.read(1).tolist()[0] + src.read(1).tolist()[1])
                 # ...the nodata index has a colour the publisher can key
-                # transparency to, and one CDL never uses for a crop...
+                # transparency to. Only the classes this fixture defines can
+                # be checked against it; a palette read back reports black for
+                # every index that was never set.
                 self.assertEqual(src.colormap(1)[0][:3], (0, 0, 0))
-                self.assertNotIn(
-                    (0, 0, 0),
-                    [v[:3] for k, v in src.colormap(1).items() if k != 0 and k in (1, 5, 24, 176)],
-                )
+                for code in (1, 123, 124):
+                    self.assertNotEqual(src.colormap(1)[code][:3], (0, 0, 0), code)
                 # ...and corn is untouched.
                 self.assertEqual(src.colormap(1)[1], (255, 210, 0, 255))
                 masked = src.read(1, masked=True)
