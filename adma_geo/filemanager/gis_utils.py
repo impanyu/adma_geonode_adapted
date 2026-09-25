@@ -154,7 +154,7 @@ class GeoServerAPI:
                     logger.info(f"Successfully uploaded raster file to GeoServer: {store_name}")
                     
                     # After upload, try to configure the layer properly
-                    self._configure_coverage_layer(store_name)
+                    self._configure_coverage_layer(store_name, file_path)
                     return True
                 else:
                     logger.error(f"Failed to upload raster file to GeoServer. Status: {response.status_code}, Response: {response.text}")
@@ -164,23 +164,84 @@ class GeoServerAPI:
             logger.error(f"Error uploading raster file to GeoServer: {str(e)}")
             return False
     
-    def _configure_coverage_layer(self, layer_name):
+    def _configure_coverage_layer(self, layer_name, file_path=None):
         """Configure the coverage layer after upload"""
         try:
             # Get the coverage info to see if it was created correctly
             coverage_url = f"{self.base_url}/rest/workspaces/{self.workspace}/coveragestores/{layer_name}/coverages/{layer_name}"
             response = requests.get(coverage_url, auth=self.auth)
-            
-            if response.status_code == 200:
-                logger.info(f"Coverage layer {layer_name} configured successfully")
-                return True
-            else:
+
+            if response.status_code != 200:
                 logger.warning(f"Coverage layer {layer_name} may not be fully configured. Status: {response.status_code}")
                 return False
-                
+
+            logger.info(f"Coverage layer {layer_name} configured successfully")
+            if file_path:
+                self._set_transparent_colour(layer_name, coverage_url, file_path)
+            return True
+
         except Exception as e:
             logger.warning(f"Could not verify coverage configuration for {layer_name}: {str(e)}")
             return False
+
+    def _set_transparent_colour(self, layer_name, coverage_url, file_path):
+        """
+        Tell GeoServer which colour in a paletted raster means "nothing here".
+
+        Declaring nodata in the GeoTIFF is not enough on its own. GeoServer
+        flattens a colour palette to RGB before drawing, so an entry written as
+        fully transparent arrives as a solid colour -- masked-out ground came
+        back painted white over the whole area. InputTransparentColor is the
+        parameter it does act on, and the colour to give it is whatever the
+        palette maps the nodata index to.
+
+        Only paletted rasters need this. For an ordinary continuous raster
+        GeoServer honours the nodata value by itself.
+        """
+        try:
+            import rasterio
+
+            with rasterio.open(file_path) as source:
+                nodata = source.nodata
+                if nodata is None:
+                    return
+                try:
+                    palette = source.colormap(1)
+                except (ValueError, IndexError):
+                    return  # not paletted; nodata alone is enough
+
+            entry = palette.get(int(nodata))
+            if not entry:
+                return
+            red, green, blue = entry[0], entry[1], entry[2]
+            colour = f'#{red:02X}{green:02X}{blue:02X}'
+
+            body = {
+                'coverage': {
+                    'parameters': {
+                        'entry': [
+                            {'string': ['InputTransparentColor', colour]},
+                            {'string': ['SUGGESTED_TILE_SIZE', '512,512']},
+                        ]
+                    }
+                }
+            }
+            response = requests.put(
+                coverage_url + '.json', json=body,
+                headers={'Content-Type': 'application/json'}, auth=self.auth,
+            )
+            if response.status_code in (200, 201):
+                logger.info(
+                    'Set InputTransparentColor=%s on %s (nodata %s)',
+                    colour, layer_name, nodata,
+                )
+            else:
+                logger.warning(
+                    'Could not set InputTransparentColor on %s: %s %s',
+                    layer_name, response.status_code, response.text[:200],
+                )
+        except Exception as exc:
+            logger.warning('Could not set the transparent colour for %s: %s', layer_name, exc)
     
     def upload_shapefile(self, store_name, shp_file_path):
         """Upload a shapefile to GeoServer as a new datastore"""

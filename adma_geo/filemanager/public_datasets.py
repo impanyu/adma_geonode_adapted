@@ -196,7 +196,13 @@ def fetch_cdl(aoi, output_dir, year=2021, mask='none', **_):
         profile['nodata'] = 0
         if palette:
             palette = dict(palette)
-            palette[0] = (0, 0, 0, 0)
+            # Opaque black, not a transparent entry. GeoServer flattens a
+            # palette to RGB before drawing, so alpha here is simply lost and
+            # the masked ground came back painted white. Black is a colour the
+            # CDL palette never uses, so the publisher can key transparency to
+            # it -- and readers that honour nodata, such as QGIS, hide these
+            # pixels anyway.
+            palette[0] = (0, 0, 0, 255)
 
     with rasterio.open(out_path, 'w', **profile) as destination:
         destination.write(data, 1)

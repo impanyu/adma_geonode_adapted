@@ -429,7 +429,7 @@ class CroplandMaskTests(TestCase):
             drop = np.isin(data, hidden)
             data = np.where(drop, 0, data).astype('uint8')
             profile['nodata'] = 0
-            carried[0] = (0, 0, 0, 0)
+            carried[0] = (0, 0, 0, 255)
 
             out = os.path.join(tmp, 'masked.tif')
             with rasterio.open(out, 'w', **profile) as dst:
@@ -440,8 +440,13 @@ class CroplandMaskTests(TestCase):
                 self.assertEqual(src.nodata, 0)
                 # The developed pixels are gone...
                 self.assertNotIn(123, src.read(1).tolist()[0] + src.read(1).tolist()[1])
-                # ...their palette entry is fully transparent...
-                self.assertEqual(src.colormap(1)[0][3], 0)
+                # ...the nodata index has a colour the publisher can key
+                # transparency to, and one CDL never uses for a crop...
+                self.assertEqual(src.colormap(1)[0][:3], (0, 0, 0))
+                self.assertNotIn(
+                    (0, 0, 0),
+                    [v[:3] for k, v in src.colormap(1).items() if k != 0 and k in (1, 5, 24, 176)],
+                )
                 # ...and corn is untouched.
                 self.assertEqual(src.colormap(1)[1], (255, 210, 0, 255))
                 masked = src.read(1, masked=True)
