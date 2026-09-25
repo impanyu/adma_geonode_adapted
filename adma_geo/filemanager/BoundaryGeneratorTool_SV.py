@@ -10,7 +10,10 @@ are the only changes and are marked ADMA EDIT below:
      what it did -- outliers dropped, a curve followed -- by printing, which
      on a worker goes only to the log. Collecting the same strings lets the
      tool show them to the person who pressed Run.
-  2. process_boundary_generation() is added as the entry point ADMA calls:
+  2. load_points() checks a CSV's latitude/longitude columns really hold
+     degrees. Her own test file has them swapped, which silently produced an
+     empty boundary.
+  3. process_boundary_generation() is added as the entry point ADMA calls:
      her main() minus the interactive prompts, which cannot work on a worker.
      main() itself is untouched and the script still runs from a shell.
 """
@@ -130,7 +133,36 @@ def load_points(input_path):
             lon_col = input("Enter the longitude column name: ").strip()
  
         df = df.dropna(subset=[lat_col, lon_col])
-        geometry = [Point(xy) for xy in zip(df[lon_col], df[lat_col])]
+
+        # ADMA EDIT 3: check the columns really hold what they are named.
+        #
+        # Richters_Clean_Yield_23.csv in the test data has them the wrong way
+        # round: its "Longitude" column holds 40.8 and its "Latitude" column
+        # -97.37. Trusting the names builds points at latitude -97, which is
+        # not a place; every one then projects to nonsense, the outlier filter
+        # discards all 21,511 of them, and the boundary comes out empty.
+        # Latitude cannot exceed 90, so a swap is unambiguous when one column
+        # is out of range and the other is not -- correct it and say so rather
+        # than return an empty field.
+        lat_values = pd.to_numeric(df[lat_col], errors="coerce")
+        lon_values = pd.to_numeric(df[lon_col], errors="coerce")
+
+        lat_ok = lat_values.between(-90, 90).all()
+        lon_ok = lon_values.between(-180, 180).all()
+
+        if not lat_ok and lon_values.between(-90, 90).all() and lat_values.between(-180, 180).all():
+            print(f"Columns {lat_col!r} and {lon_col!r} appear to be swapped "
+                  f"(latitude cannot be outside -90..90) - reading them the other way round.")
+            lat_col, lon_col = lon_col, lat_col
+            lat_values, lon_values = lon_values, lat_values
+        elif not (lat_ok and lon_ok):
+            raise ValueError(
+                f"Columns {lat_col!r}/{lon_col!r} are not latitude/longitude in degrees. "
+                "If they hold projected coordinates such as UTM metres, convert them "
+                "first or supply the file as a shapefile with its CRS."
+            )
+
+        geometry = [Point(xy) for xy in zip(lon_values, lat_values)]
         gdf = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
         return gdf
  
