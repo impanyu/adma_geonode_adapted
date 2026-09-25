@@ -13,7 +13,9 @@ are the only changes and are marked ADMA EDIT below:
   2. load_points() checks a CSV's latitude/longitude columns really hold
      degrees. Her own test file has them swapped, which silently produced an
      empty boundary.
-  3. process_boundary_generation() is added as the entry point ADMA calls:
+  3. estimate_utm_crs() measures the centroid in degrees, so an input already
+     in a projected CRS picks a real UTM zone instead of a nonexistent one.
+  4. process_boundary_generation() is added as the entry point ADMA calls:
      her main() minus the interactive prompts, which cannot work on a worker.
      main() itself is untouched and the script still runs from a shell.
 """
@@ -172,7 +174,14 @@ def load_points(input_path):
 def estimate_utm_crs(gdf):
     # Use the data's centroid to pick an appropriate UTM zone for
     # accurate metric buffering, then reproject back to WGS84 at the end.
-    minx, miny, maxx, maxy = gdf.total_bounds
+    #
+    # ADMA EDIT 4: measure the centroid in degrees. The zone arithmetic below
+    # only means anything for lat/lon, and an input already in a projected CRS
+    # -- Richters_clean_yield_23.shp in the test data is UTM 14N -- gives a
+    # centre of 637535, a "zone" of 106286 and EPSG:138886, which does not
+    # exist. Yield exports are often delivered projected, so this is not rare.
+    geographic = gdf.to_crs("EPSG:4326") if gdf.crs is not None and gdf.crs.is_projected else gdf
+    minx, miny, maxx, maxy = geographic.total_bounds
     center_lon = (minx + maxx) / 2
     center_lat = (miny + maxy) / 2
  
