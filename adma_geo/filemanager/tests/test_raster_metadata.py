@@ -238,3 +238,71 @@ class CsvMetadataTests(TestCase):
 
         self.assertFalse(ok)
         self.assertIn('not lat/lon degrees', file_obj.processing_log)
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
+class MapViewerExtentTests(TestCase):
+    """
+    The map viewer reads spatial_extent, which process_raster_file stores in
+    WGS84 whatever the file's own CRS is. Transforming it from the file's
+    native CRS instead read those degrees as metres, and threw outright on a
+    projection OpenLayers cannot name -- a MODIS layer is sinusoidal and has
+    no EPSG code, so the uncaught error took the whole map down, basemap
+    included.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('mapper', password='correct-horse-battery')
+        self.client.login(username='mapper', password='correct-horse-battery')
+        self.folder = Folder.objects.create(name='rasters', owner=self.user)
+        self.directory = os.path.join(MEDIA, 'uploads', self.folder.get_full_path())
+        os.makedirs(self.directory, exist_ok=True)
+
+    def _published(self, name, crs_text):
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        path = os.path.join(self.directory, name)
+        with rasterio.open(
+            path, 'w', driver='GTiff', height=4, width=4, count=1, dtype='uint8',
+            crs='EPSG:4326', transform=from_origin(-96.75, 40.83, 0.01, 0.01),
+        ) as destination:
+            destination.write(np.ones((4, 4), dtype='uint8'), 1)
+
+        file_obj = File(name=name, folder=self.folder, owner=self.user,
+                        file_size=os.path.getsize(path))
+        file_obj.file.name = os.path.relpath(path, MEDIA)
+        file_obj.save()
+        file_obj.crs = crs_text
+        file_obj.gis_status = 'published'
+        file_obj.geoserver_layer_name = 'adma_geo_test_layer'
+        file_obj.geoserver_workspace = 'adma_geo'
+        file_obj.spatial_extent = json.dumps({
+            'type': 'envelope',
+            'coordinates': [[-96.75, 40.79], [-96.71, 40.83]],
+        })
+        file_obj.save()
+        return file_obj
+
+    def test_the_extent_is_transformed_from_wgs84_not_the_files_crs(self):
+        for crs_text in ('EPSG:4326', 'EPSG:32614', 'PROJ:sinu', 'PROJ:aea'):
+            with self.subTest(crs=crs_text):
+                file_obj = self._published(f'r_{crs_text.replace(":", "_")}.tif', crs_text)
+
+                html = self.client.get(f'/file/{file_obj.id}/map/').content.decode()
+
+                self.assertIn("'EPSG:4326',", html)
+                # The file's own CRS must not be handed to OpenLayers: it
+                # cannot resolve PROJ:sinu and throws on null.
+                self.assertNotIn(f"transformExtent(\n", html.replace(' ', ''))
+                self.assertNotIn('sourceCRS', html)
+
+    def test_no_hand_rolled_utm_conversion_remains(self):
+        """It approximated zone 14N in JavaScript, for one part of Nebraska."""
+        file_obj = self._published('utm.tif', 'EPSG:32614')
+
+        html = self.client.get(f'/file/{file_obj.id}/map/').content.decode()
+
+        self.assertNotIn('utmToLonLat', html)
+        self.assertNotIn('centralMeridian', html)

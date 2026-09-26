@@ -706,49 +706,29 @@ document.addEventListener('DOMContentLoaded', function() {
             {% if geoserver_info.spatial_extent %}
             const storedExtent = {{ geoserver_info.spatial_extent|safe }};
             console.log('Using stored spatial extent:', storedExtent);
-            
-            // Transform to Web Mercator and zoom to it
-            // Use the file's actual CRS for proper coordinate transformation
-            const sourceCRS = '{{ geoserver_info.crs|default:"EPSG:4326" }}';
-            console.log('Source CRS:', sourceCRS);
-            
+
+            // spatial_extent is stored in WGS84 whatever the file's own CRS is
+            // -- process_raster_file converts it on the way in, precisely so
+            // map code need not know about sinusoidal, Albers or UTM.
+            //
+            // This used to transform from the file's native CRS instead, which
+            // read those degrees as if they were metres, and crashed outright
+            // on a projection OpenLayers cannot name: a MODIS fire layer is
+            // sinusoidal, has no EPSG code, and the uncaught error took the
+            // whole map down, basemap included.
             let extent;
-            if (sourceCRS === 'EPSG:32614') {
-                // Manual transformation for UTM Zone 14N to Web Mercator
-                // UTM Zone 14N covers Nebraska area, central meridian -99°
-                // Approximate conversion for Nebraska area
-                const utmToLonLat = function(x, y) {
-                    // Simplified UTM to Lat/Lon conversion for Zone 14N
-                    // This is an approximation for the Nebraska area
-                    const centralMeridian = -99.0;
-                    const falseEasting = 500000.0;
-                    const falseNorthing = 0.0;
-                    
-                    // Approximate conversion (not geodetically precise, but sufficient for mapping)
-                    const lon = centralMeridian + (x - falseEasting) / 111320.0;
-                    const lat = y / 110540.0;
-                    
-                    return [lon, lat];
-                };
-                
-                const minLonLat = utmToLonLat(storedExtent.minx, storedExtent.miny);
-                const maxLonLat = utmToLonLat(storedExtent.maxx, storedExtent.maxy);
-                
-                // Transform from Lat/Lon to Web Mercator
-                const minWebMercator = ol.proj.fromLonLat(minLonLat);
-                const maxWebMercator = ol.proj.fromLonLat(maxLonLat);
-                
-                extent = [minWebMercator[0], minWebMercator[1], maxWebMercator[0], maxWebMercator[1]];
-                console.log('Manual UTM conversion - Lon/Lat bounds:', minLonLat, maxLonLat);
-            } else {
-                // Use OpenLayers built-in transformation for other CRS
+            try {
                 extent = ol.proj.transformExtent(
-                    [storedExtent.minx, storedExtent.miny, storedExtent.maxx, storedExtent.maxy],
-                    sourceCRS,     // File's actual CRS
-                    'EPSG:3857'    // Web Mercator (target CRS)
+                    [storedExtent.minx, storedExtent.miny,
+                     storedExtent.maxx, storedExtent.maxy],
+                    'EPSG:4326',
+                    'EPSG:3857'
                 );
+            } catch (err) {
+                console.warn('Could not use the stored extent:', err);
+                return;
             }
-            
+
             console.log('Transformed stored extent (Web Mercator):', extent);
             
             map.getView().fit(extent, {
