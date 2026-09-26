@@ -303,8 +303,10 @@ class MapViewerExtentTests(TestCase):
                 self.assertIn("'EPSG:4326',", block)
                 # The file's own CRS must never be handed to OpenLayers here:
                 # it cannot resolve PROJ:sinu and throws on null, which took
-                # the basemap down with it.
-                self.assertNotIn(crs_text, block)
+                # the basemap down with it. (A file that really is WGS84 is
+                # indistinguishable from the right answer, so skip that one.)
+                if crs_text != 'EPSG:4326':
+                    self.assertNotIn(crs_text, block)
                 self.assertNotIn('sourceCRS', html)
 
     def test_no_hand_rolled_utm_conversion_remains(self):
