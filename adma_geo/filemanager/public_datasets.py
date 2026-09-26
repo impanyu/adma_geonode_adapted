@@ -1113,6 +1113,145 @@ def fetch_drought(aoi, output_dir, week='current', **_):
     }
 
 
+
+# --- Planetary Computer raster collections ---------------------------------
+#
+# Six collections that all work the same way: find the item covering the area,
+# read the named assets as windows, stack them into one GeoTIFF. Only the
+# collection, the assets and how to choose between items differ, so they share
+# one fetcher rather than being written out six times.
+
+
+def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None,
+                    datetime_range=None, cloud_under=None, prefer='newest',
+                    max_pixels=2048, band_labels=None, **_):
+    """Clip named assets of a Planetary Computer collection to the area."""
+    import rasterio
+
+    if not collection or not assets:
+        raise DatasetError('This dataset is misconfigured: no collection or assets.')
+
+    bbox = aoi['bbox']
+    check_bbox(bbox)
+
+    extra = {}
+    if datetime_range:
+        extra['datetime'] = datetime_range
+    if cloud_under is not None:
+        extra['query'] = {'eo:cloud_cover': {'lt': float(cloud_under)}}
+
+    features = pc_search(collection, bbox, **extra)
+    if not features:
+        raise DatasetError(
+            f'No {collection} data covers that area'
+            + (f' between {datetime_range.replace("/", " and ")}' if datetime_range else '')
+            + '.'
+        )
+
+    def when(feature):
+        properties = feature.get('properties') or {}
+        return (properties.get('datetime')
+                or properties.get('start_datetime') or '')
+
+    if prefer == 'least_cloud':
+        features.sort(key=lambda f: (f.get('properties') or {}).get('eo:cloud_cover', 100))
+    else:
+        features.sort(key=when, reverse=True)
+
+    item = features[0]
+    taken = (when(item) or '')[:10]
+
+    missing = [a for a in assets if a not in item['assets']]
+    if missing:
+        raise DatasetError(
+            f'That {collection} item has no {", ".join(missing)} band.'
+        )
+
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, f'{basename or collection}_{taken or "latest"}.tif')
+
+    layers, profile, target = [], None, None
+    for asset in assets:
+        signed = pc_sign(item['assets'][asset]['href'], collection)
+        single = os.path.join(output_dir, f'.{asset}.tif')
+        _clip_cog(signed, bbox, single, indexes=[1],
+                  max_pixels=max_pixels, out_shape=target)
+        with rasterio.open(single) as source:
+            layers.append(source.read(1))
+            if profile is None:
+                profile = source.profile.copy()
+                target = (source.height, source.width)
+        os.remove(single)
+
+    profile.update(count=len(layers), compress='lzw', driver='GTiff')
+    with rasterio.open(path, 'w', **profile) as destination:
+        for index, layer in enumerate(layers, start=1):
+            destination.write(layer, index)
+            destination.set_band_description(
+                index, (band_labels or {}).get(assets[index - 1], assets[index - 1])
+            )
+
+    cloud = (item.get('properties') or {}).get('eo:cloud_cover')
+    cloud_text = f', {cloud:.0f}% cloud' if cloud is not None else ''
+    return True, (
+        f'{collection} from {taken or "the latest release"}{cloud_text}: '
+        f'{", ".join(assets)} at {profile["width"]}x{profile["height"]} px.'
+    ), {'raster_tif': path}
+
+
+def _pc_dataset(key, name, source, description, collection, assets,
+                basename=None, options=None, **defaults):
+    """A PublicDataset backed by fetch_pc_raster with fixed collection/assets."""
+    def fetch(aoi, output_dir, **params):
+        settings = dict(defaults)
+        settings.update({k: v for k, v in params.items() if v not in (None, '')})
+        chosen = settings.pop('asset', None)
+        # The form offers two date fields; the STAC API wants one range.
+        start = settings.pop('start', None)
+        end = settings.pop('end', None)
+        if start and end:
+            settings['datetime_range'] = f'{start}/{end}'
+        elif start or end:
+            raise DatasetError('Give both a start and an end date, or neither.')
+        return fetch_pc_raster(
+            aoi, output_dir,
+            collection=collection,
+            assets=[chosen] if chosen else assets,
+            basename=basename or key,
+            **settings,
+        )
+
+    return PublicDataset(key, name, source, 'raster', 'bbox', description,
+                         fetch, options=options)
+
+
+GNATSGO_PROPERTIES = {
+    'aws0_100': 'Available water storage, 0-100 cm (how much water the soil holds)',
+    'soc0_100': 'Soil organic carbon, 0-100 cm',
+    'tk0_100a': 'Thickness of soil, 0-100 cm',
+    'mukey': 'Map unit key (join to the SSURGO tables)',
+    'droughty': 'Drought vulnerability index',
+    'nccpi3all': 'National Commodity Crop Productivity Index (all crops)',
+    'nccpi3corn': 'Crop productivity index for corn',
+    'nccpi3soy': 'Crop productivity index for soybeans',
+    'rootznemc': 'Root zone depth for commodity crops',
+}
+
+WORLDCOVER_CLASSES = {
+    10: 'Tree cover', 20: 'Shrubland', 30: 'Grassland', 40: 'Cropland',
+    50: 'Built-up', 60: 'Bare / sparse', 70: 'Snow and ice',
+    80: 'Permanent water', 90: 'Herbaceous wetland', 95: 'Mangroves',
+    100: 'Moss and lichen',
+}
+
+GSW_LAYERS = {
+    'occurrence': 'How often water was present, 1984-2021 (%)',
+    'seasonality': 'Months of the year water is present',
+    'recurrence': 'How reliably water returns year to year (%)',
+    'change': 'Where surface water has been gained or lost',
+}
+
+
 # --- registry ---------------------------------------------------------------
 
 class PublicDataset:
@@ -1128,6 +1267,62 @@ class PublicDataset:
 
 
 PUBLIC_DATASETS = {d.key: d for d in [
+    _pc_dataset(
+        'gnatsgo', 'gNATSGO soil properties', 'gnatsgo',
+        'USDA soil properties as rasters for the United States: how much water '
+        'the soil holds, organic carbon, and the crop productivity indices. '
+        'SSURGO gives the map units; this gives the numbers on a grid.',
+        'gnatsgo-rasters', ['aws0_100'],
+        options=[{'name': 'asset', 'label': 'Property', 'type': 'select',
+                  'choices': sorted(GNATSGO_PROPERTIES),
+                  'labels': GNATSGO_PROPERTIES, 'default': 'aws0_100'}],
+    ),
+    _pc_dataset(
+        'sentinel1', 'Sentinel-1 radar', 'sentinel1',
+        'Radar, so it sees the ground through cloud and at night -- the one '
+        'thing optical imagery cannot do. Useful for telling when a field was '
+        'worked or harvested during a wet spell.',
+        'sentinel-1-rtc', ['vv', 'vh'],
+        band_labels={'vv': 'VV (co-polarised)', 'vh': 'VH (cross-polarised)'},
+        options=[{'name': 'start', 'label': 'From', 'type': 'date', 'optional': True},
+                 {'name': 'end', 'label': 'To', 'type': 'date', 'optional': True,
+                  'hint': 'Leave both blank for the most recent pass.'}],
+    ),
+    _pc_dataset(
+        'modis_vi', 'MODIS vegetation indices', 'modis_vi',
+        'NDVI and EVI every 16 days at 250 m, back to 2000. Coarse for one '
+        'field, but the only way here to see how this season compares with '
+        'the last twenty-five.',
+        'modis-13Q1-061', ['250m_16_days_NDVI', '250m_16_days_EVI'],
+        band_labels={'250m_16_days_NDVI': 'NDVI', '250m_16_days_EVI': 'EVI'},
+        options=[{'name': 'start', 'label': 'From', 'type': 'date', 'optional': True},
+                 {'name': 'end', 'label': 'To', 'type': 'date', 'optional': True,
+                  'hint': 'Leave both blank for the most recent pass.'}],
+    ),
+    _pc_dataset(
+        'worldcover', 'ESA WorldCover land cover', 'worldcover',
+        'Global land cover at 10 m: cropland, grassland, trees, built-up, '
+        'water. The Cropland Data Layer is better where it reaches, but it '
+        'stops at the US border and this does not.',
+        'esa-worldcover', ['map'],
+        band_labels={'map': 'Land cover class'},
+    ),
+    _pc_dataset(
+        'copernicus_dem', 'Copernicus global elevation', 'copernicus_dem',
+        'Elevation at 30 m for the whole world. USGS 3DEP is better over the '
+        'United States; this covers everywhere else.',
+        'cop-dem-glo-30', ['data'],
+        band_labels={'data': 'Elevation (m)'},
+    ),
+    _pc_dataset(
+        'surface_water', 'JRC global surface water', 'surface_water',
+        'Where standing water has been seen between 1984 and 2021, and how '
+        'often. Good for finding the corner that ponds every wet spring.',
+        'jrc-gsw', ['occurrence'],
+        options=[{'name': 'asset', 'label': 'Layer', 'type': 'select',
+                  'choices': sorted(GSW_LAYERS), 'labels': GSW_LAYERS,
+                  'default': 'occurrence'}],
+    ),
     PublicDataset(
         'usda_cdl', 'USDA Cropland Data Layer', 'usda_cdl', 'raster', 'bbox',
         'Crop type for every 30 m pixel, from USDA. Feeds straight into Zonal '

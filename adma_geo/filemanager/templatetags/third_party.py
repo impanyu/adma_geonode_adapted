@@ -34,6 +34,12 @@ DATASET_ICONS = {
     'sentinel2': 'fa-satellite-dish',
     'plss': 'fa-border-all',
     'usdm': 'fa-sun-plant-wilt',
+    'gnatsgo': 'fa-seedling',
+    'sentinel1': 'fa-tower-broadcast',
+    'modis_vi': 'fa-chart-line',
+    'worldcover': 'fa-earth-americas',
+    'copernicus_dem': 'fa-mountain',
+    'surface_water': 'fa-droplet',
 }
 
 DEFAULT_ICON = 'fa-cloud'
