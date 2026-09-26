@@ -45,7 +45,6 @@ DATASET_ICONS = {
     'land_cover_annual': 'fa-globe',
     'radar_mosaic': 'fa-satellite-dish',
     'burn_severity': 'fa-fire-flame-curved',
-    'flood_maps': 'fa-house-flood-water',
 }
 
 DEFAULT_ICON = 'fa-cloud'

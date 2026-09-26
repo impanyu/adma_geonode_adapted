@@ -1143,6 +1143,13 @@ def fetch_drought(aoi, output_dir, week='current', **_):
 # one fetcher rather than being written out six times.
 
 
+def _negated_date(text):
+    """Sort key that puts the newest date first inside an ascending sort."""
+    # Dates are ISO strings, so inverting each character's ordinal reverses
+    # them without needing a second sort pass.
+    return tuple(-ord(c) for c in (text or ''))
+
+
 def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None,
                     datetime_range=None, cloud_under=None, prefer='newest',
                     max_pixels=2048, band_labels=None, **_):
@@ -1174,35 +1181,72 @@ def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None
         return (properties.get('datetime')
                 or properties.get('start_datetime') or '')
 
-    if prefer == 'least_cloud':
-        features.sort(key=lambda f: (f.get('properties') or {}).get('eo:cloud_cover', 100))
-    else:
-        features.sort(key=when, reverse=True)
+    def overlap(feature):
+        """How much of the area this item actually covers.
 
-    item = features[0]
-    taken = (when(item) or '')[:10]
+        A STAC search returns every tile whose bounds *touch* the box, edges
+        included, so a neighbouring tile that shares only a boundary line comes
+        back too. Picking the newest without checking meant asking for a window
+        that was not inside the raster at all.
+        """
+        other = feature.get('bbox') or []
+        if len(other) < 4:
+            return 0.0
+        wide = min(bbox[2], other[2]) - max(bbox[0], other[0])
+        tall = min(bbox[3], other[3]) - max(bbox[1], other[1])
+        return max(0.0, wide) * max(0.0, tall)
 
-    missing = [a for a in assets if a not in item['assets']]
-    if missing:
+    covering = [f for f in features if overlap(f) > 0]
+    if not covering:
         raise DatasetError(
-            f'That {collection} item has no {", ".join(missing)} band.'
+            f'No {collection} tile actually covers that area, only ones that '
+            'touch its edge.'
         )
 
-    os.makedirs(output_dir, exist_ok=True)
-    path = os.path.join(output_dir, f'{basename or collection}_{taken or "latest"}.tif')
+    if prefer == 'least_cloud':
+        # Clearest first; break ties on how much of the area it covers.
+        covering.sort(key=lambda f: ((f.get('properties') or {}).get('eo:cloud_cover', 100),
+                                     -overlap(f)))
+    else:
+        # Best coverage first; break ties on the newest.
+        covering.sort(key=lambda f: (-overlap(f), _negated_date(when(f))))
 
-    layers, profile, target = [], None, None
-    for asset in assets:
-        signed = pc_sign(item['assets'][asset]['href'], collection)
-        single = os.path.join(output_dir, f'.{asset}.tif')
-        _clip_cog(signed, bbox, single, indexes=[1],
-                  max_pixels=max_pixels, out_shape=target)
-        with rasterio.open(single) as source:
-            layers.append(source.read(1))
-            if profile is None:
-                profile = source.profile.copy()
-                target = (source.height, source.width)
-        os.remove(single)
+    os.makedirs(output_dir, exist_ok=True)
+
+    last_error = None
+    for item in covering[:4]:
+        taken = (when(item) or '')[:10]
+        missing = [a for a in assets if a not in item['assets']]
+        if missing:
+            last_error = DatasetError(
+                f'That {collection} item has no {", ".join(missing)} band.')
+            continue
+
+        path = os.path.join(output_dir, f'{basename or collection}_{taken or "latest"}.tif')
+        layers, profile, target = [], None, None
+        try:
+            for asset in assets:
+                signed = pc_sign(item['assets'][asset]['href'], collection)
+                single = os.path.join(output_dir, f'.{asset}.tif')
+                _clip_cog(signed, bbox, single, indexes=[1],
+                          max_pixels=max_pixels, out_shape=target)
+                with rasterio.open(single) as source:
+                    layers.append(source.read(1))
+                    if profile is None:
+                        profile = source.profile.copy()
+                        target = (source.height, source.width)
+                os.remove(single)
+            break
+        except Exception as exc:
+            # A tile can still fail -- a hole in coverage, a CRS the asset
+            # does not carry. Try the next best rather than give up.
+            logger.info('%s item %s unusable: %s', collection, item.get('id'), exc)
+            last_error = exc
+            layers = []
+    else:
+        raise DatasetError(
+            f'Could not read any {collection} tile for that area ({last_error}).'
+        )
 
     profile.update(count=len(layers), compress='lzw', driver='GTiff')
     with rasterio.open(path, 'w', **profile) as destination:
@@ -1330,13 +1374,6 @@ PUBLIC_DATASETS = {d.key: d for d in [
         'to 1984 -- not just where it burned but how hard.',
         'mtbs', ['burn-severity'],
         band_labels={'burn-severity': 'Burn severity class'},
-    ),
-    _pc_dataset(
-        'flood_maps', 'Global flood maps', 'flood_maps',
-        'Modelled flood depth for a given return period, worldwide -- how '
-        'deep the water gets in the flood you expect once a century.',
-        'deltares-floods', ['data'],
-        band_labels={'data': 'Flood depth (m)'},
     ),
     _pc_dataset(
         'gnatsgo', 'gNATSGO soil properties', 'gnatsgo',
