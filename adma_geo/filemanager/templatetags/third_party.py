@@ -30,6 +30,9 @@ DATASET_ICONS = {
     'usgs_wbd': 'fa-water',
     'openstreetmap': 'fa-map',
     'ssurgo': 'fa-layer-group',
+    'naip': 'fa-plane',
+    'sentinel2': 'fa-satellite-dish',
+    'plss': 'fa-border-all',
 }
 
 DEFAULT_ICON = 'fa-cloud'

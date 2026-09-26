@@ -43,6 +43,9 @@ ALLOWED_HOSTS = frozenset({
     'archive-api.open-meteo.com',
     'maps.isric.org',
     'elevation.nationalmap.gov',
+    'gis.blm.gov',
+    'naipeuwest.blob.core.windows.net',
+    'sentinel2l2a01.blob.core.windows.net',
     'hydro.nationalmap.gov',
     'overpass.kumi.systems',
     'overpass-api.de',
@@ -90,6 +93,79 @@ CDL_COLLECTION = 'usda-cdl'
 CDL_STAC_SEARCH = 'https://planetarycomputer.microsoft.com/api/stac/v1/search'
 CDL_SAS_TOKEN = f'https://planetarycomputer.microsoft.com/api/sas/v1/token/{CDL_COLLECTION}'
 CDL_FIRST_YEAR, CDL_LAST_YEAR = 2008, 2021
+
+PC_SEARCH = 'https://planetarycomputer.microsoft.com/api/stac/v1/search'
+PC_TOKEN = 'https://planetarycomputer.microsoft.com/api/sas/v1/token/'
+
+
+def pc_search(collection, bbox, **extra):
+    """Search a Planetary Computer collection over an area."""
+    body = json.dumps({
+        'collections': [collection], 'bbox': list(bbox), 'limit': 50, **extra,
+    }).encode()
+    with _open(PC_SEARCH, data=body,
+               headers={'Content-Type': 'application/json'}) as response:
+        return json.load(response).get('features', [])
+
+
+def pc_sign(href, collection):
+    """Add the read token a Planetary Computer asset needs. No account required."""
+    with _open(PC_TOKEN + collection) as response:
+        token = json.load(response)['token']
+    return href + ('&' if '?' in href else '?') + token
+
+
+def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_shape=None):
+    """
+    Read just the window of a cloud-optimised GeoTIFF that covers ``bbox``.
+
+    Reading a window rather than the scene is the point of a COG: a NAIP tile
+    is 0.6 m, so a few square kilometres would otherwise be a hundred million
+    pixels per band. ``max_pixels`` caps the longer side and the read is
+    decimated to suit, which keeps a request for a whole township from
+    returning a gigabyte.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.enums import Resampling
+    from rasterio.warp import transform_bounds
+    from rasterio.windows import from_bounds
+
+    with rasterio.open(signed_href) as source:
+        left, bottom, right, top = transform_bounds('EPSG:4326', source.crs, *bbox)
+        window = from_bounds(left, bottom, right, top, source.transform)
+        window = window.intersection(
+            rasterio.windows.Window(0, 0, source.width, source.height)
+        )
+        if window.width < 1 or window.height < 1:
+            raise DatasetError('That area falls outside the imagery.')
+
+        bands = indexes or list(range(1, source.count + 1))
+        if out_shape:
+            out_height, out_width = out_shape
+        else:
+            scale = max(1.0, max(window.width, window.height) / float(max_pixels))
+            out_height = max(1, int(window.height / scale))
+            out_width = max(1, int(window.width / scale))
+
+        data = source.read(
+            bands, window=window, out_shape=(len(bands), out_height, out_width),
+            resampling=Resampling.bilinear,
+        )
+        profile = source.profile.copy()
+        profile.update(
+            height=out_height, width=out_width, count=len(bands),
+            transform=source.window_transform(window) * rasterio.Affine.scale(
+                window.width / out_width, window.height / out_height
+            ),
+            compress='lzw', driver='GTiff',
+        )
+        profile.pop('photometric', None)
+
+    with rasterio.open(out_path, 'w', **profile) as destination:
+        destination.write(data)
+
+    return out_width, out_height, len(bands)
 
 # CDL codes 121-124 are the four developed classes, and USDA gives all four
 # the same grey -- so a town reads as one flat grey block that can swamp the
@@ -741,6 +817,194 @@ def fetch_ssurgo(aoi, output_dir, **_):
     }
 
 
+
+# --- NAIP aerial imagery ----------------------------------------------------
+
+NAIP_COLLECTION = 'naip'
+
+
+def fetch_naip(aoi, output_dir, **_):
+    """Sub-metre aerial imagery of US farmland, from USDA's NAIP programme."""
+    bbox = aoi['bbox']
+    check_bbox(bbox)
+
+    features = pc_search(NAIP_COLLECTION, bbox)
+    if not features:
+        raise DatasetError(
+            'No NAIP imagery covers that area. NAIP is flown over the '
+            'continental United States only.'
+        )
+
+    # Newest flight first; NAIP is flown every two or three years per state.
+    features.sort(
+        key=lambda f: (f.get('properties') or {}).get('datetime') or '',
+        reverse=True,
+    )
+    item = features[0]
+    flown = ((item.get('properties') or {}).get('datetime') or '')[:10]
+
+    href = pc_sign(item['assets']['image']['href'], NAIP_COLLECTION)
+
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, f'naip_{flown or "latest"}.tif')
+    width, height, bands = _clip_cog(href, bbox, path)
+
+    return True, (
+        f'NAIP aerial imagery flown {flown}, {width}x{height} px, {bands} band(s) '
+        '(red, green, blue, near-infrared).'
+    ), {'naip_tif': path}
+
+
+# --- Sentinel-2 -------------------------------------------------------------
+
+SENTINEL_COLLECTION = 'sentinel-2-l2a'
+
+# Band presets, named for what they are for rather than by band number.
+SENTINEL_PRESETS = {
+    'true_colour': (['B04', 'B03', 'B02'], 'Natural colour, as the eye sees it.'),
+    'colour_infrared': (['B08', 'B04', 'B03'],
+                        'Near-infrared as red: healthy canopy glows.'),
+    'index_bands': (['B04', 'B05', 'B08'],
+                    'Red, red edge and near-infrared -- the bands the '
+                    'Vegetation Index tool needs for NDVI and NDRE.'),
+}
+
+
+def fetch_sentinel2(aoi, output_dir, bands='index_bands', start=None, end=None,
+                    max_cloud=20, **_):
+    """A cloud-free Sentinel-2 scene clipped to the area."""
+    import rasterio
+
+    if bands not in SENTINEL_PRESETS:
+        raise DatasetError(
+            f'Unknown band set. Available: {", ".join(sorted(SENTINEL_PRESETS))}.'
+        )
+    if not start or not end:
+        raise DatasetError('Choose a start and end date.')
+
+    bbox = aoi['bbox']
+    check_bbox(bbox)
+
+    wanted, _description = SENTINEL_PRESETS[bands]
+
+    features = pc_search(
+        SENTINEL_COLLECTION, bbox,
+        datetime=f'{start}/{end}',
+        query={'eo:cloud_cover': {'lt': float(max_cloud)}},
+    )
+    if not features:
+        raise DatasetError(
+            f'No Sentinel-2 scene under {max_cloud}% cloud between {start} and '
+            f'{end} covers that area. Widen the dates or allow more cloud.'
+        )
+
+    features.sort(key=lambda f: (f.get('properties') or {}).get('eo:cloud_cover', 100))
+    item = features[0]
+    properties = item.get('properties') or {}
+    taken = (properties.get('datetime') or '')[:10]
+    cloud = properties.get('eo:cloud_cover')
+
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, f'sentinel2_{taken}_{bands}.tif')
+
+    # Each band is its own asset, so they are read separately and stacked.
+    # Sentinel-2 mixes resolutions -- B04 and B08 are 10 m, B05 is 20 m -- so
+    # the first band sets the grid and the rest are resampled onto it.
+    # Otherwise index_bands, the preset the Vegetation Index tool wants, could
+    # never be stacked at all.
+    layers, profile, target = [], None, None
+    for band in wanted:
+        asset = item['assets'].get(band)
+        if asset is None:
+            raise DatasetError(f'Scene has no band {band}.')
+        signed = pc_sign(asset['href'], SENTINEL_COLLECTION)
+        single = os.path.join(output_dir, f'.{band}.tif')
+        _clip_cog(signed, bbox, single, indexes=[1], out_shape=target)
+        with rasterio.open(single) as source:
+            layers.append(source.read(1))
+            if profile is None:
+                profile = source.profile.copy()
+                target = (source.height, source.width)
+        os.remove(single)
+
+    profile.update(count=len(layers), compress='lzw', driver='GTiff')
+    with rasterio.open(path, 'w', **profile) as destination:
+        for index, layer in enumerate(layers, start=1):
+            destination.write(layer, index)
+            destination.set_band_description(index, wanted[index - 1])
+
+    cloud_text = f'{cloud:.1f}% cloud' if cloud is not None else 'cloud unknown'
+    return True, (
+        f'Sentinel-2 scene from {taken} ({cloud_text}), bands '
+        f'{", ".join(wanted)} at {profile["width"]}x{profile["height"]} px.'
+    ), {'sentinel2_tif': path}
+
+
+# --- PLSS land grid ---------------------------------------------------------
+
+PLSS_URL = (
+    'https://gis.blm.gov/arcgis/rest/services/Cadastral/'
+    'BLM_Natl_PLSS_CadNSDI/MapServer'
+)
+PLSS_LAYERS = {
+    'sections': (2, 'Sections (one square mile)'),
+    'townships': (1, 'Townships (six miles square)'),
+}
+
+
+def fetch_plss(aoi, output_dir, level='sections', **_):
+    """
+    The Public Land Survey System grid.
+
+    US farmland is described in it -- "the northwest quarter of section 14" --
+    so it is the grid leases, field names and most paperwork are written
+    against.
+    """
+    import geopandas as gpd
+
+    if level not in PLSS_LAYERS:
+        raise DatasetError(
+            f'Unknown level. Available: {", ".join(sorted(PLSS_LAYERS))}.'
+        )
+    layer_id, label = PLSS_LAYERS[level]
+
+    bbox = aoi['bbox']
+    check_bbox(bbox)
+
+    query = urllib.parse.urlencode({
+        'geometry': ','.join(f'{v:.6f}' for v in bbox),
+        'geometryType': 'esriGeometryEnvelope',
+        'inSR': 4326, 'outSR': 4326,
+        'spatialRel': 'esriSpatialRelIntersects',
+        'outFields': '*', 'f': 'geojson', 'resultRecordCount': 200,
+    })
+
+    with _open(f'{PLSS_URL}/{layer_id}/query?{query}') as response:
+        payload = json.loads(response.read().decode('utf-8'))
+
+    features = payload.get('features') or []
+    if not features:
+        raise DatasetError(
+            f'No PLSS {level} cover that area. The survey grid covers the '
+            'public-land states, which excludes most of the eastern seaboard '
+            'and Texas.'
+        )
+
+    frame = gpd.GeoDataFrame.from_features(features, crs='EPSG:4326')
+
+    os.makedirs(output_dir, exist_ok=True)
+    base = f'plss_{level}'
+    shp_path = os.path.join(output_dir, f'{base}.shp')
+    dbf_safe_columns(frame).to_file(shp_path)
+
+    return True, f'{label}: {len(frame)} polygon(s) over the area.', {
+        'plss_shp': [
+            os.path.join(output_dir, f'{base}{ext}')
+            for ext in ('.shp', '.shx', '.dbf', '.prj', '.cpg')
+        ]
+    }
+
+
 # --- registry ---------------------------------------------------------------
 
 class PublicDataset:
@@ -785,6 +1049,40 @@ PUBLIC_DATASETS = {d.key: d for d in [
         fetch_open_meteo,
         options=[{'name': 'start', 'label': 'Start date', 'type': 'date'},
                  {'name': 'end', 'label': 'End date', 'type': 'date'}],
+    ),
+    PublicDataset(
+        'naip', 'USDA NAIP aerial imagery', 'naip', 'raster', 'bbox',
+        'Sub-metre aerial photography of US farmland, flown by USDA every two '
+        'or three years, with a near-infrared band. Close enough to see rows.',
+        fetch_naip,
+    ),
+    PublicDataset(
+        'sentinel2', 'Sentinel-2 imagery', 'sentinel2', 'raster', 'bbox',
+        'Free 10 m satellite imagery, revisited every few days. The '
+        'index_bands preset returns exactly the red, red-edge and '
+        'near-infrared bands the Vegetation Index tool needs.',
+        fetch_sentinel2,
+        options=[
+            {'name': 'bands', 'label': 'Bands', 'type': 'select',
+             'choices': sorted(SENTINEL_PRESETS),
+             'labels': {k: k.replace('_', ' ') for k in SENTINEL_PRESETS},
+             'default': 'index_bands'},
+            {'name': 'start', 'label': 'From', 'type': 'date'},
+            {'name': 'end', 'label': 'To', 'type': 'date'},
+            {'name': 'max_cloud', 'label': 'Max cloud %', 'type': 'select',
+             'choices': ['5', '10', '20', '40', '80'], 'default': '20'},
+        ],
+    ),
+    PublicDataset(
+        'plss', 'PLSS land grid', 'plss', 'vector', 'bbox',
+        'The Public Land Survey System: the sections and townships US '
+        'farmland is described in, and that leases and field names are '
+        'written against.',
+        fetch_plss,
+        options=[{'name': 'level', 'label': 'Level', 'type': 'select',
+                  'choices': sorted(PLSS_LAYERS),
+                  'labels': {k: v[1] for k, v in PLSS_LAYERS.items()},
+                  'default': 'sections'}],
     ),
     PublicDataset(
         'usgs_elevation', 'USGS 3DEP elevation', 'usgs_3dep', 'raster', 'bbox',
