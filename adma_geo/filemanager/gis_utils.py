@@ -178,6 +178,7 @@ class GeoServerAPI:
             logger.info(f"Coverage layer {layer_name} configured successfully")
             if file_path:
                 self._set_transparent_colour(layer_name, coverage_url, file_path)
+                self._style_multiband_as_grey(layer_name, file_path)
             return True
 
         except Exception as e:
@@ -243,6 +244,111 @@ class GeoServerAPI:
         except Exception as exc:
             logger.warning('Could not set the transparent colour for %s: %s', layer_name, exc)
     
+    # A raster of exactly two bands is read by GeoServer as greyscale plus
+    # alpha, so the second band silently becomes transparency. MODIS vegetation
+    # indices came back a third see-through because low EVI stretched to a low
+    # alpha, and the active-fire layer vanished altogether because its
+    # radiative-power band was all zeros. Declaring the bands as data in the
+    # GeoTIFF does not help -- GeoServer ignores ExtraSamples -- so the fix has
+    # to be a style that names which band to draw.
+    GREY_BAND_STYLE = 'adma_grey_first_band'
+
+    GREY_BAND_SLD = """<?xml version="1.0" encoding="UTF-8"?>
+<StyledLayerDescriptor version="1.0.0"
+    xmlns="http://www.opengis.net/sld"
+    xmlns:ogc="http://www.opengis.net/ogc"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <NamedLayer>
+    <Name>adma_grey_first_band</Name>
+    <UserStyle>
+      <Title>First band as grey</Title>
+      <Abstract>Draws band one and leaves the rest as data, not alpha.</Abstract>
+      <FeatureTypeStyle>
+        <Rule>
+          <RasterSymbolizer>
+            <Opacity>1.0</Opacity>
+            <ChannelSelection>
+              <GrayChannel>
+                <SourceChannelName>1</SourceChannelName>
+              </GrayChannel>
+            </ChannelSelection>
+            <ContrastEnhancement>
+              <Normalize/>
+            </ContrastEnhancement>
+          </RasterSymbolizer>
+        </Rule>
+      </FeatureTypeStyle>
+    </UserStyle>
+  </NamedLayer>
+</StyledLayerDescriptor>
+"""
+
+    def _style_multiband_as_grey(self, layer_name, file_path):
+        """Point a two-band coverage at a style that names band one.
+
+        Only bands 1 and 3 are safe to leave alone: one band is plain
+        greyscale, three are red/green/blue. Anything else and GeoServer takes
+        the last band for alpha.
+        """
+        try:
+            import rasterio
+
+            with rasterio.open(file_path) as source:
+                count = source.count
+                try:
+                    source.colormap(1)
+                    paletted = True
+                except (ValueError, IndexError):
+                    paletted = False
+
+            if count in (1, 3) or paletted:
+                return
+
+            if not self._ensure_grey_band_style():
+                return
+
+            response = requests.put(
+                f'{self.base_url}/rest/layers/{self.workspace}:{layer_name}.json',
+                json={'layer': {'defaultStyle': {'name': self.GREY_BAND_STYLE}}},
+                headers={'Content-Type': 'application/json'}, auth=self.auth,
+            )
+            if response.status_code in (200, 201):
+                logger.info('Styled %s (%d bands) to draw band one as grey',
+                            layer_name, count)
+            else:
+                logger.warning('Could not style %s: %s %s', layer_name,
+                               response.status_code, response.text[:200])
+        except Exception as exc:
+            logger.warning('Could not style %s as grey: %s', layer_name, exc)
+
+    def _ensure_grey_band_style(self):
+        """Create the shared style once; every such layer then points at it."""
+        try:
+            existing = requests.get(
+                f'{self.base_url}/rest/styles/{self.GREY_BAND_STYLE}.json',
+                auth=self.auth,
+            )
+            if existing.status_code == 200:
+                return True
+
+            created = requests.post(
+                f'{self.base_url}/rest/styles?name={self.GREY_BAND_STYLE}',
+                data=self.GREY_BAND_SLD.encode(),
+                headers={'Content-Type': 'application/vnd.ogc.sld+xml'},
+                auth=self.auth,
+            )
+            if created.status_code in (200, 201):
+                logger.info('Created the %s style', self.GREY_BAND_STYLE)
+                return True
+            logger.warning('Could not create the %s style: %s %s',
+                           self.GREY_BAND_STYLE, created.status_code,
+                           created.text[:200])
+            return False
+        except Exception as exc:
+            logger.warning('Could not create the %s style: %s',
+                           self.GREY_BAND_STYLE, exc)
+            return False
+
     def upload_shapefile(self, store_name, shp_file_path):
         """Upload a shapefile to GeoServer as a new datastore"""
         try:

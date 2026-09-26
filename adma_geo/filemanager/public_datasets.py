@@ -141,7 +141,34 @@ def pc_sign(href, collection=None):
         return json.load(response)['href']
 
 
-def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_shape=None):
+def _declare_bands_as_data(destination):
+    """Say in the file that band two is a measurement, not an opacity mask.
+
+    A GeoTIFF with two bands and no colour interpretation set is taken by GDAL
+    to be greyscale plus alpha, so anything reading the downloaded file -- QGIS,
+    ArcGIS, a later rasterio script -- shows band two as transparency instead of
+    as the number it is. Naming band one grey and the rest unspecified writes
+    ExtraSamples as undefined, which is what they are.
+
+    This does *not* fix the map. GeoServer ignores ExtraSamples and takes the
+    last band for alpha regardless, which is why a two-band coverage is also
+    given an explicit style naming band one -- see _style_multiband_as_grey in
+    gis_utils. Both are needed: this one for whoever opens the file, that one
+    for whoever looks at the map.
+
+    Three bands are left alone: red, green, blue is right for imagery.
+    """
+    from rasterio.enums import ColorInterp
+
+    if destination.count in (1, 3):
+        return
+    destination.colorinterp = (
+        [ColorInterp.gray] + [ColorInterp.undefined] * (destination.count - 1)
+    )
+
+
+def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048,
+              out_shape=None, grid=None):
     """
     Read just the window of a cloud-optimised GeoTIFF that covers ``bbox``.
 
@@ -150,6 +177,11 @@ def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_sh
     pixels per band. ``max_pixels`` caps the longer side and the read is
     decimated to suit, which keeps a request for a whole township from
     returning a gigabyte.
+
+    ``grid`` pins the result to an exact crs/transform/size, which is how the
+    bands of a stack are kept on one grid. Asking each band for the same pixel
+    size and letting each work out its own reprojection does not reliably
+    agree: the bands of chloris-biomass came back 13x12 and 14x13.
     """
     import numpy as np
     import rasterio
@@ -188,6 +220,14 @@ def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_sh
         )
         profile.pop('photometric', None)
         source_crs = source.crs
+        # A class raster means nothing without its palette: burn severity,
+        # land cover and a fire mask are codes, not brightness, and a clip
+        # that drops the palette renders as shades of grey. profile does not
+        # carry a colour map, so it has to be copied deliberately.
+        try:
+            palette = source.colormap(bands[0]) if len(bands) == 1 else None
+        except (ValueError, IndexError):
+            palette = None
 
     # GeoServer will not serve a coverage whose SRS it cannot name. MODIS is
     # sinusoidal and gNATSGO and MTBS are Albers, none of which carry an EPSG
@@ -199,7 +239,10 @@ def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_sh
     # easier to use anywhere else too. Nearest neighbour because most of these
     # are class rasters -- a fire mask, a land cover code -- where averaging
     # two classes would invent a third.
-    if source_crs is not None and source_crs.to_epsg() is None:
+    if grid is not None:
+        destination_crs, transform = grid['crs'], grid['transform']
+        width, height = grid['width'], grid['height']
+    elif source_crs is not None and source_crs.to_epsg() is None:
         logger.info('Reprojecting %s to EPSG:4326: its CRS has no EPSG code',
                     os.path.basename(out_path))
         destination_crs = rasterio.crs.CRS.from_epsg(4326)
@@ -208,6 +251,10 @@ def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_sh
             *rasterio.transform.array_bounds(out_height, out_width,
                                              profile['transform']),
         )
+    else:
+        destination_crs = None
+
+    if destination_crs is not None:
         reprojected = np.empty((len(bands), height, width), dtype=data.dtype)
         for index in range(len(bands)):
             reproject(
@@ -224,6 +271,10 @@ def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_sh
 
     with rasterio.open(out_path, 'w', **profile) as destination:
         destination.write(data)
+        _declare_bands_as_data(destination)
+        if palette:
+            # Nearest neighbour above, so the indices still mean what they did.
+            destination.write_colormap(1, palette)
 
     return out_width, out_height, len(bands)
 
@@ -986,6 +1037,7 @@ def fetch_sentinel2(aoi, output_dir, bands='index_bands', start=None, end=None,
 
     profile.update(count=len(layers), compress='lzw', driver='GTiff')
     with rasterio.open(path, 'w', **profile) as destination:
+        _declare_bands_as_data(destination)
         for index, layer in enumerate(layers, start=1):
             destination.write(layer, index)
             destination.set_band_description(index, wanted[index - 1])
@@ -1260,26 +1312,37 @@ def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None
             continue
 
         path = os.path.join(output_dir, f'{basename or collection}_{taken or "latest"}.tif')
-        layers, profile, target = [], None, None
+        layers, profile, grid, palette = [], None, None, None
         try:
             for asset in assets:
                 signed = pc_sign(item['assets'][asset]['href'], collection)
                 single = os.path.join(output_dir, f'.{asset}.tif')
+                # Band one sets the grid; every band after it is put on that
+                # exact grid rather than working out its own.
                 _clip_cog(signed, bbox, single, indexes=[1],
-                          max_pixels=max_pixels, out_shape=target)
+                          max_pixels=max_pixels,
+                          out_shape=None if grid is None
+                          else (grid['height'], grid['width']),
+                          grid=grid)
                 with rasterio.open(single) as source:
                     band = source.read(1)
                     if profile is None:
                         profile = source.profile.copy()
-                        target = (source.height, source.width)
-                    elif band.shape != target:
-                        # Bands are asked for on band one's grid, so they should
-                        # come back identical. Saying so beats the shape error
-                        # rasterio would raise several lines further down.
+                        grid = {'crs': source.crs, 'transform': source.transform,
+                                'width': source.width, 'height': source.height}
+                        try:
+                            palette = source.colormap(1)
+                        except (ValueError, IndexError):
+                            palette = None
+                    elif band.shape != (grid['height'], grid['width']):
+                        # Should be impossible now the grid is pinned, but a
+                        # clear message beats the shape error rasterio would
+                        # raise several lines further down.
                         raise DatasetError(
                             f'The {asset} band came back {band.shape[1]}x'
                             f'{band.shape[0]} but {assets[0]} was '
-                            f'{target[1]}x{target[0]}; they cannot be stacked.')
+                            f'{grid["width"]}x{grid["height"]}; they cannot '
+                            'be stacked.')
                     layers.append(band)
                 os.remove(single)
             break
@@ -1308,6 +1371,11 @@ def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None
 
     profile.update(count=len(layers), compress='lzw', driver='GTiff')
     with rasterio.open(path, 'w', **profile) as destination:
+        _declare_bands_as_data(destination)
+        # Only for a single band: a palette indexes one band's values, so on a
+        # stack it would be read as applying to the first and mislead.
+        if palette and len(layers) == 1:
+            destination.write_colormap(1, palette)
         for index, layer in enumerate(layers, start=1):
             destination.write(layer, index)
             destination.set_band_description(
@@ -1358,6 +1426,128 @@ def _pc_dataset(key, name, source, description, collection, assets,
 
     return PublicDataset(key, name, source, 'raster', 'bbox', description,
                          fetch, options=options)
+
+
+# MODIS FireMask is a class code, not a brightness. Only 7, 8 and 9 are fire;
+# everything below is the satellite saying "I looked and there was no fire
+# here", or that it could not look at all.
+FIRE_MASK_CLASSES = {
+    0: 'not processed (no input data)',
+    1: 'not processed',
+    2: 'not processed',
+    3: 'water, no fire',
+    4: 'cloud, could not see the ground',
+    5: 'land, no fire',
+    6: 'unknown',
+    7: 'fire, low confidence',
+    8: 'fire, nominal confidence',
+    9: 'fire, high confidence',
+}
+
+FIRE_CLASSES = (7, 8, 9)
+
+# Yellow through red by confidence, and black for everything else -- black is
+# a colour no fire class uses, so the publisher keys transparency to it the
+# same way it does for the Cropland Data Layer.
+FIRE_PALETTE = {
+    0: (0, 0, 0, 255),
+    7: (254, 217, 118, 255),
+    8: (253, 141, 60, 255),
+    9: (227, 26, 28, 255),
+}
+
+FIRE_BANDS = {
+    'fire_mask': 'Fire detections, coloured by confidence',
+    'radiative_power': 'Fire radiative power -- how fiercely it is burning',
+}
+
+
+def _fire_ground_summary(present):
+    """What the satellite saw, when what it saw was not fire."""
+    total = sum(present.values()) or 1
+    ranked = sorted(present.items(), key=lambda pair: -pair[1])
+    return ', '.join(
+        f'{FIRE_MASK_CLASSES.get(code, f"class {code}")} '
+        f'{100.0 * count / total:.0f}%'
+        for code, count in ranked[:3]
+    )
+
+
+def fetch_active_fire(aoi, output_dir, start=None, end=None, band='fire_mask', **_):
+    """MODIS active fire detections, styled so that the fire is what you see.
+
+    Published raw this layer is unreadable and worse than unreadable: nearly
+    every pixel is class 5, "land, no fire", which renders as flat grey, hides
+    the basemap underneath, and buries the handful of pixels that are the whole
+    point of the layer. So the non-fire classes are dropped to nodata and the
+    three fire classes get a yellow-to-red palette.
+
+    A tile with no fire in it at all is reported rather than published. It is
+    the common case -- most ground is not burning on most days -- and a grey
+    rectangle is a far worse answer than being told plainly that nothing was
+    alight there.
+    """
+    import numpy as np
+    import rasterio
+
+    if band not in FIRE_BANDS:
+        raise DatasetError(
+            f'Unknown choice {band!r}. Pick one of: {", ".join(sorted(FIRE_BANDS))}.')
+
+    datetime_range = None
+    if start and end:
+        datetime_range = f'{start}/{end}'
+    elif start or end:
+        raise DatasetError('Give both a start and an end date, or neither.')
+
+    asset = 'FireMask' if band == 'fire_mask' else 'MaxFRP'
+    success, message, outputs = fetch_pc_raster(
+        aoi, output_dir,
+        collection='modis-14A1-061',
+        assets=[asset],
+        basename='active_fire',
+        datetime_range=datetime_range,
+        band_labels={'FireMask': 'Fire detection confidence',
+                     'MaxFRP': 'Fire radiative power (MW)'},
+    )
+    if band != 'fire_mask':
+        return success, message, outputs
+
+    path = outputs['raster_tif']
+    with rasterio.open(path) as source:
+        data = source.read(1)
+        profile = source.profile.copy()
+
+    present = {int(value): int(count)
+               for value, count in zip(*np.unique(data, return_counts=True))}
+    burning = np.isin(data, FIRE_CLASSES)
+    if not burning.any():
+        os.remove(path)
+        raise DatasetError(
+            'Nothing was burning there in that period. The imagery read fine '
+            f'-- it is {_fire_ground_summary(present)} -- so this is an '
+            'answer, not a failure. Most ground is not on fire on most days: '
+            'to see this layer do something, pick a week and a place where a '
+            'fire was actually running.'
+        )
+
+    detected = int(burning.sum())
+    data = np.where(burning, data, 0).astype(profile['dtype'])
+    profile.update(count=1, nodata=0, compress='lzw', driver='GTiff')
+    with rasterio.open(path, 'w', **profile) as destination:
+        destination.write(data, 1)
+        destination.write_colormap(1, FIRE_PALETTE)
+        destination.set_band_description(1, 'Fire detection confidence')
+
+    by_confidence = ', '.join(
+        f'{present[code]} {FIRE_MASK_CLASSES[code].split(", ")[1]}'
+        for code in FIRE_CLASSES if present.get(code)
+    )
+    return True, (
+        f'{detected} burning pixels of {data.size} '
+        f'({100.0 * detected / data.size:.1f}% of the area): {by_confidence}. '
+        'Everything not on fire is transparent, so the fire is what you see.'
+    ), outputs
 
 
 LANDSAT_PRESETS = {
@@ -1485,16 +1675,23 @@ class PublicDataset:
 
 
 PUBLIC_DATASETS = {d.key: d for d in [
-    _pc_dataset(
-        'active_fire', 'Active fires (MODIS)', 'active_fire',
-        'Where the ground is burning, worldwide, updated daily. FireMask '
-        'flags each detection and MaxFRP is how fiercely it is radiating.',
-        'modis-14A1-061', ['FireMask', 'MaxFRP'],
-        band_labels={'FireMask': 'Fire detection confidence',
-                     'MaxFRP': 'Fire radiative power (MW)'},
-        options=[{'name': 'start', 'label': 'From', 'type': 'date', 'optional': True},
-                 {'name': 'end', 'label': 'To', 'type': 'date', 'optional': True,
-                  'hint': 'Leave blank for the most recent pass.'}],
+    PublicDataset(
+        'active_fire', 'Active fires (MODIS)', 'active_fire', 'raster', 'bbox',
+        'Where the ground is burning, worldwide, updated daily. Only the '
+        'burning pixels are drawn -- ground that is not on fire is left '
+        'transparent, coloured yellow through red by how confident the '
+        'detection is. If nothing was alight there it says so rather than '
+        'handing back an empty layer.',
+        fetch_active_fire,
+        options=[
+            {'name': 'band', 'label': 'Show', 'type': 'select',
+             'choices': sorted(FIRE_BANDS), 'labels': FIRE_BANDS,
+             'default': 'fire_mask'},
+            {'name': 'start', 'label': 'From', 'type': 'date', 'optional': True},
+            {'name': 'end', 'label': 'To', 'type': 'date', 'optional': True,
+             'hint': 'Leave blank for the most recent pass -- though on any '
+                     'given day most places have no fire.'},
+        ],
     ),
     _pc_dataset(
         'biomass', 'Standing biomass and its change', 'biomass',
