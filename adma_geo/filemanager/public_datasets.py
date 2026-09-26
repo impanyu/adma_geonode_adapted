@@ -1248,6 +1248,18 @@ def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None
             f'Could not read any {collection} tile for that area ({last_error}).'
         )
 
+    # A tile can cover the area and still have nothing mapped in it -- burn
+    # severity over ground that never burned, say. Writing an empty raster and
+    # calling it success is worse than saying so.
+    import numpy as np
+    nodata = profile.get('nodata')
+    if nodata is not None and all(bool(np.all(layer == nodata)) for layer in layers):
+        raise DatasetError(
+            f'{collection} covers that area but has nothing mapped there -- '
+            'the layer is empty over this ground, which is usually the answer '
+            'rather than a fault.'
+        )
+
     profile.update(count=len(layers), compress='lzw', driver='GTiff')
     with rasterio.open(path, 'w', **profile) as destination:
         for index, layer in enumerate(layers, start=1):
