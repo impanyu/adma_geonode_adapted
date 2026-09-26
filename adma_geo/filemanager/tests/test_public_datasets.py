@@ -480,3 +480,71 @@ class SourceLabelCoverageTests(TestCase):
         self.assertEqual(source_label('johndeere'), 'John Deere')
         self.assertEqual(source_icon('johndeere'), 'fa-tractor')
         self.assertEqual(source_label('realm5'), 'Realm5')
+
+
+class UnnamedCrsTests(TestCase):
+    """
+    GeoServer will not serve a coverage whose SRS it cannot name. MODIS is
+    sinusoidal and gNATSGO and MTBS are Albers, none of which carry an EPSG
+    code: GeoServer created the layer, set srs to null, quietly disabled the
+    coverage, and every WMS tile came back as an opaque LayerNotDefined error
+    image -- which also hid the basemap underneath it.
+    """
+
+    def test_a_crs_with_no_epsg_code_is_reprojected(self):
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        from filemanager.public_datasets import _clip_cog
+
+        sinusoidal = rasterio.crs.CRS.from_proj4(
+            '+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs'
+        )
+        self.assertIsNone(sinusoidal.to_epsg(), 'fixture must have no EPSG code')
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source_path = os.path.join(tmp, 'sinu.tif')
+            with rasterio.open(
+                source_path, 'w', driver='GTiff', height=40, width=40, count=1,
+                dtype='uint8', crs=sinusoidal,
+                transform=from_origin(-10400000.0, 4600000.0, 250.0, 250.0),
+            ) as dst:
+                dst.write(np.full((40, 40), 7, dtype='uint8'), 1)
+
+            out = os.path.join(tmp, 'clipped.tif')
+            with rasterio.open(source_path) as src:
+                west, south, east, north = rasterio.warp.transform_bounds(
+                    src.crs, 'EPSG:4326', *src.bounds)
+            _clip_cog(source_path, (west, south, east, north), out)
+
+            with rasterio.open(out) as written:
+                self.assertEqual(written.crs.to_epsg(), 4326)
+                # Nearest neighbour: a class raster must not gain a class that
+                # was never in it.
+                self.assertEqual(set(np.unique(written.read(1)).tolist()) - {0}, {7})
+
+    def test_a_crs_that_has_an_epsg_code_is_left_alone(self):
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        from filemanager.public_datasets import _clip_cog
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source_path = os.path.join(tmp, 'utm.tif')
+            with rasterio.open(
+                source_path, 'w', driver='GTiff', height=20, width=20, count=1,
+                dtype='uint8', crs='EPSG:32614',
+                transform=from_origin(500000.0, 4500000.0, 30.0, 30.0),
+            ) as dst:
+                dst.write(np.ones((20, 20), dtype='uint8'), 1)
+
+            out = os.path.join(tmp, 'clipped.tif')
+            with rasterio.open(source_path) as src:
+                bounds = rasterio.warp.transform_bounds(src.crs, 'EPSG:4326', *src.bounds)
+            _clip_cog(source_path, bounds, out)
+
+            with rasterio.open(out) as written:
+                # Already nameable, so no resampling is done to it.
+                self.assertEqual(written.crs.to_epsg(), 32614)

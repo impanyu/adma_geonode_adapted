@@ -154,7 +154,7 @@ def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_sh
     import numpy as np
     import rasterio
     from rasterio.enums import Resampling
-    from rasterio.warp import transform_bounds
+    from rasterio.warp import calculate_default_transform, reproject, transform_bounds
     from rasterio.windows import from_bounds
 
     with rasterio.open(signed_href) as source:
@@ -187,6 +187,40 @@ def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_sh
             compress='lzw', driver='GTiff',
         )
         profile.pop('photometric', None)
+        source_crs = source.crs
+
+    # GeoServer will not serve a coverage whose SRS it cannot name. MODIS is
+    # sinusoidal and gNATSGO and MTBS are Albers, none of which carry an EPSG
+    # code; GeoServer created the layer, set srs to null, quietly disabled the
+    # coverage, and every WMS tile came back as an opaque "LayerNotDefined"
+    # error image -- which also hid the basemap underneath.
+    #
+    # Reprojecting to WGS84 here fixes it at the source, and makes the file
+    # easier to use anywhere else too. Nearest neighbour because most of these
+    # are class rasters -- a fire mask, a land cover code -- where averaging
+    # two classes would invent a third.
+    if source_crs is not None and source_crs.to_epsg() is None:
+        logger.info('Reprojecting %s to EPSG:4326: its CRS has no EPSG code',
+                    os.path.basename(out_path))
+        destination_crs = rasterio.crs.CRS.from_epsg(4326)
+        transform, width, height = calculate_default_transform(
+            source_crs, destination_crs, out_width, out_height,
+            *rasterio.transform.array_bounds(out_height, out_width,
+                                             profile['transform']),
+        )
+        reprojected = np.empty((len(bands), height, width), dtype=data.dtype)
+        for index in range(len(bands)):
+            reproject(
+                source=data[index], destination=reprojected[index],
+                src_transform=profile['transform'], src_crs=source_crs,
+                dst_transform=transform, dst_crs=destination_crs,
+                src_nodata=profile.get('nodata'), dst_nodata=profile.get('nodata'),
+                resampling=Resampling.nearest,
+            )
+        data = reprojected
+        profile.update(crs=destination_crs, transform=transform,
+                       width=width, height=height)
+        out_width, out_height = width, height
 
     with rasterio.open(out_path, 'w', **profile) as destination:
         destination.write(data)
