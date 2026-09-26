@@ -45,6 +45,10 @@ DATASET_ICONS = {
     'land_cover_annual': 'fa-globe',
     'radar_mosaic': 'fa-satellite-dish',
     'burn_severity': 'fa-fire-flame-curved',
+    'landsat': 'fa-camera-retro',
+    'goes': 'fa-satellite',
+    'rainfall_radar': 'fa-cloud-showers-heavy',
+    'climate_normals': 'fa-temperature-half',
 }
 
 DEFAULT_ICON = 'fa-cloud'

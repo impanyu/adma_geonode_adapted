@@ -1186,7 +1186,7 @@ def _negated_date(text):
 
 def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None,
                     datetime_range=None, cloud_under=None, prefer='newest',
-                    max_pixels=2048, band_labels=None, **_):
+                    max_pixels=2048, band_labels=None, query=None, **_):
     """Clip named assets of a Planetary Computer collection to the area."""
     import rasterio
 
@@ -1199,8 +1199,11 @@ def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None
     extra = {}
     if datetime_range:
         extra['datetime'] = datetime_range
+    terms = dict(query or {})
     if cloud_under is not None:
-        extra['query'] = {'eo:cloud_cover': {'lt': float(cloud_under)}}
+        terms['eo:cloud_cover'] = {'lt': float(cloud_under)}
+    if terms:
+        extra['query'] = terms
 
     features = pc_search(collection, bbox, **extra)
     if not features:
@@ -1265,10 +1268,19 @@ def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None
                 _clip_cog(signed, bbox, single, indexes=[1],
                           max_pixels=max_pixels, out_shape=target)
                 with rasterio.open(single) as source:
-                    layers.append(source.read(1))
+                    band = source.read(1)
                     if profile is None:
                         profile = source.profile.copy()
                         target = (source.height, source.width)
+                    elif band.shape != target:
+                        # Bands are asked for on band one's grid, so they should
+                        # come back identical. Saying so beats the shape error
+                        # rasterio would raise several lines further down.
+                        raise DatasetError(
+                            f'The {asset} band came back {band.shape[1]}x'
+                            f'{band.shape[0]} but {assets[0]} was '
+                            f'{target[1]}x{target[0]}; they cannot be stacked.')
+                    layers.append(band)
                 os.remove(single)
             break
         except Exception as exc:
@@ -1311,12 +1323,24 @@ def fetch_pc_raster(aoi, output_dir, collection=None, assets=None, basename=None
 
 
 def _pc_dataset(key, name, source, description, collection, assets,
-                basename=None, options=None, **defaults):
+                basename=None, options=None, presets=None, **defaults):
     """A PublicDataset backed by fetch_pc_raster with fixed collection/assets."""
     def fetch(aoi, output_dir, **params):
         settings = dict(defaults)
         settings.update({k: v for k, v in params.items() if v not in (None, '')})
         chosen = settings.pop('asset', None)
+        # Some collections carry twenty-odd bands, too many to pick from one by
+        # one, so those offer named sets instead -- 'natural colour', 'thermal'.
+        wanted = settings.pop('bands', None)
+        if wanted:
+            if wanted not in (presets or {}):
+                raise DatasetError(
+                    f'Unknown band set {wanted!r}. Choose from: '
+                    f'{", ".join(sorted(presets or {}))}.')
+            chosen = None
+            assets_for_call = list(presets[wanted])
+        else:
+            assets_for_call = [chosen] if chosen else assets
         # The form offers two date fields; the STAC API wants one range.
         start = settings.pop('start', None)
         end = settings.pop('end', None)
@@ -1327,13 +1351,96 @@ def _pc_dataset(key, name, source, description, collection, assets,
         return fetch_pc_raster(
             aoi, output_dir,
             collection=collection,
-            assets=[chosen] if chosen else assets,
+            assets=assets_for_call,
             basename=basename or key,
             **settings,
         )
 
     return PublicDataset(key, name, source, 'raster', 'bbox', description,
                          fetch, options=options)
+
+
+LANDSAT_PRESETS = {
+    'natural_colour': ('red', 'green', 'blue'),
+    'false_colour': ('nir08', 'red', 'green'),
+    'index_bands': ('red', 'nir08'),
+    'thermal': ('lwir11',),
+    'moisture': ('nir08', 'swir16'),
+}
+
+LANDSAT_BAND_LABELS = {
+    'red': 'Red', 'green': 'Green', 'blue': 'Blue',
+    'nir08': 'Near infrared (0.87 um)',
+    'swir16': 'Short-wave infrared (1.6 um)',
+    'swir22': 'Short-wave infrared (2.2 um)',
+    'lwir11': 'Surface temperature (thermal)',
+}
+
+# Band 2 is the visible red channel and the sharpest GOES has; 8 and 9 sit on
+# water-vapour absorption lines, so they show moisture rather than cloud tops;
+# 13 is the "clean" longwave window, which works at night as well as by day.
+GOES_PRESETS = {
+    'clean_infrared': ('C13_2km',),
+    'visible': ('C02_2km',),
+    'water_vapour': ('C08_2km', 'C09_2km'),
+    'day_night_pair': ('C02_2km', 'C13_2km'),
+    'snow_and_ice': ('C05_2km',),
+}
+
+GOES_BAND_LABELS = {
+    'C02_2km': 'Visible red reflectance (band 2)',
+    'C05_2km': 'Snow/ice reflectance (band 5)',
+    'C08_2km': 'Upper-level water vapour (band 8)',
+    'C09_2km': 'Mid-level water vapour (band 9)',
+    'C13_2km': 'Clean longwave infrared brightness temperature (band 13)',
+}
+
+CLIMATE_NORMAL_VARIABLES = {
+    'tavg_norm': 'Average temperature, the 1991-2020 normal',
+    'tmax_norm': 'Average daily high temperature',
+    'tmin_norm': 'Average daily low temperature',
+    'prcp_norm': 'Average precipitation',
+    'tavg_std': 'How much the average temperature varies year to year',
+    'prcp_std': 'How much precipitation varies year to year',
+    'tmax_max': 'Warmest daily high on record for the period',
+    'tmin_min': 'Coldest daily low on record for the period',
+}
+
+MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+               'August', 'September', 'October', 'November', 'December']
+
+
+def fetch_climate_normals(aoi, output_dir, variable='tavg_norm', month='7', **_):
+    """One month of the NOAA 1991-2020 US climate normals, as a raster.
+
+    The normals are published as a separate STAC item per month, so the month
+    is a property filter rather than a date range -- asking for July 2019 would
+    find nothing, because a normal is not tied to a year.
+    """
+    if variable not in CLIMATE_NORMAL_VARIABLES:
+        raise DatasetError(
+            f'Unknown variable {variable!r}. Choose from: '
+            f'{", ".join(sorted(CLIMATE_NORMAL_VARIABLES))}.')
+    try:
+        index = int(month)
+    except (TypeError, ValueError):
+        raise DatasetError('Give the month as a number from 1 to 12.')
+    if not 1 <= index <= 12:
+        raise DatasetError('Give the month as a number from 1 to 12.')
+
+    return fetch_pc_raster(
+        aoi, output_dir,
+        collection='noaa-climate-normals-gridded',
+        assets=[variable],
+        basename=f'climate_normals_{variable}_{MONTH_NAMES[index - 1].lower()}',
+        query={
+            'noaa_climate_normals:frequency': {'eq': 'monthly'},
+            'noaa_climate_normals:period': {'eq': '1991-2020'},
+            'noaa_climate_normals:time_index': {'eq': index},
+        },
+        band_labels={variable: (f'{CLIMATE_NORMAL_VARIABLES[variable]} '
+                                f'({MONTH_NAMES[index - 1]})')},
+    )
 
 
 GNATSGO_PROPERTIES = {
@@ -1476,6 +1583,89 @@ PUBLIC_DATASETS = {d.key: d for d in [
         options=[{'name': 'asset', 'label': 'Layer', 'type': 'select',
                   'choices': sorted(GSW_LAYERS), 'labels': GSW_LAYERS,
                   'default': 'occurrence'}],
+    ),
+    _pc_dataset(
+        'landsat', 'Landsat imagery (1982 to now)', 'landsat',
+        'The longest satellite record there is: 30 m imagery of the same '
+        'ground every 16 days since 1982, so a field can be compared with '
+        'itself forty years ago. It also carries a thermal band, which '
+        'Sentinel-2 does not -- surface temperature shows water stress before '
+        'the colour of the crop does.',
+        'landsat-c2-l2', ['red', 'green', 'blue'],
+        presets=LANDSAT_PRESETS, band_labels=LANDSAT_BAND_LABELS,
+        prefer='least_cloud',
+        options=[
+            {'name': 'bands', 'label': 'Bands', 'type': 'select',
+             'choices': sorted(LANDSAT_PRESETS),
+             'labels': {'natural_colour': 'Natural colour (what the eye sees)',
+                        'false_colour': 'False colour (vegetation in red)',
+                        'index_bands': 'Red + near infrared (for NDVI)',
+                        'thermal': 'Surface temperature',
+                        'moisture': 'Near + short-wave infrared (moisture)'},
+             'default': 'natural_colour'},
+            {'name': 'start', 'label': 'From', 'type': 'date', 'optional': True},
+            {'name': 'end', 'label': 'To', 'type': 'date', 'optional': True,
+             'hint': 'Leave both blank for the clearest recent pass. The '
+                     'thermal band only exists from 2013 (Landsat 8) on.'},
+            {'name': 'cloud_under', 'label': 'Max cloud %', 'type': 'select',
+             'choices': ['5', '10', '20', '40', '80'], 'default': '20'},
+        ],
+    ),
+    _pc_dataset(
+        'goes', 'GOES weather satellite', 'goes',
+        'A satellite parked over the Americas that photographs the same half '
+        'of the planet every few minutes, rather than passing overhead twice a '
+        'week. Coarse -- 2 km a pixel -- so ask for a county or a state, not a '
+        'field. This is the imagery a weather forecast is built on: where the '
+        'storm is now.',
+        'goes-cmi', ['C13_2km'],
+        presets=GOES_PRESETS, band_labels=GOES_BAND_LABELS,
+        options=[
+            {'name': 'bands', 'label': 'Channel', 'type': 'select',
+             'choices': sorted(GOES_PRESETS),
+             'labels': {'clean_infrared': 'Clean infrared (cloud tops, day or night)',
+                        'visible': 'Visible (daylight only)',
+                        'water_vapour': 'Water vapour (moisture aloft)',
+                        'day_night_pair': 'Visible + infrared together',
+                        'snow_and_ice': 'Snow and ice'},
+             'default': 'clean_infrared'},
+            {'name': 'start', 'label': 'From', 'type': 'date', 'optional': True},
+            {'name': 'end', 'label': 'To', 'type': 'date', 'optional': True,
+             'hint': 'Leave both blank for the most recent scan, which is '
+                     'minutes old.'},
+        ],
+    ),
+    _pc_dataset(
+        'rainfall_radar', 'Radar rainfall (24-hour totals)', 'rainfall_radar',
+        'How much rain actually fell on this ground over a day, at 1 km, from '
+        'NOAA radar corrected against rain gauges. A forecast says what was '
+        'expected; this says what landed. United States only, back to 2022. '
+        'The public mirror is not always caught up to today, so with no dates '
+        'given you get the most recent totals it holds, which can be weeks '
+        'old -- name the dates of the storm you care about.',
+        'noaa-mrms-qpe-24h-pass2', ['cog'],
+        band_labels={'cog': 'Rainfall over 24 hours (mm)'},
+        options=[{'name': 'start', 'label': 'From', 'type': 'date', 'optional': True},
+                 {'name': 'end', 'label': 'To', 'type': 'date', 'optional': True,
+                  'hint': 'Leave both blank for the latest totals available. '
+                          'Held back to 2022.'}],
+    ),
+    PublicDataset(
+        'climate_normals', 'US climate normals (1991-2020)', 'climate_normals',
+        'raster', 'bbox',
+        'What a month is normally like here: the thirty-year average '
+        'temperature and rainfall, on a 5 km grid, from NOAA. This is the '
+        'baseline any single season gets called wet, dry, hot or cold against.',
+        fetch_climate_normals,
+        options=[
+            {'name': 'variable', 'label': 'Variable', 'type': 'select',
+             'choices': sorted(CLIMATE_NORMAL_VARIABLES),
+             'labels': CLIMATE_NORMAL_VARIABLES, 'default': 'tavg_norm'},
+            {'name': 'month', 'label': 'Month', 'type': 'select',
+             'choices': [str(m) for m in range(1, 13)],
+             'labels': {str(m): MONTH_NAMES[m - 1] for m in range(1, 13)},
+             'default': '7'},
+        ],
     ),
     PublicDataset(
         'usda_cdl', 'USDA Cropland Data Layer', 'usda_cdl', 'raster', 'bbox',

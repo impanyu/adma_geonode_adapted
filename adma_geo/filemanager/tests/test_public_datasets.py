@@ -548,3 +548,177 @@ class UnnamedCrsTests(TestCase):
             with rasterio.open(out) as written:
                 # Already nameable, so no resampling is done to it.
                 self.assertEqual(written.crs.to_epsg(), 32614)
+
+
+class BandSetTests(TestCase):
+    """The named band sets that collections with twenty-odd bands offer.
+
+    Landsat carries 22 assets and GOES 43. Listing all of them in a dropdown
+    would be unusable, so those datasets offer sets -- 'natural colour',
+    'thermal' -- and what matters is that the chosen name reaches the fetcher
+    as the right list of assets, and that a wrong name says so rather than
+    quietly falling back to the default.
+    """
+
+    def _captured(self, key, **params):
+        with patch('filemanager.public_datasets.fetch_pc_raster') as fetch:
+            fetch.return_value = (True, 'ok', {})
+            PUBLIC_DATASETS[key].fetch({'bbox': (-96.7, 40.8, -96.6, 40.9)},
+                                       '/tmp', **params)
+        return fetch.call_args.kwargs
+
+    def test_a_named_set_becomes_the_list_of_assets(self):
+        self.assertEqual(self._captured('landsat', bands='thermal')['assets'],
+                         ['lwir11'])
+        self.assertEqual(
+            self._captured('landsat', bands='natural_colour')['assets'],
+            ['red', 'green', 'blue'])
+
+    def test_the_default_set_is_used_when_none_is_given(self):
+        self.assertEqual(self._captured('landsat')['assets'],
+                         ['red', 'green', 'blue'])
+
+    def test_goes_channels_resolve_to_their_assets(self):
+        self.assertEqual(self._captured('goes', bands='visible')['assets'],
+                         ['C02_2km'])
+        self.assertEqual(
+            self._captured('goes', bands='day_night_pair')['assets'],
+            ['C02_2km', 'C13_2km'])
+
+    def test_an_unknown_set_is_refused_by_name(self):
+        with self.assertRaises(DatasetError) as caught:
+            self._captured('landsat', bands='infra_red')
+        message = str(caught.exception)
+        self.assertIn('infra_red', message)
+        self.assertIn('thermal', message)
+
+    def test_every_offered_choice_is_a_set_that_exists(self):
+        for key in ('landsat', 'goes'):
+            dataset = PUBLIC_DATASETS[key]
+            choices = [o for o in dataset.options if o['name'] == 'bands']
+            self.assertEqual(len(choices), 1, key)
+            for choice in choices[0]['choices']:
+                with self.subTest(dataset=key, band_set=choice):
+                    assets = self._captured(key, bands=choice)['assets']
+                    self.assertTrue(assets)
+
+
+class ClimateNormalsTests(TestCase):
+    """A normal is not tied to a year, so the month is a property filter.
+
+    Asking the STAC API for July 2019 would return nothing: the items are one
+    per month of a thirty-year period, with no year of their own. Getting this
+    wrong would look like "no data covers that area" rather than like a bug.
+    """
+
+    def _captured(self, **params):
+        with patch('filemanager.public_datasets.fetch_pc_raster') as fetch:
+            fetch.return_value = (True, 'ok', {})
+            PUBLIC_DATASETS['climate_normals'].fetch(
+                {'bbox': (-96.7, 40.8, -96.6, 40.9)}, '/tmp', **params)
+        return fetch.call_args.kwargs
+
+    def test_the_month_is_asked_for_as_a_property_not_a_date(self):
+        call = self._captured(month='4')
+        self.assertEqual(call['query']['noaa_climate_normals:time_index'],
+                         {'eq': 4})
+        self.assertNotIn('datetime_range', call)
+
+    def test_the_period_is_pinned_to_the_current_normals(self):
+        query = self._captured()['query']
+        self.assertEqual(query['noaa_climate_normals:period'], {'eq': '1991-2020'})
+        self.assertEqual(query['noaa_climate_normals:frequency'],
+                         {'eq': 'monthly'})
+
+    def test_the_month_appears_in_the_name_and_the_band_label(self):
+        call = self._captured(month='12', variable='prcp_norm')
+        self.assertIn('december', call['basename'])
+        self.assertIn('December', call['band_labels']['prcp_norm'])
+
+    def test_a_month_outside_the_year_is_refused(self):
+        for bad in ('0', '13', 'July', ''):
+            with self.subTest(month=bad):
+                with self.assertRaises(DatasetError):
+                    self._captured(month=bad)
+
+    def test_an_unknown_variable_lists_the_real_ones(self):
+        with self.assertRaises(DatasetError) as caught:
+            self._captured(variable='rainfall')
+        self.assertIn('prcp_norm', str(caught.exception))
+
+    def test_every_offered_variable_is_accepted(self):
+        options = {o['name']: o for o in
+                   PUBLIC_DATASETS['climate_normals'].options}
+        for variable in options['variable']['choices']:
+            with self.subTest(variable=variable):
+                self.assertEqual(self._captured(variable=variable)['assets'],
+                                 [variable])
+        for month in options['month']['choices']:
+            with self.subTest(month=month):
+                self._captured(month=month)
+
+
+class StackedBandShapeTests(TestCase):
+    """Bands asked for on band one's grid must come back on band one's grid.
+
+    Reprojecting an unnameable CRS changes the shape, and the later bands are
+    requested at the shape band one ended up with. If that ever stops being a
+    fixed point, the bands cannot be stacked -- and the error should say that
+    rather than surfacing as a raw rasterio shape mismatch fifteen lines later.
+    """
+
+    def test_a_band_on_a_different_grid_is_reported_clearly(self):
+        import numpy as np
+        import rasterio
+
+        directory = tempfile.mkdtemp(prefix='adma-stack-')
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+
+        shapes = iter([(20, 20), (17, 19)])
+
+        def clip(signed_href, bbox, out_path, **kwargs):
+            height, width = next(shapes)
+            profile = dict(driver='GTiff', height=height, width=width, count=1,
+                           dtype='uint8', crs=rasterio.crs.CRS.from_epsg(4326),
+                           transform=rasterio.transform.from_bounds(
+                               0, 0, 1, 1, width, height))
+            with rasterio.open(out_path, 'w', **profile) as destination:
+                destination.write(np.ones((height, width), 'uint8'), 1)
+            return width, height, 1
+
+        item = {'id': 'item', 'bbox': [-1, -1, 1, 1],
+                'properties': {'datetime': '2024-01-01T00:00:00Z'},
+                'assets': {'a': {'href': 'a'}, 'b': {'href': 'b'}}}
+
+        with patch('filemanager.public_datasets.pc_search', return_value=[item]), \
+             patch('filemanager.public_datasets.pc_sign', side_effect=lambda h, c=None: h), \
+             patch('filemanager.public_datasets._clip_cog', side_effect=clip):
+            from filemanager.public_datasets import fetch_pc_raster
+            with self.assertRaises(DatasetError) as caught:
+                fetch_pc_raster({'bbox': (-0.5, -0.5, 0.5, 0.5)}, directory,
+                                collection='test', assets=['a', 'b'])
+
+        message = str(caught.exception)
+        self.assertIn('cannot be stacked', message)
+        self.assertIn('19x17', message)
+
+
+class ExtraQueryTests(TestCase):
+    def test_a_cloud_limit_and_a_property_filter_both_survive(self):
+        """They share one STAC query field, so one must not overwrite the other."""
+        captured = {}
+
+        def search(collection, bbox, **extra):
+            captured.update(extra)
+            return []
+
+        with patch('filemanager.public_datasets.pc_search', side_effect=search):
+            from filemanager.public_datasets import fetch_pc_raster
+            with self.assertRaises(DatasetError):
+                fetch_pc_raster({'bbox': (-0.5, -0.5, 0.5, 0.5)}, '/tmp',
+                                collection='test', assets=['a'],
+                                cloud_under=15, query={'platform': {'eq': 'x'}})
+
+        self.assertEqual(captured['query'],
+                         {'platform': {'eq': 'x'},
+                          'eo:cloud_cover': {'lt': 15.0}})
