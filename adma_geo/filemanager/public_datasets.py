@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import shutil
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -59,22 +60,36 @@ class DatasetError(Exception):
     """A fetch could not be completed, with a reason worth showing the user."""
 
 
+# Asset signing is one request per band, so fetching several datasets in a
+# row can trip a rate limit that a moment's wait clears.
+RATE_LIMIT_RETRIES = 3
+
+
 def _open(url, data=None, headers=None, timeout=HTTP_TIMEOUT):
     host = urllib.parse.urlparse(url).hostname or ''
     if host not in ALLOWED_HOSTS:
         raise DatasetError(f'Refusing to contact an unexpected host: {host}')
-    request = urllib.request.Request(url, data=data)
-    request.add_header('User-Agent', USER_AGENT)
-    for key, value in (headers or {}).items():
-        request.add_header(key, value)
-    try:
-        return urllib.request.urlopen(request, timeout=timeout)
-    except urllib.error.HTTPError as exc:
-        raise DatasetError(f'{host} answered {exc.code} ({exc.reason}).')
-    except urllib.error.URLError as exc:
-        raise DatasetError(f'Could not reach {host}: {exc.reason}.')
-    except TimeoutError:
-        raise DatasetError(f'{host} did not answer within {timeout} seconds.')
+
+    for attempt in range(RATE_LIMIT_RETRIES):
+        request = urllib.request.Request(url, data=data)
+        request.add_header('User-Agent', USER_AGENT)
+        for key, value in (headers or {}).items():
+            request.add_header(key, value)
+        try:
+            return urllib.request.urlopen(request, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429 and attempt < RATE_LIMIT_RETRIES - 1:
+                wait = float(exc.headers.get('Retry-After') or 0) or 2 ** (attempt + 1)
+                logger.info('%s rate-limited us; waiting %.0fs', host, wait)
+                time.sleep(min(wait, 30))
+                continue
+            raise DatasetError(f'{host} answered {exc.code} ({exc.reason}).')
+        except urllib.error.URLError as exc:
+            raise DatasetError(f'Could not reach {host}: {exc.reason}.')
+        except TimeoutError:
+            raise DatasetError(f'{host} did not answer within {timeout} seconds.')
+
+    raise DatasetError(f'{host} kept rate-limiting the request.')
 
 
 def check_bbox(bbox):
