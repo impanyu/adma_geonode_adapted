@@ -18,6 +18,7 @@ like any other tool's output and land in the user's files.
 import json
 import logging
 import os
+import shutil
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -44,6 +45,7 @@ ALLOWED_HOSTS = frozenset({
     'maps.isric.org',
     'elevation.nationalmap.gov',
     'gis.blm.gov',
+    'droughtmonitor.unl.edu',
     'naipeuwest.blob.core.windows.net',
     'sentinel2l2a01.blob.core.windows.net',
     'hydro.nationalmap.gov',
@@ -1005,6 +1007,105 @@ def fetch_plss(aoi, output_dir, level='sections', **_):
     }
 
 
+
+# --- US Drought Monitor -----------------------------------------------------
+
+USDM_URL = 'https://droughtmonitor.unl.edu/data/shapefiles_m/'
+
+# D0 to D4. The numbers are what the shapefile carries; the names are what
+# anyone reading a map expects to see.
+USDM_CLASSES = {
+    0: 'D0 Abnormally Dry',
+    1: 'D1 Moderate Drought',
+    2: 'D2 Severe Drought',
+    3: 'D3 Extreme Drought',
+    4: 'D4 Exceptional Drought',
+}
+
+
+def fetch_drought(aoi, output_dir, week='current', **_):
+    """
+    US Drought Monitor classes over the area.
+
+    Published weekly by the National Drought Mitigation Center at UNL. The
+    whole country is five polygons, one per class, so it is fetched once and
+    clipped rather than queried.
+    """
+    import io
+    import zipfile
+
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    bbox = aoi['bbox']
+    check_bbox(bbox)
+
+    week = (week or 'current').strip()
+    if week == 'current':
+        name = 'USDM_current_M.zip'
+    else:
+        digits = week.replace('-', '')
+        if not (len(digits) == 8 and digits.isdigit()):
+            raise DatasetError(
+                'Give the week as a date, YYYY-MM-DD, or leave it as current.'
+            )
+        # The Monitor is published for Tuesdays; any other date has no file.
+        name = f'USDM_{digits}_M.zip'
+
+    with _open(USDM_URL + name) as response:
+        payload = response.read()
+
+    if not payload[:2] == b'PK':
+        raise DatasetError(
+            f'No Drought Monitor release for {week}. It is published weekly '
+            'for Tuesdays.'
+        )
+
+    os.makedirs(output_dir, exist_ok=True)
+    extracted = os.path.join(output_dir, '.usdm')
+    os.makedirs(extracted, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        archive.extractall(extracted)
+        inner = next(n for n in archive.namelist() if n.endswith('.shp'))
+
+    released = os.path.splitext(os.path.basename(inner))[0].replace('USDM_', '')
+    national = gpd.read_file(os.path.join(extracted, inner))
+
+    area = gpd.GeoDataFrame(geometry=[box(*bbox)], crs='EPSG:4326')
+    clipped = gpd.clip(national, area)
+    clipped = clipped[~clipped.geometry.is_empty & ~clipped.geometry.isna()]
+
+    shutil.rmtree(extracted, ignore_errors=True)
+
+    if clipped.empty:
+        # Not an error: no drought class covers the area, which is the answer.
+        return True, (
+            f'No drought is mapped over that area in the {released} release -- '
+            'the US Drought Monitor shows nothing there, not even D0 '
+            '(abnormally dry).'
+        ), {}
+
+    clipped['class'] = clipped['DM'].map(USDM_CLASSES)
+
+    base = f'usdm_{released}'
+    shp_path = os.path.join(output_dir, f'{base}.shp')
+    dbf_safe_columns(clipped).to_file(shp_path)
+
+    worst = USDM_CLASSES.get(int(clipped['DM'].max()), 'unknown')
+    present = ', '.join(
+        USDM_CLASSES[c] for c in sorted(clipped['DM'].unique().tolist())
+    )
+    return True, (
+        f'US Drought Monitor, released {released}: {present} over the area. '
+        f'Worst class present is {worst}.'
+    ), {
+        'drought_shp': [
+            os.path.join(output_dir, f'{base}{ext}')
+            for ext in ('.shp', '.shx', '.dbf', '.prj', '.cpg')
+        ]
+    }
+
+
 # --- registry ---------------------------------------------------------------
 
 class PublicDataset:
@@ -1072,6 +1173,16 @@ PUBLIC_DATASETS = {d.key: d for d in [
             {'name': 'max_cloud', 'label': 'Max cloud %', 'type': 'select',
              'choices': ['5', '10', '20', '40', '80'], 'default': '20'},
         ],
+    ),
+    PublicDataset(
+        'drought', 'US Drought Monitor', 'usdm', 'vector', 'bbox',
+        'Weekly drought classes D0 to D4 from the National Drought Mitigation '
+        'Center at UNL -- the map irrigation decisions and disaster '
+        'designations are argued over.',
+        fetch_drought,
+        options=[{'name': 'week', 'label': 'Week', 'type': 'date',
+                  'optional': True,
+                  'hint': 'Leave blank for the latest release. Published for Tuesdays.'}],
     ),
     PublicDataset(
         'plss', 'PLSS land grid', 'plss', 'vector', 'bbox',

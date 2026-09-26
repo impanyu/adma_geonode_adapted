@@ -33,6 +33,7 @@ DATASET_ICONS = {
     'naip': 'fa-plane',
     'sentinel2': 'fa-satellite-dish',
     'plss': 'fa-border-all',
+    'usdm': 'fa-sun-plant-wilt',
 }
 
 DEFAULT_ICON = 'fa-cloud'

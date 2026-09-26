@@ -133,9 +133,12 @@ function renderOptions() {
                 <select class="form-select" id="${id}" data-option="${option.name}">${choices}</select>
             </div>`;
         }
+        const hint = option.hint
+            ? `<div class="form-text">${option.hint}</div>` : '';
         return `<div class="col-md-4 mb-3">
             <label class="form-label fw-semibold" for="${id}">${option.label}</label>
             <input type="date" class="form-control" id="${id}" data-option="${option.name}">
+            ${hint}
         </div>`;
     }).join('');
 }
@@ -171,7 +174,9 @@ function buildPayload() {
     });
 
     for (const option of dataset.options) {
-        if (option.type === 'date' && !payload.params[option.name]) {
+        // An optional date has a sensible default on the server -- the
+        // Drought Monitor's latest release, say -- so a blank one is fine.
+        if (option.type === 'date' && !option.optional && !payload.params[option.name]) {
             throw new Error(`Choose a ${option.label.toLowerCase()}.`);
         }
     }
