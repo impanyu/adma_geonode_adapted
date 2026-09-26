@@ -93,11 +93,10 @@ def check_bbox(bbox):
 
 CDL_COLLECTION = 'usda-cdl'
 CDL_STAC_SEARCH = 'https://planetarycomputer.microsoft.com/api/stac/v1/search'
-CDL_SAS_TOKEN = f'https://planetarycomputer.microsoft.com/api/sas/v1/token/{CDL_COLLECTION}'
 CDL_FIRST_YEAR, CDL_LAST_YEAR = 2008, 2021
 
 PC_SEARCH = 'https://planetarycomputer.microsoft.com/api/stac/v1/search'
-PC_TOKEN = 'https://planetarycomputer.microsoft.com/api/sas/v1/token/'
+PC_SIGN = 'https://planetarycomputer.microsoft.com/api/sas/v1/sign'
 
 
 def pc_search(collection, bbox, **extra):
@@ -110,11 +109,21 @@ def pc_search(collection, bbox, **extra):
         return json.load(response).get('features', [])
 
 
-def pc_sign(href, collection):
-    """Add the read token a Planetary Computer asset needs. No account required."""
-    with _open(PC_TOKEN + collection) as response:
-        token = json.load(response)['token']
-    return href + ('&' if '?' in href else '?') + token
+def pc_sign(href, collection=None):
+    """
+    Return a readable URL for a Planetary Computer asset. No account required.
+
+    Asks the signing endpoint rather than fetching a collection token and
+    appending it. A token is scoped to the container the collection actually
+    sits in, and several collections share a storage account without sharing a
+    container -- WorldCover and Global Surface Water are both on
+    ai4edataeuwest, and a token minted for one is refused for the other. The
+    signing endpoint resolves the right scope per asset, so it works for all
+    of them.
+    """
+    query = urllib.parse.urlencode({'href': href})
+    with _open(f'{PC_SIGN}?{query}') as response:
+        return json.load(response)['href']
 
 
 def _clip_cog(signed_href, bbox, out_path, indexes=None, max_pixels=2048, out_shape=None):
@@ -235,10 +244,7 @@ def fetch_cdl(aoi, output_dir, year=2021, mask='none', **_):
             'The layer covers the continental United States only.'
         )
 
-    href = items[0]['assets']['cropland']['href']
-    with _open(CDL_SAS_TOKEN) as response:
-        token = json.load(response)['token']
-    signed = href + ('&' if '?' in href else '?') + token
+    signed = pc_sign(items[0]['assets']['cropland']['href'], CDL_COLLECTION)
 
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, f'cdl_{year}.tif')
