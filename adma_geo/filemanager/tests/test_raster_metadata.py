@@ -285,17 +285,26 @@ class MapViewerExtentTests(TestCase):
         file_obj.save()
         return file_obj
 
+    @staticmethod
+    def _stored_extent_block(html):
+        """Just the tryStoredExtent function, where the bug lived."""
+        start = html.index('function tryStoredExtent()')
+        end = html.index('function getLayerExtent()', start)
+        return html[start:end]
+
     def test_the_extent_is_transformed_from_wgs84_not_the_files_crs(self):
         for crs_text in ('EPSG:4326', 'EPSG:32614', 'PROJ:sinu', 'PROJ:aea'):
             with self.subTest(crs=crs_text):
                 file_obj = self._published(f'r_{crs_text.replace(":", "_")}.tif', crs_text)
 
                 html = self.client.get(f'/file/{file_obj.id}/map/').content.decode()
+                block = self._stored_extent_block(html)
 
-                self.assertIn("'EPSG:4326',", html)
-                # The file's own CRS must not be handed to OpenLayers: it
-                # cannot resolve PROJ:sinu and throws on null.
-                self.assertNotIn(f"transformExtent(\n", html.replace(' ', ''))
+                self.assertIn("'EPSG:4326',", block)
+                # The file's own CRS must never be handed to OpenLayers here:
+                # it cannot resolve PROJ:sinu and throws on null, which took
+                # the basemap down with it.
+                self.assertNotIn(crs_text, block)
                 self.assertNotIn('sourceCRS', html)
 
     def test_no_hand_rolled_utm_conversion_remains(self):
@@ -306,3 +315,4 @@ class MapViewerExtentTests(TestCase):
 
         self.assertNotIn('utmToLonLat', html)
         self.assertNotIn('centralMeridian', html)
+        self.assertNotIn('falseEasting', html)
