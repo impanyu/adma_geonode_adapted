@@ -1052,14 +1052,21 @@ def fetch_drought(aoi, output_dir, week='current', **_):
         # The Monitor is published for Tuesdays; any other date has no file.
         name = f'USDM_{digits}_M.zip'
 
-    with _open(USDM_URL + name) as response:
-        payload = response.read()
+    try:
+        with _open(USDM_URL + name) as response:
+            payload = response.read()
+    except DatasetError as exc:
+        # A week with no release is a 404, which _open reports generically.
+        # The reason is nearly always the same and worth saying.
+        if '404' in str(exc) and week != 'current':
+            raise DatasetError(
+                f'No Drought Monitor release for {week}. It is published '
+                'weekly, dated Tuesdays -- try the Tuesday of that week.'
+            )
+        raise
 
-    if not payload[:2] == b'PK':
-        raise DatasetError(
-            f'No Drought Monitor release for {week}. It is published weekly '
-            'for Tuesdays.'
-        )
+    if payload[:2] != b'PK':
+        raise DatasetError(f'The Drought Monitor download for {week} was not a zip file.')
 
     os.makedirs(output_dir, exist_ok=True)
     extracted = os.path.join(output_dir, '.usdm')
