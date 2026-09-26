@@ -40,6 +40,12 @@ DATASET_ICONS = {
     'worldcover': 'fa-earth-americas',
     'copernicus_dem': 'fa-mountain',
     'surface_water': 'fa-droplet',
+    'active_fire': 'fa-fire',
+    'biomass': 'fa-tree',
+    'land_cover_annual': 'fa-globe',
+    'radar_mosaic': 'fa-satellite-dish',
+    'burn_severity': 'fa-fire-flame-curved',
+    'flood_maps': 'fa-house-flood-water',
 }
 
 DEFAULT_ICON = 'fa-cloud'

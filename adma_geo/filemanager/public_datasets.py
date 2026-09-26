@@ -1289,6 +1289,56 @@ class PublicDataset:
 
 PUBLIC_DATASETS = {d.key: d for d in [
     _pc_dataset(
+        'active_fire', 'Active fires (MODIS)', 'active_fire',
+        'Where the ground is burning, worldwide, updated daily. FireMask '
+        'flags each detection and MaxFRP is how fiercely it is radiating.',
+        'modis-14A1-061', ['FireMask', 'MaxFRP'],
+        band_labels={'FireMask': 'Fire detection confidence',
+                     'MaxFRP': 'Fire radiative power (MW)'},
+        options=[{'name': 'start', 'label': 'From', 'type': 'date', 'optional': True},
+                 {'name': 'end', 'label': 'To', 'type': 'date', 'optional': True,
+                  'hint': 'Leave blank for the most recent pass.'}],
+    ),
+    _pc_dataset(
+        'biomass', 'Standing biomass and its change', 'biomass',
+        'How much plant matter is standing on the ground, and whether it grew '
+        'or was lost. The change band is where deforestation shows up.',
+        'chloris-biomass', ['biomass', 'biomass_change'],
+        band_labels={'biomass': 'Above-ground biomass',
+                     'biomass_change': 'Change since the year before'},
+    ),
+    _pc_dataset(
+        'land_cover_annual', 'Annual land cover (Esri 10 m)', 'land_cover_annual',
+        'Global land cover at 10 m, remade every year since 2017. Fetch two '
+        'years and the difference is what changed.',
+        'io-lulc-annual-v02', ['data'],
+        band_labels={'data': 'Land cover class'},
+        options=[{'name': 'start', 'label': 'From', 'type': 'date', 'optional': True},
+                 {'name': 'end', 'label': 'To', 'type': 'date', 'optional': True,
+                  'hint': 'A year each side of the one you want, or blank for the latest.'}],
+    ),
+    _pc_dataset(
+        'radar_mosaic', 'ALOS radar mosaic', 'radar_mosaic',
+        'Annual L-band radar of the whole land surface. The long wavelength '
+        'reaches through a forest canopy, which optical imagery cannot.',
+        'alos-palsar-mosaic', ['HH', 'HV'],
+        band_labels={'HH': 'HH (co-polarised)', 'HV': 'HV (cross-polarised)'},
+    ),
+    _pc_dataset(
+        'burn_severity', 'Burn severity (MTBS)', 'burn_severity',
+        'How badly a fire burned what it passed over, for large US fires back '
+        'to 1984 -- not just where it burned but how hard.',
+        'mtbs', ['burn-severity'],
+        band_labels={'burn-severity': 'Burn severity class'},
+    ),
+    _pc_dataset(
+        'flood_maps', 'Global flood maps', 'flood_maps',
+        'Modelled flood depth for a given return period, worldwide -- how '
+        'deep the water gets in the flood you expect once a century.',
+        'deltares-floods', ['data'],
+        band_labels={'data': 'Flood depth (m)'},
+    ),
+    _pc_dataset(
         'gnatsgo', 'gNATSGO soil properties', 'gnatsgo',
         'USDA soil properties as rasters for the United States: how much water '
         'the soil holds, organic carbon, and the crop productivity indices. '
