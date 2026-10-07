@@ -1739,6 +1739,28 @@ def check_deletion_status(request, task_id):
         return _internal_error_response(e)
 
 
+def _overlap_legend(file_obj):
+    """The classes a coverage layer is coloured with, or None.
+
+    Decided the same way the style is applied -- the file has an OVLP_PCT
+    column -- and read from the same table, so the key cannot drift from the
+    colours on the map.
+    """
+    if not file_obj.name.lower().endswith('.shp'):
+        return None
+    try:
+        from pyogrio import read_info
+        from .gis_utils import GeoServerAPI
+        if GeoServerAPI.OVERLAP_FIELD not in [str(f) for f in read_info(file_obj.file.path)['fields']]:
+            return None
+        return {
+            'title': 'Overlap with earlier passes',
+            'classes': [{'colour': c, 'label': t} for _, _, c, t in GeoServerAPI.OVERLAP_CLASSES],
+        }
+    except Exception:
+        return None
+
+
 @login_required
 def map_viewer(request, file_id):
     """View GIS file on a map"""
@@ -1802,6 +1824,7 @@ def map_viewer(request, file_id):
             'is_published': file_obj.gis_status == 'published',
             'spatial_extent': spatial_extent,
             'crs': getattr(file_obj, 'crs', 'EPSG:4326'),  # Default to WGS84 if not set
+            'legend': _overlap_legend(file_obj),
         }
     
     return render(request, 'filemanager/map_viewer.html', {
@@ -1866,6 +1889,7 @@ def public_map_viewer(request, file_id):
             'is_published': file_obj.gis_status == 'published',
             'spatial_extent': spatial_extent,
             'crs': getattr(file_obj, 'crs', 'EPSG:4326'),  # Default to WGS84 if not set
+            'legend': _overlap_legend(file_obj),
         }
     
     # Reuse the same template as private map viewer, but with public view context

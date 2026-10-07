@@ -323,31 +323,142 @@ class GeoServerAPI:
 
     def _ensure_grey_band_style(self):
         """Create the shared style once; every such layer then points at it."""
+        return self._ensure_style(self.GREY_BAND_STYLE, self.GREY_BAND_SLD)
+
+    def _ensure_style(self, name, sld, refresh=False):
+        """Make sure the named shared style exists, optionally rewriting it.
+
+        refresh=True puts the current SLD over an existing copy, so a change
+        to the classes reaches layers already published with the style
+        instead of only the ones published after it.
+        """
         try:
-            existing = requests.get(
-                f'{self.base_url}/rest/styles/{self.GREY_BAND_STYLE}.json',
-                auth=self.auth,
-            )
+            existing = requests.get(f'{self.base_url}/rest/styles/{name}.json',
+                                    auth=self.auth)
             if existing.status_code == 200:
-                return True
+                if not refresh:
+                    return True
+                updated = requests.put(
+                    f'{self.base_url}/rest/styles/{name}',
+                    data=sld.encode(),
+                    headers={'Content-Type': 'application/vnd.ogc.sld+xml'},
+                    auth=self.auth,
+                )
+                return updated.status_code in (200, 201)
 
             created = requests.post(
-                f'{self.base_url}/rest/styles?name={self.GREY_BAND_STYLE}',
-                data=self.GREY_BAND_SLD.encode(),
+                f'{self.base_url}/rest/styles?name={name}',
+                data=sld.encode(),
                 headers={'Content-Type': 'application/vnd.ogc.sld+xml'},
                 auth=self.auth,
             )
             if created.status_code in (200, 201):
-                logger.info('Created the %s style', self.GREY_BAND_STYLE)
+                logger.info('Created the %s style', name)
                 return True
             logger.warning('Could not create the %s style: %s %s',
-                           self.GREY_BAND_STYLE, created.status_code,
-                           created.text[:200])
+                           name, created.status_code, created.text[:200])
             return False
         except Exception as exc:
-            logger.warning('Could not create the %s style: %s',
-                           self.GREY_BAND_STYLE, exc)
+            logger.warning('Could not create the %s style: %s', name, exc)
             return False
+
+    # Point to Polygon coverage output, coloured by how much of each polygon
+    # was already covered by earlier passes. Drawn with GeoServer's default
+    # style, twenty-nine thousand thin polygons are mostly outline and read
+    # as one black block, which hides exactly what the layer is for. The
+    # breaks keep the tool's own flag at 25%: everything from there up is a
+    # warm red, everything below it is not.
+    #
+    # The lowest class runs to 2%, not 0. On Sreeja's two test fields about
+    # a quarter of all polygons overlap by 0.05-1%, and the overlapping strip
+    # there is 1 to 1.5 inches wide -- shared edges and GPS jitter, not a
+    # second pass over the ground. Coloured as overlap, it made a third of a
+    # well-driven field look like a problem.
+    OVERLAP_STYLE = 'adma_coverage_overlap'
+    OVERLAP_FIELD = 'OVLP_PCT'
+    OVERLAP_CLASSES = [
+        # (lower bound inclusive or None, upper bound exclusive or None, colour, legend)
+        (None, 2, '#C6D4E1', 'Under 2% (negligible)'),
+        (2, 10, '#FEE08B', '2 to 10%'),
+        (10, 25, '#FDAE61', '10 to 25%'),
+        (25, 50, '#E8553A', '25 to 50% (flagged)'),
+        (50, None, '#8E0F2E', '50% or more (flagged)'),
+    ]
+
+    @classmethod
+    def overlap_sld(cls):
+        def bound(op, value):
+            return (f'<ogc:{op}><ogc:PropertyName>{cls.OVERLAP_FIELD}</ogc:PropertyName>'
+                    f'<ogc:Literal>{value}</ogc:Literal></ogc:{op}>')
+
+        rules = []
+        for low, high, colour, title in cls.OVERLAP_CLASSES:
+            terms = []
+            if low is not None:
+                terms.append(bound('PropertyIsGreaterThanOrEqualTo', low))
+            if high is not None:
+                terms.append(bound('PropertyIsLessThan', high))
+            condition = terms[0] if len(terms) == 1 else f'<ogc:And>{"".join(terms)}</ogc:And>'
+            rules.append(
+                f'<Rule><Name>{title}</Name><Title>{title}</Title>'
+                f'<ogc:Filter>{condition}</ogc:Filter>'
+                f'<PolygonSymbolizer><Fill>'
+                f'<CssParameter name="fill">{colour}</CssParameter>'
+                f'<CssParameter name="fill-opacity">0.9</CssParameter>'
+                f'</Fill></PolygonSymbolizer></Rule>'
+            )
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld" '
+            'xmlns:ogc="http://www.opengis.net/ogc" '
+            'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+            f'<NamedLayer><Name>{cls.OVERLAP_STYLE}</Name><UserStyle>'
+            '<Title>Coverage overlap</Title>'
+            '<Abstract>Share of each polygon already covered by an earlier pass</Abstract>'
+            f'<FeatureTypeStyle>{"".join(rules)}</FeatureTypeStyle>'
+            '</UserStyle></NamedLayer></StyledLayerDescriptor>'
+        )
+
+    def style_coverage_by_overlap(self, layer_name, shp_path):
+        """Colour a coverage layer by OVLP_PCT, if it has that column.
+
+        Returns True when the style was applied. Never raises: a layer that
+        draws in the default style beats one that never gets published.
+        """
+        try:
+            from pyogrio import read_info
+            fields = [str(f) for f in read_info(shp_path).get('fields', [])]
+            if self.OVERLAP_FIELD not in fields:
+                return False
+            if not self._ensure_style(self.OVERLAP_STYLE, self.overlap_sld(), refresh=True):
+                return False
+            response = requests.put(
+                f'{self.base_url}/rest/layers/{self.workspace}:{layer_name}.json',
+                json={'layer': {'defaultStyle': {'name': self.OVERLAP_STYLE}}},
+                headers={'Content-Type': 'application/json'}, auth=self.auth,
+            )
+            if response.status_code in (200, 201):
+                logger.info('Styled %s by %s', layer_name, self.OVERLAP_FIELD)
+                return True
+            logger.warning('Could not style %s: %s %s', layer_name,
+                           response.status_code, response.text[:200])
+            return False
+        except Exception as exc:
+            logger.warning('Could not style %s by overlap: %s', layer_name, exc)
+            return False
+
+    def layer_style(self, layer_name):
+        """The name of a layer's default style, or None."""
+        try:
+            response = requests.get(
+                f'{self.base_url}/rest/layers/{self.workspace}:{layer_name}.json',
+                auth=self.auth, timeout=5,
+            )
+            if response.status_code != 200:
+                return None
+            return (response.json().get('layer', {}).get('defaultStyle') or {}).get('name')
+        except Exception:
+            return None
 
     def upload_shapefile(self, store_name, shp_file_path):
         """Upload a shapefile to GeoServer as a new datastore"""

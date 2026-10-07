@@ -364,6 +364,16 @@
                 </small>
             </div>
             {% if direct_geojson %}<p id="geojson-status" class="mt-2" role="status">Loading GeoJSON…</p>{% endif %}
+            {% if geoserver_info.legend %}
+            <div class="mt-2 d-flex flex-wrap align-items-center gap-3 small" aria-label="Map key">
+                <strong>{{ geoserver_info.legend.title }}:</strong>
+                {% for class in geoserver_info.legend.classes %}
+                <span class="d-inline-flex align-items-center gap-1">
+                    <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:{{ class.colour }};border:1px solid rgba(0,0,0,.2)"></span>{{ class.label }}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
         {% else %}
             <div class="text-center py-5 border">
                 <i class="fas fa-hourglass-half fa-3x text-info mb-3"></i>

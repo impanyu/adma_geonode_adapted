@@ -154,7 +154,12 @@ class SystematicGeoServerManager:
                         logger.warning(f"Could not get spatial extent: {e}")
                     
                     file_obj.save()
-                    
+
+                    # Point to Polygon coverage output is coloured by overlap;
+                    # anything without an OVLP_PCT column is left as it was.
+                    if layer_type == "vector":
+                        self.geoserver_api.style_coverage_by_overlap(actual_layer_name, file_path)
+
                     return True, f"Successfully published {layer_type} layer: {actual_layer_name}", actual_layer_name
                 else:
                     return False, f"Failed to publish {layer_type} to GeoServer", None
