@@ -632,6 +632,99 @@ class BoundaryGeneratorToolView(_NativeToolView):
         return context
 
 
+class PointToPolygonToolView(_NativeToolView):
+    template_name = 'filemanager/point_to_polygon_tool.html'
+    accepted_extensions = VECTOR_EXTENSIONS + ['.csv']
+    page_title = 'Point to Polygon Coverage'
+
+    def get_context_data(self, **kwargs):
+        from .PointToPolygonTool_SV import HEADING_ADJUSTMENTS
+        context = super().get_context_data(**kwargs)
+        context['heading_adjustments'] = [
+            {'key': k, 'description': v[1]} for k, v in HEADING_ADJUSTMENTS.items()
+        ]
+        return context
+
+
+@api_login_required
+def point_to_polygon_columns(request, file_id):
+    """The numeric columns of a point file and the ones the tool would pick.
+
+    The suggestions are the script's own guesses (Swth_Wdth_, Distance_f,
+    Track_deg_ ...), so the form opens with what a user pressing Enter at
+    each of Sreeja's prompts would have got.
+    """
+    try:
+        file_obj = _readable_file(file_id, request.user, 'Point layer',
+                                  VECTOR_EXTENSIONS + ['.csv'])
+    except PermissionError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=403)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    try:
+        import geopandas as gpd
+        import pandas as pd
+        from .PointToPolygonTool_SV import numeric_columns, suggest_columns
+
+        path = file_obj.file.path
+        if path.lower().endswith('.csv'):
+            frame = pd.read_csv(path, nrows=200)
+            frame = gpd.GeoDataFrame(frame, geometry=gpd.points_from_xy(
+                [0.0] * len(frame), [0.0] * len(frame)))
+        else:
+            frame = gpd.read_file(path, rows=200)
+        columns = numeric_columns(frame)
+        suggested = suggest_columns(frame)
+    except Exception as exc:
+        return _internal_error_response(exc)
+
+    return JsonResponse({'success': True, 'columns': columns, 'suggested': suggested})
+
+
+@api_login_required
+def run_point_to_polygon(request):
+    def build(data):
+        from .PointToPolygonTool_SV import HEADING_ADJUSTMENTS
+        from .native_tool_tasks import run_point_to_polygon_task
+
+        source = _readable_file(
+            data.get('file_id'), request.user, 'Point layer',
+            VECTOR_EXTENSIONS + ['.csv'],
+        )
+
+        adjust = data.get('heading_adjust') or 'none'
+        if adjust not in HEADING_ADJUSTMENTS:
+            raise ValueError(f'Choose one of: {", ".join(HEADING_ADJUSTMENTS)}.')
+
+        epsg = data.get('epsg')
+        if epsg not in (None, ''):
+            try:
+                epsg = int(epsg)
+            except (TypeError, ValueError):
+                raise ValueError('The EPSG code must be a whole number, e.g. 4326.')
+        else:
+            epsg = None
+
+        # A column the caller leaves out is 'auto' (the tool's own guess); one
+        # sent as null or '' is "compute from the points".
+        def column(key):
+            return data.get(key, 'auto') or None
+
+        return run_point_to_polygon_task.delay(
+            str(source.id),
+            width_col=column('width_col') or 'auto',
+            distance_col=column('distance_col'),
+            heading_col=column('heading_col'),
+            heading_adjust=adjust,
+            epsg=epsg,
+            output_folder_id=data.get('output_folder_id'),
+            requesting_user_id=request.user.id,
+        )
+
+    return _dispatch(request, build)
+
+
 @api_login_required
 def run_boundary_generator(request):
     def build(data):

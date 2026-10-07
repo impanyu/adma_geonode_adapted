@@ -1229,6 +1229,33 @@ class Tool(models.Model):
                     'generates': ['boundary_components', 'qgis_style', 'arcgis_layer'],
                 },
             },
+            {
+                'slug': 'point-to-polygon',
+                'name': 'Point to Polygon Coverage',
+                'short_description': 'Turn machine-logged points into the ground each one covered.',
+                'description': 'Converts machine-logged points -- yield, seeding, NH3, fertigation -- into '
+                              'a polygon for the ground covered at each point, from the swath width, '
+                              'distance, heading and Y offset recorded with it. Polygons along a pass '
+                              'share edges and reduced-width passes shift toward the cut side. Each '
+                              'polygon keeps the point\'s attributes and adds its area and how much of '
+                              'it overlaps ground already covered: for true acreage, finding overlaps at '
+                              'headlands and pass ends, yield cleaning, and matching yield to applied '
+                              'rates by area. Written by Sreeja Vinod.',
+                'category': 'gis_processing',
+                'icon': 'fa-border-all',
+                'icon_color': 'warning',
+                'url_name': 'filemanager:point_to_polygon_tool',
+                'celery_task_name': 'filemanager.native_tool_tasks.run_point_to_polygon_task',
+                'status': 'available',
+                'input_config': {
+                    'accepted_extensions': ['.shp', '.gpkg', '.geojson', '.csv'],
+                    'required_inputs': ['file_id'],
+                    'optional_inputs': ['width_col', 'distance_col', 'heading_col',
+                                        'heading_adjust', 'epsg'],
+                    'heading_adjust': ['none', 'round', 'smooth', 'smooth_round'],
+                },
+                'output_config': {'generates': ['coverage_components']},
+            },
         ]
         
         created_tools = []

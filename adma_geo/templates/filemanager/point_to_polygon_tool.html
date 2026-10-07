@@ -1,0 +1,153 @@
+{% extends 'filemanager/_native_tool_base.html' %}
+
+{% block tool_icon %}fa-border-all{% endblock %}
+{% block tool_tagline %}Turn machine-logged points into the ground each one covered{% endblock %}
+{% block run_url %}{% url 'filemanager:run_point_to_polygon' %}{% endblock %}
+
+{% block tool_blurb %}
+<div class="alert alert-light border">
+    Converts machine-logged points &mdash; yield, seeding, NH3, fertigation &mdash;
+    into a polygon for the ground covered at each point, from the swath width,
+    distance, heading and Y offset recorded with it. Polygons along a pass share
+    edges, and reduced-width passes shift toward the cut side. Each polygon keeps
+    the point's attributes and adds its area and how much of it overlaps ground
+    already covered (<code>OVLP_PCT</code>, flagged at 25%), for true acreage,
+    headland and pass-end overlaps, yield cleaning, and matching yield to applied
+    rates by area.
+</div>
+{% endblock %}
+
+{% block tool_inputs %}
+<div class="mb-3">
+    <label class="form-label fw-semibold">
+        <i class="fas fa-location-dot me-2 text-primary"></i>Point data
+    </label>
+    <div class="input-group">
+        <input type="text" class="form-control" id="inputName" placeholder="No file chosen" readonly>
+        <button class="btn btn-outline-secondary" type="button" id="browseInput">
+            <i class="fas fa-folder-open me-1"></i>Browse&hellip;
+        </button>
+    </div>
+    <input type="hidden" id="inputId">
+    <div class="form-text">
+        A shapefile, GeoJSON or GeoPackage of logged points, or a CSV with longitude/latitude columns.
+    </div>
+</div>
+
+<div class="form-text mb-2" id="columnStatus">Choose a point file and its columns will appear here, with the likely ones already picked.</div>
+
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <label class="form-label fw-semibold" for="widthCol">Swath width</label>
+        <select class="form-select column-select" id="widthCol" disabled></select>
+        <div class="form-text">Polygon width. Required.</div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <label class="form-label fw-semibold" for="distanceCol">Distance</label>
+        <select class="form-select column-select" id="distanceCol" disabled></select>
+        <div class="form-text">Length along the pass. Or compute it from point spacing.</div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <label class="form-label fw-semibold" for="headingCol">Heading</label>
+        <select class="form-select column-select" id="headingCol" disabled></select>
+        <div class="form-text">Direction of travel. Or compute it from consecutive points.</div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8 mb-3">
+        <label class="form-label fw-semibold" for="headingAdjust">Heading adjustment</label>
+        <select class="form-select" id="headingAdjust">
+            {% for adjustment in heading_adjustments %}
+                <option value="{{ adjustment.key }}">{{ adjustment.description }}</option>
+            {% endfor %}
+        </select>
+        <div class="form-text">Smoothing evens out GPS jitter in the heading without mixing passes.</div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <label class="form-label fw-semibold" for="epsg">EPSG code <span class="text-muted fw-normal">(rarely needed)</span></label>
+        <input type="number" class="form-control" id="epsg" placeholder="e.g. 32614">
+        <div class="form-text">Only if the file has no .prj, or a CSV's coordinates are not longitude/latitude.</div>
+    </div>
+</div>
+
+<div class="form-text mb-2" id="autoNote"></div>
+{% endblock %}
+
+{% block tool_script %}
+<script>
+const COMPUTE = '';   // the "compute from points" choice sends no column
+
+function fillSelect(id, columns, suggested, allowCompute, computeLabel) {
+    const select = document.getElementById(id);
+    select.innerHTML = '';
+    if (allowCompute) {
+        const option = document.createElement('option');
+        option.value = COMPUTE;
+        option.textContent = computeLabel;
+        select.appendChild(option);
+    }
+    for (const column of columns) {
+        const option = document.createElement('option');
+        option.value = column;
+        option.textContent = column + (column === suggested ? '  (suggested)' : '');
+        select.appendChild(option);
+    }
+    select.value = suggested || (allowCompute ? COMPUTE : (columns[0] || ''));
+    select.disabled = false;
+}
+
+wirePicker('browseInput', 'inputName', 'inputId', {
+    accept: ['.shp', '.gpkg', '.geojson', '.csv'], title: 'Choose the point data',
+    onSelect: async (id) => {
+        const status = document.getElementById('columnStatus');
+        const note = document.getElementById('autoNote');
+        status.textContent = 'Reading columns…';
+        note.textContent = '';
+        document.querySelectorAll('.column-select').forEach(s => { s.innerHTML = ''; s.disabled = true; });
+        try {
+            const response = await fetch(`/api/point-to-polygon/columns/${id}/`);
+            const data = await response.json();
+            if (!data.success) { status.textContent = data.error; return; }
+            if (!data.columns.length) {
+                status.textContent = 'This file has no numeric columns, so there is no swath width to read.';
+                return;
+            }
+            const s = data.suggested;
+            fillSelect('widthCol', data.columns, s.width, false);
+            fillSelect('distanceCol', data.columns, s.distance, true, 'Compute from point spacing');
+            fillSelect('headingCol', data.columns, s.heading, true, 'Compute from consecutive points');
+            status.textContent = 'Columns read. Check the three choices below.';
+            const auto = [];
+            if (s.offset) auto.push(`side offset from ${s.offset}`);
+            if (s.pass) auto.push(`passes from ${s.pass}`);
+            note.textContent = auto.length
+                ? `Also used automatically: ${auto.join(', ')}.`
+                : 'No offset or pass column found: passes are detected from gaps, reduced-width points are placed by an overlap test.';
+        } catch (err) {
+            status.textContent = 'Could not read the columns: ' + err.message;
+        }
+    },
+});
+
+function buildPayload() {
+    const fileId = document.getElementById('inputId').value;
+    if (!fileId) throw new Error('Choose a point file.');
+
+    const width = document.getElementById('widthCol').value;
+    if (!width) throw new Error('Choose the swath width column.');
+
+    const epsg = document.getElementById('epsg').value.trim();
+    if (epsg && !/^\d+$/.test(epsg)) throw new Error('The EPSG code must be a whole number, e.g. 4326.');
+
+    return {
+        file_id: fileId,
+        width_col: width,
+        distance_col: document.getElementById('distanceCol').value || null,
+        heading_col: document.getElementById('headingCol').value || null,
+        heading_adjust: document.getElementById('headingAdjust').value,
+        epsg: epsg || null,
+    };
+}
+</script>
+{% endblock %}

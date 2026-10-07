@@ -2259,6 +2259,7 @@ from .native_tool_tasks import (  # noqa: E402,F401
     run_boundary_generator_task,
     run_management_zones_task,
     run_point_sampling_task,
+    run_point_to_polygon_task,
     run_public_data_fetch_task,
     run_terrain_analysis_task,
     run_raster_clip_reproject_task,

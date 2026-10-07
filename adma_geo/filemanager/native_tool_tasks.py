@@ -445,3 +445,26 @@ def run_boundary_generator_task(
         )
 
     return _guard('Boundary generator', file_id)(body)
+
+
+@shared_task(bind=True)
+def run_point_to_polygon_task(
+    self, file_id, width_col='auto', distance_col='auto', heading_col='auto',
+    heading_adjust='none', epsg=None, output_folder_id=None,
+    requesting_user_id=None,
+):
+    def body():
+        from .PointToPolygonTool_SV import process_point_to_polygon
+
+        source = _fetch(file_id, 'Point layer', requesting_user_id)
+        return _finish(
+            source, output_folder_id, 'coverage_output',
+            lambda out: process_point_to_polygon(
+                source.file.path, out,
+                width_col=width_col, distance_col=distance_col,
+                heading_col=heading_col, heading_adjust=heading_adjust,
+                epsg=epsg,
+            ),
+        )
+
+    return _guard('Point to polygon coverage', file_id)(body)

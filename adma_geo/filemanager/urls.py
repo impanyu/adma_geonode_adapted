@@ -112,6 +112,7 @@ urlpatterns = [
     path('tools/point-sampling/', native_tool_views.PointSamplingToolView.as_view(), name='point_sampling_tool'),
     path('tools/vector-ops/', native_tool_views.VectorOpsToolView.as_view(), name='vector_ops_tool'),
     path('tools/boundary-generator/', native_tool_views.BoundaryGeneratorToolView.as_view(), name='boundary_generator_tool'),
+    path('tools/point-to-polygon/', native_tool_views.PointToPolygonToolView.as_view(), name='point_to_polygon_tool'),
 
     path('api/zonal-statistics/run/', native_tool_views.run_zonal_statistics, name='run_zonal_statistics'),
     path('api/vegetation-index/run/', native_tool_views.run_vegetation_index, name='run_vegetation_index'),
@@ -122,6 +123,8 @@ urlpatterns = [
     path('api/point-sampling/run/', native_tool_views.run_point_sampling, name='run_point_sampling'),
     path('api/vector-ops/run/', native_tool_views.run_vector_operation, name='run_vector_operation'),
     path('api/boundary-generator/run/', native_tool_views.run_boundary_generator, name='run_boundary_generator'),
+    path('api/point-to-polygon/run/', native_tool_views.run_point_to_polygon, name='run_point_to_polygon'),
+    path('api/point-to-polygon/columns/<str:file_id>/', native_tool_views.point_to_polygon_columns, name='point_to_polygon_columns'),
     path('api/native-tools/all-columns/<str:file_id>/', native_tool_views.vector_all_columns, name='native_tool_all_columns'),
 
     path('api/native-tools/status/<str:task_id>/', native_tool_views.native_tool_status, name='native_tool_status'),
