@@ -5,6 +5,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView, TemplateView
 
+from filemanager import server_resources
+
 # Only the auth views that work here, rather than the whole contrib.auth set.
 # That set includes password reset, which needs to send mail: there is no SMTP
 # host configured, so the form rendered, accepted an address and could never
@@ -32,6 +34,12 @@ auth_patterns = [
 ]
 
 urlpatterns = [
+    # Ahead of the admin include so these resolve before its catch-all.
+    # admin_view sends anyone without a staff login to the admin login page.
+    path('admin/server-resources/', admin.site.admin_view(server_resources.resources_page),
+         name='admin_server_resources'),
+    path('admin/server-resources/data/', admin.site.admin_view(server_resources.resources_data),
+         name='admin_server_resources_data'),
     path('admin/', admin.site.urls),
     path('accounts/', include(auth_patterns)),
     # allauth brings its own local-account views along with the social ones,

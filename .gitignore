@@ -90,3 +90,6 @@ cookies.txt
 # writes it as root, so tracking it also makes `git pull` on the server abort
 # part-way through with a permission error.
 adma_geo/media/
+
+# Resource sampler output (scripts/resource_sampler.sh)
+adma_geo/monitoring/

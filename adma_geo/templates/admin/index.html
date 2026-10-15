@@ -1,0 +1,22 @@
+{% extends "admin/index.html" %}
+
+{% comment %}
+Django's own admin index, with a link to the Server resources page
+(filemanager/server_resources.py) above the app list. Extending a template
+of the same name picks up the next one on the search path, i.e. Django's.
+{% endcomment %}
+
+{% block content %}
+{% if request.user.is_superuser %}
+<div class="module" id="server-module">
+    <table>
+        <caption>Server</caption>
+        <tr>
+            <th scope="row"><a href="{% url 'admin_server_resources' %}">Server resources</a></th>
+            <td>CPU, memory, network and disk for the host and each container, live.</td>
+        </tr>
+    </table>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

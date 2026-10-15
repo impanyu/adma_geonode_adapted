@@ -1,0 +1,169 @@
+{% extends "admin/base_site.html" %}
+
+{% comment %}
+Server resources (filemanager/server_resources.py). The figures come from
+scripts/resource_sampler.sh on the Docker host; this page polls the JSON
+view every 5 seconds and redraws. Colours come from the admin's own custom
+properties, so it follows the ADMA palette and the admin's dark mode.
+{% endcomment %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .res-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 14px; }
+    .res-status { color: var(--body-quiet-color); }
+    .res-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #1a7f4b; margin-right: 6px; }
+    .res-dot.stale { background: var(--error-fg, #ba2121); }
+    .res-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .res-tile, .res-card { border: 1px solid var(--hairline-color); border-radius: 8px; padding: 10px 14px; background: var(--body-bg); }
+    .res-tile .k { color: var(--body-quiet-color); font-size: 12px; }
+    .res-tile .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .res-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 12px; }
+    .res-card h2 { font-size: 13px; margin: 0 0 8px; color: var(--body-quiet-color); background: none; padding: 0; text-transform: none; letter-spacing: 0; }
+    .res-chart { position: relative; height: 220px; }
+    .res-table { width: 100%; font-variant-numeric: tabular-nums; }
+    .res-table td, .res-table th { text-align: right; white-space: nowrap; }
+    .res-table td:first-child, .res-table th:first-child { text-align: left; }
+    .res-tablewrap { overflow-x: auto; }
+    .res-note { color: var(--body-quiet-color); font-size: 12px; margin-top: 14px; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Home</a> &rsaquo; Server resources</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <div class="res-bar">
+        <span class="res-status"><span id="res-dot" class="res-dot"></span><span id="res-status">Loading…</span></span>
+        <label style="margin-left:auto">Window
+            <select id="res-window">
+                {% for m in windows %}<option value="{{ m }}">{% if m < 60 %}{{ m }} min{% else %}{% widthratio m 60 1 %} h{% endif %}</option>{% endfor %}
+            </select>
+        </label>
+    </div>
+
+    <div class="res-tiles">
+        <div class="res-tile"><div class="k" id="k-cpu">CPU</div><div class="v" id="t-cpu">–</div></div>
+        <div class="res-tile"><div class="k">Memory used</div><div class="v" id="t-mem">–</div></div>
+        <div class="res-tile"><div class="k">Load (1 min)</div><div class="v" id="t-load">–</div></div>
+        <div class="res-tile"><div class="k">Root disk</div><div class="v" id="t-disk">–</div></div>
+        <div class="res-tile"><div class="k">Network in / out</div><div class="v" id="t-net">–</div></div>
+        <div class="res-tile"><div class="k">Containers running</div><div class="v" id="t-count">–</div></div>
+    </div>
+
+    <div class="res-grid">
+        <div class="res-card"><h2>Host CPU % and load</h2><div class="res-chart"><canvas id="c-cpu"></canvas></div></div>
+        <div class="res-card"><h2>Host memory (GB)</h2><div class="res-chart"><canvas id="c-mem"></canvas></div></div>
+        <div class="res-card"><h2>Container CPU %</h2><div class="res-chart"><canvas id="c-ccpu"></canvas></div></div>
+        <div class="res-card"><h2>Container memory (MB)</h2><div class="res-chart"><canvas id="c-cmem"></canvas></div></div>
+        <div class="res-card"><h2>Network (kbit/s)</h2><div class="res-chart"><canvas id="c-net"></canvas></div></div>
+        <div class="res-card"><h2>Disk I/O (KB/s)</h2><div class="res-chart"><canvas id="c-disk"></canvas></div></div>
+    </div>
+
+    <div class="res-card" style="margin-top:12px">
+        <h2>Containers now</h2>
+        <div class="res-tablewrap"><table class="res-table">
+            <thead><tr><th>Container</th><th>CPU %</th><th>Memory MB</th><th>Memory %</th><th>Net in / out</th><th>Block in / out</th><th>PIDs</th></tr></thead>
+            <tbody id="res-rows"></tbody>
+        </table></div>
+    </div>
+
+    <p class="res-note">Sampled every 5 seconds on the host by <code>scripts/resource_sampler.sh</code>; the last 24 hours are kept.
+        Longer windows are averaged so each chart draws at most a few hundred points.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+        integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD"
+        crossorigin="anonymous"></script>
+<script>
+(function () {
+    const DATA_URL = "{% url 'admin_server_resources_data' %}";
+    const PALETTE = ['#d00000', '#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#65a30d', '#64748b'];
+    const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const $ = id => document.getElementById(id);
+    const charts = {};
+    Chart.defaults.animation = false;
+    Chart.defaults.font.size = 11;
+
+    function draw(id, labels, sets, rightAxis) {
+        const quiet = css('--body-quiet-color') || '#666', grid = css('--hairline-color') || '#ddd';
+        if (!charts[id]) {
+            const scales = {
+                x: { ticks: { maxTicksLimit: 6, color: quiet }, grid: { color: grid } },
+                y: { beginAtZero: true, ticks: { color: quiet }, grid: { color: grid } },
+            };
+            if (rightAxis) scales.y2 = { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { color: quiet } };
+            charts[id] = new Chart($(id), {
+                type: 'line', data: { labels: [], datasets: [] },
+                options: {
+                    maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                    elements: { point: { radius: 0 }, line: { borderWidth: 1.6, tension: 0.25 } },
+                    plugins: { legend: { labels: { boxWidth: 10, color: quiet } } }, scales,
+                },
+            });
+        }
+        const chart = charts[id];
+        chart.data.labels = labels;
+        chart.data.datasets = sets.map((s, i) => Object.assign(
+            { borderColor: PALETTE[i % PALETTE.length], backgroundColor: PALETTE[i % PALETTE.length] + '22', spanGaps: true }, s));
+        chart.update('none');
+    }
+
+    const short = name => name.replace(/^adma_geo_/, '');
+    const kbit = k => k == null ? '–' : (k >= 1000 ? (k / 1000).toFixed(1) + ' M' : Math.round(k) + ' k');
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    async function refresh() {
+        const minutes = $('res-window').value;
+        let d;
+        try {
+            const r = await fetch(DATA_URL + '?minutes=' + minutes, { cache: 'no-store', credentials: 'same-origin' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            d = await r.json();
+        } catch (e) {
+            $('res-dot').className = 'res-dot stale';
+            $('res-status').textContent = 'Could not load data (' + e.message + ')';
+            return;
+        }
+        if (!d.latest) {
+            $('res-dot').className = 'res-dot stale';
+            $('res-status').textContent = 'No samples in this window. Is scripts/resource_sampler.sh running on the host?';
+            return;
+        }
+        const stale = d.sample_age_seconds > 60;
+        $('res-dot').className = 'res-dot' + (stale ? ' stale' : '');
+        $('res-status').textContent = (stale ? 'Sampler stopped? Last sample ' : 'Live · last sample ') +
+            d.sample_age_seconds + 's ago' + (d.bucket_seconds > 5 ? ' · ' + d.bucket_seconds + 's averages' : '');
+
+        const L = d.latest, labels = d.labels.map(t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        $('k-cpu').textContent = 'CPU (' + d.cpu_count + ' cores)';
+        $('t-cpu').textContent = L.cpu_pct.toFixed(1) + ' %';
+        $('t-mem').textContent = (L.mem_used_mb / 1024).toFixed(1) + ' / ' + (L.mem_total_mb / 1024).toFixed(0) + ' GB';
+        $('t-load').textContent = L.load1;
+        $('t-disk').textContent = L.disk_root_pct + ' %';
+        $('t-net').textContent = kbit(L.net_rx_kbps) + ' / ' + kbit(L.net_tx_kbps);
+        $('t-count').textContent = d.running.length;
+
+        const H = d.host;
+        draw('c-cpu', labels, [{ label: 'CPU %', data: H.cpu_pct, fill: true }, { label: 'load 1m', data: H.load1, yAxisID: 'y2' }], true);
+        draw('c-mem', labels, [{ label: 'used', data: H.mem_used_mb.map(v => v == null ? null : v / 1024), fill: true },
+                               { label: 'total', data: H.mem_total_mb.map(v => v == null ? null : v / 1024), borderDash: [4, 4] }]);
+        draw('c-net', labels, [{ label: 'in', data: H.net_rx_kbps }, { label: 'out', data: H.net_tx_kbps }]);
+        draw('c-disk', labels, [{ label: 'read', data: H.disk_read_kbps }, { label: 'write', data: H.disk_write_kbps }]);
+        const names = Object.keys(d.containers);
+        draw('c-ccpu', labels, names.map(n => ({ label: short(n), data: d.containers[n].cpu })));
+        draw('c-cmem', labels, names.map(n => ({ label: short(n), data: d.containers[n].mem })));
+
+        $('res-rows').innerHTML = d.running.map(c => '<tr><td>' + esc(c.name) + '</td><td>' + (c.cpu_pct ?? 0).toFixed(2) +
+            '</td><td>' + Math.round(c.mem_mb ?? 0) + '</td><td>' + (c.mem_pct ?? 0).toFixed(2) + '</td><td>' + esc(c.net_io) +
+            '</td><td>' + esc(c.block_io) + '</td><td>' + esc(c.pids) + '</td></tr>').join('');
+    }
+
+    $('res-window').addEventListener('change', refresh);
+    refresh();
+    setInterval(refresh, 5000);
+})();
+</script>
+{% endblock %}
