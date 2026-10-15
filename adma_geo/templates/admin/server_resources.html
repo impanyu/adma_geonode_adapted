@@ -3,75 +3,235 @@
 {% comment %}
 Server resources (filemanager/server_resources.py). The figures come from
 scripts/resource_sampler.sh on the Docker host; this page polls the JSON
-view every 5 seconds and redraws. Colours come from the admin's own custom
-properties, so it follows the ADMA palette and the admin's dark mode.
+view every 5 seconds and redraws.
+
+Styled like the rest of ADMA (templates/base.html): white rounded cards with
+a soft shadow, grey card headers with an icon, the ADMA red as the accent.
+The admin's app sidebar is left out here; it has nothing to do with this page
+and halves the width the charts need.
 {% endcomment %}
 
 {% block extrastyle %}
 {{ block.super }}
 <style>
-    .res-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 14px; }
-    .res-status { color: var(--body-quiet-color); }
-    .res-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #1a7f4b; margin-right: 6px; }
-    .res-dot.stale { background: var(--error-fg, #ba2121); }
-    .res-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
-    .res-tile, .res-card { border: 1px solid var(--hairline-color); border-radius: 8px; padding: 10px 14px; background: var(--body-bg); }
-    .res-tile .k { color: var(--body-quiet-color); font-size: 12px; }
-    .res-tile .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .res-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 12px; }
-    .res-card h2 { font-size: 13px; margin: 0 0 8px; color: var(--body-quiet-color); background: none; padding: 0; text-transform: none; letter-spacing: 0; }
-    .res-chart { position: relative; height: 220px; }
-    .res-table { width: 100%; font-variant-numeric: tabular-nums; }
-    .res-table td, .res-table th { text-align: right; white-space: nowrap; }
-    .res-table td:first-child, .res-table th:first-child { text-align: left; }
+    :root, html[data-theme="light"] {
+        --res-page: #fafbfc;
+        --res-card: #ffffff;
+        --res-head: #f8f9fa;
+        --res-line: #e9ecef;
+        --res-fg: #2c3e50;
+        --res-muted: #6c757d;
+        --res-track: #edf0f3;
+        --res-shadow: 0 2px 15px rgba(0, 0, 0, .08);
+        --res-ok: #28a745;
+        --res-warn: #f59f00;
+        --res-bad: #d00000;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --res-page: #121212; --res-card: #1e1e1e; --res-head: #262626; --res-line: #333;
+            --res-fg: #e6e6e6; --res-muted: #a0a0a0; --res-track: #333; --res-shadow: 0 2px 15px rgba(0, 0, 0, .4);
+        }
+    }
+    html[data-theme="dark"] {
+        --res-page: #121212; --res-card: #1e1e1e; --res-head: #262626; --res-line: #333;
+        --res-fg: #e6e6e6; --res-muted: #a0a0a0; --res-track: #333; --res-shadow: 0 2px 15px rgba(0, 0, 0, .4);
+    }
+
+    #content { background: var(--res-page); padding: 24px 32px 40px; }
+    @media (max-width: 767px) { #content { padding: 16px; } }
+    .res { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: var(--res-fg); max-width: 1440px; margin: 0 auto; }
+
+    /* Page header */
+    .res-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-bottom: 22px; }
+    .res-title { display: flex; align-items: center; gap: 14px; }
+    .res-title-icon {
+        width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; color: #fff; font-size: 20px;
+        background: linear-gradient(135deg, #d00000 0%, #b00000 100%); box-shadow: 0 4px 12px rgba(208, 0, 0, .25);
+    }
+    .res-title h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--res-fg); }
+    .res-title p { margin: 2px 0 0; color: var(--res-muted); font-size: 13px; }
+    .res-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+    .res-live {
+        display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; font-size: 12.5px;
+        background: var(--res-card); box-shadow: var(--res-shadow); color: var(--res-muted); white-space: nowrap;
+    }
+    .res-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--res-ok); box-shadow: 0 0 0 0 rgba(40, 167, 69, .5); animation: res-pulse 2s infinite; }
+    .res-live.stale i { background: var(--res-bad); animation: none; }
+    @keyframes res-pulse { 70% { box-shadow: 0 0 0 7px rgba(40, 167, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); } }
+    @media (prefers-reduced-motion: reduce) { .res-live i { animation: none; } }
+
+    .res-seg { display: inline-flex; background: var(--res-card); border-radius: 8px; box-shadow: var(--res-shadow); padding: 3px; }
+    .res-seg button {
+        border: 0; background: none; color: var(--res-muted); font: 600 12.5px/1 'Segoe UI', Tahoma, sans-serif;
+        padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: background .2s, color .2s;
+    }
+    .res-seg button:hover { color: #d00000; }
+    .res-seg button[aria-pressed="true"] { background: #d00000; color: #fff; }
+
+    /* KPI cards */
+    .res-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 20px; }
+    @media (max-width: 1280px) { .res-kpis { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 640px)  { .res-kpis { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
+    .res-kpi {
+        background: var(--res-card); border-radius: 12px; box-shadow: var(--res-shadow); padding: 16px 18px;
+        display: flex; flex-direction: column; gap: 10px; transition: transform .3s ease, box-shadow .3s ease; min-width: 0;
+    }
+    .res-kpi:hover { transform: translateY(-2px); box-shadow: 0 4px 25px rgba(0, 0, 0, .12); }
+    .res-kpi-top { display: flex; align-items: center; gap: 10px; color: var(--res-muted); font-size: 12.5px; font-weight: 600; }
+    .res-kpi-icon { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; font-size: 14px; flex: none; }
+    .res-kpi-value { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .res-kpi-value small { font-size: 14px; font-weight: 600; color: var(--res-muted); margin-left: 2px; }
+    .res-kpi-sub { font-size: 12px; color: var(--res-muted); min-height: 16px; }
+    .res-meter { height: 6px; border-radius: 3px; background: var(--res-track); overflow: hidden; }
+    .res-meter span { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--res-ok); transition: width .6s ease, background .6s; }
+    .tint-red   { background: rgba(208, 0, 0, .10);   color: #d00000; }
+    .tint-blue  { background: rgba(0, 123, 255, .10); color: #007bff; }
+    .tint-green { background: rgba(40, 167, 69, .12); color: #28a745; }
+    .tint-amber { background: rgba(245, 159, 0, .14); color: #e67700; }
+    .tint-slate { background: rgba(44, 62, 80, .10);  color: #2c3e50; }
+    .tint-teal  { background: rgba(23, 162, 184, .12); color: #17a2b8; }
+    html[data-theme="dark"] .tint-slate { color: #9fb3c8; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tint-slate { color: #9fb3c8; } }
+
+    /* Chart and table cards */
+    .res-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    @media (max-width: 1100px) { .res-grid { grid-template-columns: minmax(0, 1fr); } }
+    .res-card { background: var(--res-card); border-radius: 12px; box-shadow: var(--res-shadow); overflow: hidden; min-width: 0; }
+    .res-card-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding: 12px 18px; background: var(--res-head); border-bottom: 1px solid var(--res-line);
+    }
+    .res-card-head h2 {
+        margin: 0; padding: 0; background: none; font: 600 14px/1.3 'Segoe UI', Tahoma, sans-serif;
+        color: var(--res-fg); text-transform: none; letter-spacing: 0; display: flex; align-items: center; gap: 8px;
+    }
+    .res-card-head h2 i { color: #d00000; width: 16px; text-align: center; }
+    .res-card-head .res-now { font-size: 12.5px; color: var(--res-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .res-card-body { padding: 14px 18px 16px; }
+    .res-chart { position: relative; height: 240px; }
+    .res-wide { grid-column: 1 / -1; }
+
+    /* Containers table */
+    .res-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .res-table th, .res-table td { padding: 10px 12px; border-bottom: 1px solid var(--res-line); text-align: right; white-space: nowrap; background: none; color: var(--res-fg); }
+    .res-table th { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--res-muted); }
+    .res-table th:first-child, .res-table td:first-child { text-align: left; }
+    .res-table tbody tr:last-child td { border-bottom: 0; }
+    .res-table tbody tr:hover td { background: var(--res-head); }
+    .res-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+    .res-tag { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; letter-spacing: .03em; }
+    .res-tag.adma { background: rgba(208, 0, 0, .10); color: #d00000; }
+    .res-tag.ext { background: var(--res-track); color: var(--res-muted); }
+    .res-bar { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+    .res-bar .res-meter { width: 90px; }
+    .res-bar .res-meter span { background: #d00000; }
     .res-tablewrap { overflow-x: auto; }
-    .res-note { color: var(--body-quiet-color); font-size: 12px; margin-top: 14px; }
+
+    .res-foot { margin-top: 18px; color: var(--res-muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+    .res-empty { padding: 32px; text-align: center; color: var(--res-muted); }
 </style>
 {% endblock %}
+
+{% block nav-sidebar %}{% endblock %}
+{% block content_title %}{% endblock %}
 
 {% block breadcrumbs %}
 <div class="breadcrumbs"><a href="{% url 'admin:index' %}">Home</a> &rsaquo; Server resources</div>
 {% endblock %}
 
 {% block content %}
-<div id="content-main">
-    <div class="res-bar">
-        <span class="res-status"><span id="res-dot" class="res-dot"></span><span id="res-status">Loading…</span></span>
-        <label style="margin-left:auto">Window
-            <select id="res-window">
-                {% for m in windows %}<option value="{{ m }}">{% if m < 60 %}{{ m }} min{% else %}{% widthratio m 60 1 %} h{% endif %}</option>{% endfor %}
-            </select>
-        </label>
-    </div>
+<div class="res" id="content-main">
+    <header class="res-head">
+        <div class="res-title">
+            <div class="res-title-icon"><i class="fas fa-server" aria-hidden="true"></i></div>
+            <div>
+                <h1>Server resources</h1>
+                <p id="res-host">Host and container usage, sampled every 5 seconds</p>
+            </div>
+        </div>
+        <div class="res-controls">
+            <span class="res-live" id="res-live"><i></i><span id="res-status">Connecting…</span></span>
+            <div class="res-seg" role="group" aria-label="Time window">
+                {% for m in windows %}<button type="button" data-minutes="{{ m }}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}">{% if m < 60 %}{{ m }} min{% else %}{% widthratio m 60 1 %} h{% endif %}</button>{% endfor %}
+            </div>
+        </div>
+    </header>
 
-    <div class="res-tiles">
-        <div class="res-tile"><div class="k" id="k-cpu">CPU</div><div class="v" id="t-cpu">–</div></div>
-        <div class="res-tile"><div class="k">Memory used</div><div class="v" id="t-mem">–</div></div>
-        <div class="res-tile"><div class="k">Load (1 min)</div><div class="v" id="t-load">–</div></div>
-        <div class="res-tile"><div class="k">Root disk</div><div class="v" id="t-disk">–</div></div>
-        <div class="res-tile"><div class="k">Network in / out</div><div class="v" id="t-net">–</div></div>
-        <div class="res-tile"><div class="k">Containers running</div><div class="v" id="t-count">–</div></div>
-    </div>
+    <section class="res-kpis">
+        <div class="res-kpi">
+            <div class="res-kpi-top"><span class="res-kpi-icon tint-red"><i class="fas fa-microchip"></i></span><span id="k-cpu">CPU</span></div>
+            <div class="res-kpi-value" id="v-cpu">–</div>
+            <div class="res-meter"><span id="m-cpu"></span></div>
+        </div>
+        <div class="res-kpi">
+            <div class="res-kpi-top"><span class="res-kpi-icon tint-blue"><i class="fas fa-memory"></i></span>Memory</div>
+            <div class="res-kpi-value" id="v-mem">–</div>
+            <div class="res-meter"><span id="m-mem"></span></div>
+        </div>
+        <div class="res-kpi">
+            <div class="res-kpi-top"><span class="res-kpi-icon tint-amber"><i class="fas fa-gauge-high"></i></span>Load average</div>
+            <div class="res-kpi-value" id="v-load">–</div>
+            <div class="res-kpi-sub" id="s-load"></div>
+        </div>
+        <div class="res-kpi">
+            <div class="res-kpi-top"><span class="res-kpi-icon tint-green"><i class="fas fa-hard-drive"></i></span>Root disk</div>
+            <div class="res-kpi-value" id="v-disk">–</div>
+            <div class="res-meter"><span id="m-disk"></span></div>
+        </div>
+        <div class="res-kpi">
+            <div class="res-kpi-top"><span class="res-kpi-icon tint-teal"><i class="fas fa-network-wired"></i></span>Network</div>
+            <div class="res-kpi-value" id="v-net">–</div>
+            <div class="res-kpi-sub" id="s-net"></div>
+        </div>
+        <div class="res-kpi">
+            <div class="res-kpi-top"><span class="res-kpi-icon tint-slate"><i class="fab fa-docker"></i></span>Containers</div>
+            <div class="res-kpi-value" id="v-count">–</div>
+            <div class="res-kpi-sub" id="s-count"></div>
+        </div>
+    </section>
 
-    <div class="res-grid">
-        <div class="res-card"><h2>Host CPU % and load</h2><div class="res-chart"><canvas id="c-cpu"></canvas></div></div>
-        <div class="res-card"><h2>Host memory (GB)</h2><div class="res-chart"><canvas id="c-mem"></canvas></div></div>
-        <div class="res-card"><h2>Container CPU %</h2><div class="res-chart"><canvas id="c-ccpu"></canvas></div></div>
-        <div class="res-card"><h2>Container memory (MB)</h2><div class="res-chart"><canvas id="c-cmem"></canvas></div></div>
-        <div class="res-card"><h2>Network (kbit/s)</h2><div class="res-chart"><canvas id="c-net"></canvas></div></div>
-        <div class="res-card"><h2>Disk I/O (KB/s)</h2><div class="res-chart"><canvas id="c-disk"></canvas></div></div>
-    </div>
+    <section class="res-grid">
+        <div class="res-card">
+            <div class="res-card-head"><h2><i class="fas fa-microchip"></i>CPU and load</h2><span class="res-now" id="n-cpu"></span></div>
+            <div class="res-card-body"><div class="res-chart"><canvas id="c-cpu"></canvas></div></div>
+        </div>
+        <div class="res-card">
+            <div class="res-card-head"><h2><i class="fas fa-memory"></i>Memory</h2><span class="res-now" id="n-mem"></span></div>
+            <div class="res-card-body"><div class="res-chart"><canvas id="c-mem"></canvas></div></div>
+        </div>
+        <div class="res-card">
+            <div class="res-card-head"><h2><i class="fas fa-network-wired"></i>Network</h2><span class="res-now" id="n-net"></span></div>
+            <div class="res-card-body"><div class="res-chart"><canvas id="c-net"></canvas></div></div>
+        </div>
+        <div class="res-card">
+            <div class="res-card-head"><h2><i class="fas fa-hard-drive"></i>Disk I/O</h2><span class="res-now" id="n-disk"></span></div>
+            <div class="res-card-body"><div class="res-chart"><canvas id="c-disk"></canvas></div></div>
+        </div>
+        <div class="res-card">
+            <div class="res-card-head"><h2><i class="fab fa-docker"></i>Container CPU</h2><span class="res-now">% of one core</span></div>
+            <div class="res-card-body"><div class="res-chart"><canvas id="c-ccpu"></canvas></div></div>
+        </div>
+        <div class="res-card">
+            <div class="res-card-head"><h2><i class="fab fa-docker"></i>Container memory</h2><span class="res-now">MB</span></div>
+            <div class="res-card-body"><div class="res-chart"><canvas id="c-cmem"></canvas></div></div>
+        </div>
 
-    <div class="res-card" style="margin-top:12px">
-        <h2>Containers now</h2>
-        <div class="res-tablewrap"><table class="res-table">
-            <thead><tr><th>Container</th><th>CPU %</th><th>Memory MB</th><th>Memory %</th><th>Net in / out</th><th>Block in / out</th><th>PIDs</th></tr></thead>
-            <tbody id="res-rows"></tbody>
-        </table></div>
-    </div>
+        <div class="res-card res-wide">
+            <div class="res-card-head"><h2><i class="fas fa-cubes"></i>Running containers</h2><span class="res-now">latest sample, by memory</span></div>
+            <div class="res-tablewrap">
+                <table class="res-table">
+                    <thead><tr><th>Container</th><th>CPU</th><th>Memory</th><th>Share of RAM</th><th>Network in / out</th><th>Disk in / out</th><th>Processes</th></tr></thead>
+                    <tbody id="res-rows"><tr><td colspan="7" class="res-empty">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
 
-    <p class="res-note">Sampled every 5 seconds on the host by <code>scripts/resource_sampler.sh</code>; the last 24 hours are kept.
-        Longer windows are averaged so each chart draws at most a few hundred points.</p>
+    <p class="res-foot"><i class="fas fa-circle-info"></i>
+        Sampled on the host by <code>scripts/resource_sampler.sh</code>; the last 24 hours are kept.
+        Longer windows show averages, so each chart stays a few hundred points.</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
@@ -80,88 +240,168 @@ properties, so it follows the ADMA palette and the admin's dark mode.
 <script>
 (function () {
     const DATA_URL = "{% url 'admin_server_resources_data' %}";
-    const PALETTE = ['#d00000', '#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#65a30d', '#64748b'];
-    const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const RED = '#d00000', NAVY = '#2c3e50', BLUE = '#007bff', GREEN = '#28a745', AMBER = '#f59f00', TEAL = '#17a2b8';
+    const PALETTE = [RED, BLUE, GREEN, AMBER, '#6f42c1', TEAL, '#e83e8c', NAVY, '#adb5bd'];
     const $ = id => document.getElementById(id);
+    const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     const charts = {};
+    let minutes = +document.querySelector('.res-seg button[aria-pressed="true"]').dataset.minutes;
+
     Chart.defaults.animation = false;
+    Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
     Chart.defaults.font.size = 11;
 
-    function draw(id, labels, sets, rightAxis) {
-        const quiet = css('--body-quiet-color') || '#666', grid = css('--hairline-color') || '#ddd';
+    function fade(hex, alpha) {
+        const n = parseInt(hex.slice(1), 16);
+        return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+    }
+
+    function draw(id, labels, sets, opts) {
+        opts = opts || {};
+        const muted = css('--res-muted'), line = css('--res-line');
         if (!charts[id]) {
+            const axis = (extra) => Object.assign({
+                beginAtZero: true, border: { display: false },
+                grid: { color: line, drawTicks: false }, ticks: { color: muted, padding: 8, maxTicksLimit: 5 },
+            }, extra);
             const scales = {
-                x: { ticks: { maxTicksLimit: 6, color: quiet }, grid: { color: grid } },
-                y: { beginAtZero: true, ticks: { color: quiet }, grid: { color: grid } },
+                x: { grid: { display: false }, border: { color: line }, ticks: { color: muted, maxTicksLimit: 7, maxRotation: 0 } },
+                y: axis(opts.yMax ? { max: opts.yMax } : {}),
             };
-            if (rightAxis) scales.y2 = { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { color: quiet } };
+            if (opts.rightAxis) scales.y2 = axis({ position: 'right', grid: { display: false } });
             charts[id] = new Chart($(id), {
                 type: 'line', data: { labels: [], datasets: [] },
                 options: {
                     maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-                    elements: { point: { radius: 0 }, line: { borderWidth: 1.6, tension: 0.25 } },
-                    plugins: { legend: { labels: { boxWidth: 10, color: quiet } } }, scales,
+                    elements: { point: { radius: 0, hoverRadius: 3 }, line: { borderWidth: 2, tension: 0.3 } },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: muted, usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, padding: 14 } },
+                        tooltip: { backgroundColor: 'rgba(44, 62, 80, .95)', padding: 10, cornerRadius: 8, boxPadding: 4, usePointStyle: true },
+                    },
+                    scales,
                 },
             });
         }
         const chart = charts[id];
         chart.data.labels = labels;
-        chart.data.datasets = sets.map((s, i) => Object.assign(
-            { borderColor: PALETTE[i % PALETTE.length], backgroundColor: PALETTE[i % PALETTE.length] + '22', spanGaps: true }, s));
+        chart.data.datasets = sets.map((s, i) => {
+            const color = s.color || PALETTE[i % PALETTE.length];
+            return Object.assign({ borderColor: color, backgroundColor: s.fill ? fade(color, 0.12) : color, pointBackgroundColor: color, spanGaps: true }, s);
+        });
         chart.update('none');
     }
 
-    const short = name => name.replace(/^adma_geo_/, '');
-    const kbit = k => k == null ? '–' : (k >= 1000 ? (k / 1000).toFixed(1) + ' M' : Math.round(k) + ' k');
+    const isAdma = name => name.startsWith('adma_geo_');
+    const short = name => name.replace(/^adma_geo_/, '').replace(/-\d+$/, '');
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const rate = k => k == null ? '–' : k >= 1000 ? (k / 1000).toFixed(1) + ' Mbit/s' : Math.round(k) + ' kbit/s';
+    const kb = k => k == null ? '–' : k >= 1024 ? (k / 1024).toFixed(1) + ' MB/s' : Math.round(k) + ' KB/s';
+    const mb = m => m >= 1024 ? (m / 1024).toFixed(1) + ' GB' : Math.round(m) + ' MB';
+    const level = pct => pct >= 90 ? RED : pct >= 70 ? AMBER : GREEN;
+
+    function meter(id, pct) {
+        const el = $(id);
+        el.style.width = Math.max(0, Math.min(100, pct)) + '%';
+        el.style.background = level(pct);
+    }
+
+    function setLive(ok, text) {
+        $('res-live').className = 'res-live' + (ok ? '' : ' stale');
+        $('res-status').textContent = text;
+    }
 
     async function refresh() {
-        const minutes = $('res-window').value;
         let d;
         try {
             const r = await fetch(DATA_URL + '?minutes=' + minutes, { cache: 'no-store', credentials: 'same-origin' });
             if (!r.ok) throw new Error('HTTP ' + r.status);
             d = await r.json();
         } catch (e) {
-            $('res-dot').className = 'res-dot stale';
-            $('res-status').textContent = 'Could not load data (' + e.message + ')';
+            setLive(false, 'Cannot load data (' + e.message + ')');
             return;
         }
         if (!d.latest) {
-            $('res-dot').className = 'res-dot stale';
-            $('res-status').textContent = 'No samples in this window. Is scripts/resource_sampler.sh running on the host?';
+            setLive(false, 'No samples. Is the sampler running?');
+            $('res-rows').innerHTML = '<tr><td colspan="7" class="res-empty">No samples in this window. Start <code>scripts/resource_sampler.sh</code> on the host.</td></tr>';
             return;
         }
         const stale = d.sample_age_seconds > 60;
-        $('res-dot').className = 'res-dot' + (stale ? ' stale' : '');
-        $('res-status').textContent = (stale ? 'Sampler stopped? Last sample ' : 'Live · last sample ') +
-            d.sample_age_seconds + 's ago' + (d.bucket_seconds > 5 ? ' · ' + d.bucket_seconds + 's averages' : '');
+        setLive(!stale, (stale ? 'Stale · last sample ' : 'Live · updated ') + d.sample_age_seconds + 's ago');
 
-        const L = d.latest, labels = d.labels.map(t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-        $('k-cpu').textContent = 'CPU (' + d.cpu_count + ' cores)';
-        $('t-cpu').textContent = L.cpu_pct.toFixed(1) + ' %';
-        $('t-mem').textContent = (L.mem_used_mb / 1024).toFixed(1) + ' / ' + (L.mem_total_mb / 1024).toFixed(0) + ' GB';
-        $('t-load').textContent = L.load1;
-        $('t-disk').textContent = L.disk_root_pct + ' %';
-        $('t-net').textContent = kbit(L.net_rx_kbps) + ' / ' + kbit(L.net_tx_kbps);
-        $('t-count').textContent = d.running.length;
+        const L = d.latest, cores = d.cpu_count || 1;
+        const memPct = 100 * L.mem_used_mb / L.mem_total_mb;
+        $('k-cpu').textContent = 'CPU · ' + cores + ' cores';
+        $('v-cpu').innerHTML = L.cpu_pct.toFixed(1) + '<small>%</small>';
+        meter('m-cpu', L.cpu_pct);
+        $('v-mem').innerHTML = (L.mem_used_mb / 1024).toFixed(1) + '<small>/ ' + Math.round(L.mem_total_mb / 1024) + ' GB</small>';
+        meter('m-mem', memPct);
+        $('v-load').textContent = L.load1.toFixed(2);
+        $('s-load').textContent = Math.round(100 * L.load1 / cores) + '% of ' + cores + ' cores';
+        $('v-disk').innerHTML = L.disk_root_pct + '<small>%</small>';
+        meter('m-disk', L.disk_root_pct);
+        $('v-net').innerHTML = rate(L.net_rx_kbps).replace(/ (\S+)$/, '<small>$1</small>');
+        $('s-net').textContent = 'in · out ' + rate(L.net_tx_kbps);
+        const adma = d.running.filter(c => isAdma(c.name)).length;
+        $('v-count').textContent = d.running.length;
+        $('s-count').textContent = adma + ' ADMA · ' + (d.running.length - adma) + ' other';
 
+        $('n-cpu').textContent = L.cpu_pct.toFixed(1) + '% · load ' + L.load1.toFixed(2);
+        $('n-mem').textContent = mb(L.mem_used_mb) + ' of ' + mb(L.mem_total_mb);
+        $('n-net').textContent = '↓ ' + rate(L.net_rx_kbps) + '  ↑ ' + rate(L.net_tx_kbps);
+        $('n-disk').textContent = 'R ' + kb(L.disk_read_kbps) + '  W ' + kb(L.disk_write_kbps);
+
+        const longWindow = minutes >= 360;
+        const labels = d.labels.map(t => {
+            const dt = new Date(t);
+            return longWindow && minutes > 360
+                ? dt.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+                : dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        });
         const H = d.host;
-        draw('c-cpu', labels, [{ label: 'CPU %', data: H.cpu_pct, fill: true }, { label: 'load 1m', data: H.load1, yAxisID: 'y2' }], true);
-        draw('c-mem', labels, [{ label: 'used', data: H.mem_used_mb.map(v => v == null ? null : v / 1024), fill: true },
-                               { label: 'total', data: H.mem_total_mb.map(v => v == null ? null : v / 1024), borderDash: [4, 4] }]);
-        draw('c-net', labels, [{ label: 'in', data: H.net_rx_kbps }, { label: 'out', data: H.net_tx_kbps }]);
-        draw('c-disk', labels, [{ label: 'read', data: H.disk_read_kbps }, { label: 'write', data: H.disk_write_kbps }]);
+        draw('c-cpu', labels, [
+            { label: 'CPU %', data: H.cpu_pct, color: RED, fill: true },
+            { label: 'Load (1 min)', data: H.load1, color: NAVY, yAxisID: 'y2', borderDash: [5, 4], borderWidth: 1.6 },
+        ], { rightAxis: true, yMax: 100 });
+        draw('c-mem', labels, [
+            { label: 'Used (GB)', data: H.mem_used_mb.map(v => v == null ? null : v / 1024), color: BLUE, fill: true },
+            { label: 'Total', data: H.mem_total_mb.map(v => v == null ? null : v / 1024), color: '#adb5bd', borderDash: [5, 4], borderWidth: 1.4 },
+        ], { yMax: Math.ceil(L.mem_total_mb / 1024) });
+        draw('c-net', labels, [
+            { label: 'In (kbit/s)', data: H.net_rx_kbps, color: TEAL, fill: true },
+            { label: 'Out (kbit/s)', data: H.net_tx_kbps, color: AMBER },
+        ]);
+        draw('c-disk', labels, [
+            { label: 'Read (KB/s)', data: H.disk_read_kbps, color: GREEN, fill: true },
+            { label: 'Write (KB/s)', data: H.disk_write_kbps, color: '#6f42c1' },
+        ]);
         const names = Object.keys(d.containers);
-        draw('c-ccpu', labels, names.map(n => ({ label: short(n), data: d.containers[n].cpu })));
-        draw('c-cmem', labels, names.map(n => ({ label: short(n), data: d.containers[n].mem })));
+        const series = field => names.map((n, i) => ({
+            label: short(n), data: d.containers[n][field], borderWidth: 1.8,
+            color: n.startsWith('other') ? '#adb5bd' : PALETTE[i % (PALETTE.length - 1)],
+        }));
+        draw('c-ccpu', labels, series('cpu'));
+        draw('c-cmem', labels, series('mem'));
 
-        $('res-rows').innerHTML = d.running.map(c => '<tr><td>' + esc(c.name) + '</td><td>' + (c.cpu_pct ?? 0).toFixed(2) +
-            '</td><td>' + Math.round(c.mem_mb ?? 0) + '</td><td>' + (c.mem_pct ?? 0).toFixed(2) + '</td><td>' + esc(c.net_io) +
-            '</td><td>' + esc(c.block_io) + '</td><td>' + esc(c.pids) + '</td></tr>').join('');
+        // Share of the host's RAM, so the bar and the figure agree. Docker's own
+        // MemPerc is relative to each container's limit when it has one.
+        const share = c => 100 * (c.mem_mb || 0) / L.mem_total_mb;
+        const maxShare = Math.max(0.1, ...d.running.map(share));
+        $('res-rows').innerHTML = d.running.map(c => {
+            const tag = isAdma(c.name) ? '<span class="res-tag adma">ADMA</span>' : '<span class="res-tag ext">other</span>';
+            return '<tr><td><span class="res-name">' + esc(short(c.name)) + tag + '</span></td>' +
+                '<td>' + (c.cpu_pct ?? 0).toFixed(1) + '%</td>' +
+                '<td>' + mb(c.mem_mb ?? 0) + '</td>' +
+                '<td><span class="res-bar"><span class="res-meter"><span style="width:' + (100 * share(c) / maxShare).toFixed(1) + '%"></span></span>' +
+                share(c).toFixed(1) + '%</span></td>' +
+                '<td>' + esc(c.net_io) + '</td><td>' + esc(c.block_io) + '</td><td>' + esc(c.pids) + '</td></tr>';
+        }).join('');
     }
 
-    $('res-window').addEventListener('change', refresh);
+    document.querySelectorAll('.res-seg button').forEach(btn => btn.addEventListener('click', () => {
+        document.querySelectorAll('.res-seg button').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+        minutes = +btn.dataset.minutes;
+        refresh();
+    }));
     refresh();
     setInterval(refresh, 5000);
 })();
