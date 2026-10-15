@@ -1,22 +1,183 @@
-{% extends "admin/index.html" %}
+{% extends "admin/base_site.html" %}
+{% load i18n log %}
 
 {% comment %}
-Django's own admin index, with a link to the Server resources page
-(filemanager/server_resources.py) above the app list. Extending a template
-of the same name picks up the next one on the search path, i.e. Django's.
+The admin home page as an ADMA dashboard: a welcome bar with shortcuts,
+each app as a card of its models, and recent actions as a card beside them.
+Uses the same app_list context and admin log as Django's own index.
 {% endcomment %}
 
-{% block content %}
-{% if request.user.is_superuser %}
-<div class="module" id="server-module">
-    <table>
-        <caption>Server</caption>
-        <tr>
-            <th scope="row"><a href="{% url 'admin_server_resources' %}">Server resources</a></th>
-            <td>CPU, memory, network and disk for the host and each container, live.</td>
-        </tr>
-    </table>
-</div>
-{% endif %}
+{% block extrastyle %}
 {{ block.super }}
+<style>
+    .dash-hero {
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px;
+        background: var(--adma-card); border-radius: 14px; box-shadow: var(--adma-shadow); padding: 20px 24px; margin: 6px 0 22px;
+        position: relative; overflow: hidden;
+    }
+    .dash-hero::before {
+        content: ""; position: absolute; inset: 0 auto 0 0; width: 5px;
+        background: linear-gradient(180deg, var(--adma-red) 0%, var(--adma-red-dark) 100%);
+    }
+    .dash-hero h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--adma-fg); }
+    .dash-hero p { margin: 4px 0 0; color: var(--adma-muted); font-size: 13.5px; }
+    .dash-shortcuts { display: flex; flex-wrap: wrap; gap: 10px; }
+    .dash-shortcut, .dash-shortcut:link, .dash-shortcut:visited {
+        display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 8px; font-weight: 600; font-size: 13.5px;
+        color: var(--adma-fg); background: var(--adma-head); border: 1px solid var(--adma-line); text-decoration: none;
+        transition: all .2s ease;
+    }
+    .dash-shortcut:hover { color: var(--adma-red); border-color: var(--adma-red); background: var(--adma-red-soft); text-decoration: none; transform: translateY(-1px); }
+    .dash-shortcut i { color: var(--adma-red); }
+    .dash-shortcut.primary, .dash-shortcut.primary:link, .dash-shortcut.primary:visited { background: var(--adma-red); border-color: var(--adma-red); color: #fff; }
+    .dash-shortcut.primary i { color: #fff; }
+    .dash-shortcut.primary:hover { background: var(--adma-red-dark); color: #fff; }
+
+    .dash-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+    @media (max-width: 1100px) { .dash-layout { grid-template-columns: minmax(0, 1fr); } }
+    .dash-apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 20px; align-items: start; }
+    @media (max-width: 420px) { .dash-apps { grid-template-columns: minmax(0, 1fr); } }
+
+    .dash-card { background: var(--adma-card); border-radius: 12px; box-shadow: var(--adma-shadow); overflow: hidden; transition: box-shadow .3s ease, transform .3s ease; }
+    .dash-card:hover { box-shadow: var(--adma-shadow-hover); }
+    .dash-card-head {
+        display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: var(--adma-head); border-bottom: 1px solid var(--adma-line);
+    }
+    .dash-card-head .dash-icon {
+        width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; flex: none;
+        background: var(--adma-red-soft); color: var(--adma-red); font-size: 15px;
+    }
+    .dash-card-head h2 { margin: 0; padding: 0; background: none; border: 0; font-size: 15px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+    .dash-card-head h2 a, .dash-card-head h2 a:link, .dash-card-head h2 a:visited { color: var(--adma-fg); text-decoration: none; }
+    .dash-card-head h2 a:hover { color: var(--adma-red); }
+    .dash-card-head .dash-count { margin-left: auto; font-size: 12px; color: var(--adma-muted); }
+
+    .dash-models { list-style: none; margin: 0; padding: 6px; }
+    .dash-models li { display: flex; align-items: center; gap: 8px; padding: 0; margin: 0; list-style: none; border-radius: 8px; }
+    .dash-models li:hover { background: var(--adma-head); }
+    .dash-models li.current { background: var(--adma-red-soft); }
+    .dash-model, .dash-model:link, .dash-model:visited {
+        flex: 1; min-width: 0; padding: 9px 12px; color: var(--adma-fg); font-weight: 500; text-decoration: none;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    a.dash-model:hover { color: var(--adma-red); text-decoration: none; }
+    .dash-actions { display: flex; gap: 4px; padding-right: 6px; flex: none; }
+    .dash-act, .dash-act:link, .dash-act:visited {
+        display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 600;
+        color: var(--adma-muted); text-decoration: none; opacity: .85;
+    }
+    .dash-act:hover { color: var(--adma-red); background: var(--adma-card); opacity: 1; text-decoration: none; }
+    .dash-act.add, .dash-act.add:link, .dash-act.add:visited { color: #28a745; }
+    .dash-act.add:hover { color: #1e7e34; }
+
+    .dash-log { list-style: none; margin: 0; padding: 8px 0; }
+    .dash-log li { display: flex; gap: 12px; padding: 9px 18px; margin: 0; list-style: none; }
+    .dash-log .dash-dot {
+        width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 11px; margin-top: 1px;
+    }
+    .dash-dot.add { background: rgba(40, 167, 69, .14); color: #28a745; }
+    .dash-dot.change { background: rgba(0, 123, 255, .12); color: #007bff; }
+    .dash-dot.delete { background: var(--adma-red-soft); color: var(--adma-red); }
+    .dash-log-text { min-width: 0; }
+    .dash-log-text a, .dash-log-text span.obj { display: block; font-weight: 600; color: var(--adma-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dash-log-text a:hover { color: var(--adma-red); }
+    .dash-log-text small { color: var(--adma-muted); font-size: 12px; }
+    .dash-empty { padding: 22px 18px; color: var(--adma-muted); font-size: 13.5px; text-align: center; }
+</style>
 {% endblock %}
+
+{% block coltype %}colM{% endblock %}
+{% block bodyclass %}{{ block.super }} adma-dashboard{% endblock %}
+{% block nav-breadcrumbs %}{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+{% block content_title %}{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <section class="dash-hero">
+        <div>
+            <h1>Welcome back, {% firstof user.get_short_name user.get_username %}</h1>
+            <p>{% now "l, F j, Y" %} · ADMA administration</p>
+        </div>
+        <div class="dash-shortcuts">
+            {% if user.is_superuser %}
+            <a class="dash-shortcut primary" href="{% url 'admin_server_resources' %}"><i class="fas fa-server"></i>Server resources</a>
+            {% endif %}
+            {% if site_url %}
+            <a class="dash-shortcut" href="{{ site_url }}"><i class="fas fa-arrow-up-right-from-square"></i>View site</a>
+            {% endif %}
+            {% if user.has_usable_password %}
+            <a class="dash-shortcut" href="{% url 'admin:password_change' %}"><i class="fas fa-key"></i>Change password</a>
+            {% endif %}
+        </div>
+    </section>
+
+    <div class="dash-layout">
+        <div class="dash-apps">
+            {% for app in app_list %}
+            <section class="dash-card app-{{ app.app_label }}">
+                <div class="dash-card-head">
+                    <span class="dash-icon"><i class="fas {% if app.app_label == 'auth' %}fa-users-gear{% elif app.app_label == 'filemanager' %}fa-folder-tree{% elif app.app_label == 'socialaccount' %}fa-share-nodes{% elif app.app_label == 'account' %}fa-envelope{% elif app.app_label == 'sites' %}fa-globe{% elif app.app_label == 'authtoken' %}fa-key{% elif 'celery' in app.app_label %}fa-clock{% else %}fa-cube{% endif %}"></i></span>
+                    <h2><a href="{{ app.app_url }}" title="{% blocktranslate with name=app.name %}Models in the {{ name }} application{% endblocktranslate %}">{{ app.name }}</a></h2>
+                    <span class="dash-count">{{ app.models|length }} model{{ app.models|length|pluralize }}</span>
+                </div>
+                <ul class="dash-models">
+                    {% for model in app.models %}
+                    <li class="model-{{ model.object_name|lower }}{% if model.admin_url in request.path|urlencode %} current{% endif %}">
+                        {% if model.admin_url %}
+                        <a class="dash-model" href="{{ model.admin_url }}"{% if model.admin_url in request.path|urlencode %} aria-current="page"{% endif %}>{{ model.name }}</a>
+                        {% else %}
+                        <span class="dash-model">{{ model.name }}</span>
+                        {% endif %}
+                        <span class="dash-actions">
+                            {% if model.add_url %}<a class="dash-act add" href="{{ model.add_url }}"><i class="fas fa-plus"></i>{% translate 'Add' %}</a>{% endif %}
+                            {% if model.admin_url %}
+                                {% if model.view_only %}
+                                <a class="dash-act" href="{{ model.admin_url }}"><i class="fas fa-eye"></i>{% translate 'View' %}</a>
+                                {% else %}
+                                <a class="dash-act" href="{{ model.admin_url }}"><i class="fas fa-pen"></i>{% translate 'Change' %}</a>
+                                {% endif %}
+                            {% endif %}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </section>
+            {% empty %}
+            <p class="dash-empty">{% translate 'You don’t have permission to view or edit anything.' %}</p>
+            {% endfor %}
+        </div>
+
+        <aside class="dash-card" id="recent-actions-module">
+            <div class="dash-card-head">
+                <span class="dash-icon"><i class="fas fa-clock-rotate-left"></i></span>
+                <h2>{% translate 'Recent actions' %}</h2>
+            </div>
+            {% get_admin_log 10 as admin_log for_user user %}
+            {% if not admin_log %}
+            <p class="dash-empty">{% translate 'None available' %}</p>
+            {% else %}
+            <ul class="dash-log">
+                {% for entry in admin_log %}
+                <li>
+                    <span class="dash-dot {% if entry.is_addition %}add{% elif entry.is_change %}change{% else %}delete{% endif %}">
+                        <i class="fas {% if entry.is_addition %}fa-plus{% elif entry.is_change %}fa-pen{% else %}fa-trash{% endif %}"></i>
+                    </span>
+                    <span class="dash-log-text">
+                        {% if entry.is_deletion or not entry.get_admin_url %}
+                        <span class="obj">{{ entry.object_repr }}</span>
+                        {% else %}
+                        <a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>
+                        {% endif %}
+                        <small>{% if entry.content_type %}{% filter capfirst %}{{ entry.content_type.name }}{% endfilter %}{% else %}{% translate 'Unknown content' %}{% endif %} · {{ entry.action_time|timesince }} ago</small>
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </aside>
+    </div>
+</div>
+{% endblock %}
+
+{% block sidebar %}{% endblock %}

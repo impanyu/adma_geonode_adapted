@@ -1,6 +1,11 @@
 from django.contrib import admin
 from .models import Folder, File, Map, MapLayer, Tool, AgentSession, AgentMessage, ChatSession
 
+# The ADMA admin header (templates/admin/base_site.html) and the dashboard
+# index cover navigation, so Django's collapsible app sidebar is off: it took
+# a third of the width on every list and form page.
+admin.site.enable_nav_sidebar = False
+
 
 @admin.register(Folder)
 class FolderAdmin(admin.ModelAdmin):

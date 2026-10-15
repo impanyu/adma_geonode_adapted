@@ -5,42 +5,16 @@ Server resources (filemanager/server_resources.py). The figures come from
 scripts/resource_sampler.sh on the Docker host; this page polls the JSON
 view every 5 seconds and redraws.
 
-Styled like the rest of ADMA (templates/base.html): white rounded cards with
-a soft shadow, grey card headers with an icon, the ADMA red as the accent.
-The admin's app sidebar is left out here; it has nothing to do with this page
-and halves the width the charts need.
+Styled like the rest of ADMA through the theme in admin/base_site.html.
 {% endcomment %}
 
 {% block extrastyle %}
 {{ block.super }}
 <style>
-    :root, html[data-theme="light"] {
-        --res-page: #fafbfc;
-        --res-card: #ffffff;
-        --res-head: #f8f9fa;
-        --res-line: #e9ecef;
-        --res-fg: #2c3e50;
-        --res-muted: #6c757d;
-        --res-track: #edf0f3;
-        --res-shadow: 0 2px 15px rgba(0, 0, 0, .08);
-        --res-ok: #28a745;
-        --res-warn: #f59f00;
-        --res-bad: #d00000;
-    }
-    @media (prefers-color-scheme: dark) {
-        :root {
-            --res-page: #121212; --res-card: #1e1e1e; --res-head: #262626; --res-line: #333;
-            --res-fg: #e6e6e6; --res-muted: #a0a0a0; --res-track: #333; --res-shadow: 0 2px 15px rgba(0, 0, 0, .4);
-        }
-    }
-    html[data-theme="dark"] {
-        --res-page: #121212; --res-card: #1e1e1e; --res-head: #262626; --res-line: #333;
-        --res-fg: #e6e6e6; --res-muted: #a0a0a0; --res-track: #333; --res-shadow: 0 2px 15px rgba(0, 0, 0, .4);
-    }
+    /* Colours come from the --adma-* tokens in admin/base_site.html. */
+    :root { --res-ok: #28a745; --res-warn: #f59f00; --res-bad: #d00000; }
 
-    #content { background: var(--res-page); padding: 24px 32px 40px; }
-    @media (max-width: 767px) { #content { padding: 16px; } }
-    .res { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: var(--res-fg); max-width: 1440px; margin: 0 auto; }
+    .res { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: var(--adma-fg); max-width: 1440px; margin: 0 auto; }
 
     /* Page header */
     .res-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-bottom: 22px; }
@@ -49,22 +23,22 @@ and halves the width the charts need.
         width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; color: #fff; font-size: 20px;
         background: linear-gradient(135deg, #d00000 0%, #b00000 100%); box-shadow: 0 4px 12px rgba(208, 0, 0, .25);
     }
-    .res-title h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--res-fg); }
-    .res-title p { margin: 2px 0 0; color: var(--res-muted); font-size: 13px; }
+    .res-title h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--adma-fg); }
+    .res-title p { margin: 2px 0 0; color: var(--adma-muted); font-size: 13px; }
     .res-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 
     .res-live {
         display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; font-size: 12.5px;
-        background: var(--res-card); box-shadow: var(--res-shadow); color: var(--res-muted); white-space: nowrap;
+        background: var(--adma-card); box-shadow: var(--adma-shadow); color: var(--adma-muted); white-space: nowrap;
     }
     .res-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--res-ok); box-shadow: 0 0 0 0 rgba(40, 167, 69, .5); animation: res-pulse 2s infinite; }
     .res-live.stale i { background: var(--res-bad); animation: none; }
     @keyframes res-pulse { 70% { box-shadow: 0 0 0 7px rgba(40, 167, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); } }
     @media (prefers-reduced-motion: reduce) { .res-live i { animation: none; } }
 
-    .res-seg { display: inline-flex; background: var(--res-card); border-radius: 8px; box-shadow: var(--res-shadow); padding: 3px; }
+    .res-seg { display: inline-flex; background: var(--adma-card); border-radius: 8px; box-shadow: var(--adma-shadow); padding: 3px; }
     .res-seg button {
-        border: 0; background: none; color: var(--res-muted); font: 600 12.5px/1 'Segoe UI', Tahoma, sans-serif;
+        border: 0; background: none; color: var(--adma-muted); font: 600 12.5px/1 'Segoe UI', Tahoma, sans-serif;
         padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: background .2s, color .2s;
     }
     .res-seg button:hover { color: #d00000; }
@@ -75,16 +49,16 @@ and halves the width the charts need.
     @media (max-width: 1280px) { .res-kpis { grid-template-columns: repeat(3, 1fr); } }
     @media (max-width: 640px)  { .res-kpis { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
     .res-kpi {
-        background: var(--res-card); border-radius: 12px; box-shadow: var(--res-shadow); padding: 16px 18px;
+        background: var(--adma-card); border-radius: 12px; box-shadow: var(--adma-shadow); padding: 16px 18px;
         display: flex; flex-direction: column; gap: 10px; transition: transform .3s ease, box-shadow .3s ease; min-width: 0;
     }
     .res-kpi:hover { transform: translateY(-2px); box-shadow: 0 4px 25px rgba(0, 0, 0, .12); }
-    .res-kpi-top { display: flex; align-items: center; gap: 10px; color: var(--res-muted); font-size: 12.5px; font-weight: 600; }
+    .res-kpi-top { display: flex; align-items: center; gap: 10px; color: var(--adma-muted); font-size: 12.5px; font-weight: 600; }
     .res-kpi-icon { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; font-size: 14px; flex: none; }
     .res-kpi-value { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .res-kpi-value small { font-size: 14px; font-weight: 600; color: var(--res-muted); margin-left: 2px; }
-    .res-kpi-sub { font-size: 12px; color: var(--res-muted); min-height: 16px; }
-    .res-meter { height: 6px; border-radius: 3px; background: var(--res-track); overflow: hidden; }
+    .res-kpi-value small { font-size: 14px; font-weight: 600; color: var(--adma-muted); margin-left: 2px; }
+    .res-kpi-sub { font-size: 12px; color: var(--adma-muted); min-height: 16px; }
+    .res-meter { height: 6px; border-radius: 3px; background: var(--adma-track); overflow: hidden; }
     .res-meter span { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--res-ok); transition: width .6s ease, background .6s; }
     .tint-red   { background: rgba(208, 0, 0, .10);   color: #d00000; }
     .tint-blue  { background: rgba(0, 123, 255, .10); color: #007bff; }
@@ -98,43 +72,42 @@ and halves the width the charts need.
     /* Chart and table cards */
     .res-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
     @media (max-width: 1100px) { .res-grid { grid-template-columns: minmax(0, 1fr); } }
-    .res-card { background: var(--res-card); border-radius: 12px; box-shadow: var(--res-shadow); overflow: hidden; min-width: 0; }
+    .res-card { background: var(--adma-card); border-radius: 12px; box-shadow: var(--adma-shadow); overflow: hidden; min-width: 0; }
     .res-card-head {
         display: flex; align-items: center; justify-content: space-between; gap: 10px;
-        padding: 12px 18px; background: var(--res-head); border-bottom: 1px solid var(--res-line);
+        padding: 12px 18px; background: var(--adma-head); border-bottom: 1px solid var(--adma-line);
     }
     .res-card-head h2 {
         margin: 0; padding: 0; background: none; font: 600 14px/1.3 'Segoe UI', Tahoma, sans-serif;
-        color: var(--res-fg); text-transform: none; letter-spacing: 0; display: flex; align-items: center; gap: 8px;
+        color: var(--adma-fg); text-transform: none; letter-spacing: 0; display: flex; align-items: center; gap: 8px;
     }
     .res-card-head h2 i { color: #d00000; width: 16px; text-align: center; }
-    .res-card-head .res-now { font-size: 12.5px; color: var(--res-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .res-card-head .res-now { font-size: 12.5px; color: var(--adma-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .res-card-body { padding: 14px 18px 16px; }
     .res-chart { position: relative; height: 240px; }
     .res-wide { grid-column: 1 / -1; }
 
     /* Containers table */
     .res-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
-    .res-table th, .res-table td { padding: 10px 12px; border-bottom: 1px solid var(--res-line); text-align: right; white-space: nowrap; background: none; color: var(--res-fg); }
-    .res-table th { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--res-muted); }
+    .res-table th, .res-table td { padding: 10px 12px; border-bottom: 1px solid var(--adma-line); text-align: right; white-space: nowrap; background: none; color: var(--adma-fg); }
+    .res-table th { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--adma-muted); }
     .res-table th:first-child, .res-table td:first-child { text-align: left; }
     .res-table tbody tr:last-child td { border-bottom: 0; }
-    .res-table tbody tr:hover td { background: var(--res-head); }
+    .res-table tbody tr:hover td { background: var(--adma-head); }
     .res-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
     .res-tag { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; letter-spacing: .03em; }
     .res-tag.adma { background: rgba(208, 0, 0, .10); color: #d00000; }
-    .res-tag.ext { background: var(--res-track); color: var(--res-muted); }
+    .res-tag.ext { background: var(--adma-track); color: var(--adma-muted); }
     .res-bar { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
     .res-bar .res-meter { width: 90px; }
     .res-bar .res-meter span { background: #d00000; }
     .res-tablewrap { overflow-x: auto; }
 
-    .res-foot { margin-top: 18px; color: var(--res-muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
-    .res-empty { padding: 32px; text-align: center; color: var(--res-muted); }
+    .res-foot { margin-top: 18px; color: var(--adma-muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+    .res-empty { padding: 32px; text-align: center; color: var(--adma-muted); }
 </style>
 {% endblock %}
 
-{% block nav-sidebar %}{% endblock %}
 {% block content_title %}{% endblock %}
 
 {% block breadcrumbs %}
@@ -258,7 +231,7 @@ and halves the width the charts need.
 
     function draw(id, labels, sets, opts) {
         opts = opts || {};
-        const muted = css('--res-muted'), line = css('--res-line');
+        const muted = css('--adma-muted'), line = css('--adma-line');
         if (!charts[id]) {
             const axis = (extra) => Object.assign({
                 beginAtZero: true, border: { display: false },

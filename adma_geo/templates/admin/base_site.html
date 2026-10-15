@@ -2,11 +2,18 @@
 {% load i18n %}
 
 {% comment %}
-Django's admin ships its own blue palette and a bare "Django administration"
-header, which reads as a different product bolted onto the site. The admin
-stylesheet drives nearly all of its colour from CSS custom properties, so
-restating those properties is enough to bring it onto the ADMA palette
-without overriding a single admin rule or template beyond this one.
+The ADMA look for every admin page. Django's admin ships its own blue
+palette, an all-caps "Welcome, X. View site / Change password / Log out"
+header and plain bordered boxes, which read as a different product bolted
+onto the site. This restates the admin's colour custom properties in the
+ADMA palette (templates/base.html), replaces the header with a navbar like
+the main site's, and turns modules, tables, forms, filters and the login
+box into the white rounded cards with soft shadows and grey headers that
+the rest of ADMA uses. Only presentation changes: every admin form, link
+and action is still Django's own markup.
+
+The colour tokens follow the admin's theme switch (data-theme on <html>:
+auto, light or dark).
 {% endcomment %}
 
 {% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | ADMA administration{% endblock %}
@@ -15,80 +22,461 @@ without overriding a single admin rule or template beyond this one.
 {{ block.super }}
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
-    html[data-theme="light"], :root {
+    /* ---------- Tokens ---------- */
+    :root, html[data-theme="light"] {
         --adma-red: #d00000;
         --adma-red-dark: #b00000;
+        --adma-red-soft: rgba(208, 0, 0, .08);
+        --adma-page: #f5f6f8;
+        --adma-card: #ffffff;
+        --adma-head: #f8f9fa;
+        --adma-line: #e9ecef;
+        --adma-fg: #2c3e50;
+        --adma-muted: #6c757d;
+        --adma-track: #edf0f3;
+        --adma-input: #ffffff;
+        --adma-input-line: #ced4da;
+        --adma-shadow: 0 2px 15px rgba(0, 0, 0, .08);
+        --adma-shadow-hover: 0 4px 25px rgba(0, 0, 0, .12);
+    }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+            --adma-red-soft: rgba(255, 90, 90, .12);
+            --adma-page: #121212; --adma-card: #1e1e1e; --adma-head: #262626; --adma-line: #333333;
+            --adma-fg: #e6e6e6; --adma-muted: #a0a0a0; --adma-track: #333333;
+            --adma-input: #161616; --adma-input-line: #444444;
+            --adma-shadow: 0 2px 15px rgba(0, 0, 0, .45); --adma-shadow-hover: 0 4px 25px rgba(0, 0, 0, .6);
+        }
+    }
+    html[data-theme="dark"] {
+        --adma-red-soft: rgba(255, 90, 90, .12);
+        --adma-page: #121212; --adma-card: #1e1e1e; --adma-head: #262626; --adma-line: #333333;
+        --adma-fg: #e6e6e6; --adma-muted: #a0a0a0; --adma-track: #333333;
+        --adma-input: #161616; --adma-input-line: #444444;
+        --adma-shadow: 0 2px 15px rgba(0, 0, 0, .45); --adma-shadow-hover: 0 4px 25px rgba(0, 0, 0, .6);
+    }
 
+    /* The admin's own properties, restated in ADMA terms (light and dark). */
+    :root, html[data-theme="light"], html[data-theme="dark"] {
         --primary: var(--adma-red);
         --secondary: var(--adma-red-dark);
         --accent: #ffffff;
-
+        --primary-fg: #ffffff;
+        --body-fg: var(--adma-fg);
+        --body-bg: var(--adma-card);
+        --body-quiet-color: var(--adma-muted);
+        --body-loud-color: var(--adma-fg);
         --header-bg: var(--adma-red);
-        --header-color: rgba(255, 255, 255, .85);
+        --header-color: rgba(255, 255, 255, .9);
         --header-branding-color: #ffffff;
         --header-link-color: #ffffff;
-
-        --breadcrumbs-bg: #f8f9fa;
-        --breadcrumbs-fg: #6c757d;
+        --breadcrumbs-bg: transparent;
+        --breadcrumbs-fg: var(--adma-muted);
         --breadcrumbs-link-fg: var(--adma-red);
-
         --link-fg: var(--adma-red);
         --link-hover-color: var(--adma-red-dark);
         --link-selected-fg: var(--adma-red-dark);
-
+        --hairline-color: var(--adma-line);
+        --border-color: var(--adma-input-line);
+        --darkened-bg: var(--adma-head);
+        --selected-bg: var(--adma-head);
+        --selected-row: var(--adma-red-soft);
         --button-bg: var(--adma-red);
         --button-fg: #ffffff;
         --button-hover-bg: var(--adma-red-dark);
-        --default-button-bg: var(--adma-red-dark);
-        --default-button-hover-bg: #8a0000;
-
-        --object-tools-bg: var(--adma-red-dark);
-        --object-tools-hover-bg: var(--adma-red);
+        --default-button-bg: var(--adma-red);
+        --default-button-hover-bg: var(--adma-red-dark);
+        --close-button-bg: #6c757d;
+        --close-button-hover-bg: #495057;
+        --delete-button-bg: #dc3545;
+        --delete-button-hover-bg: #b02a37;
+        --object-tools-fg: #ffffff;
+        --object-tools-bg: var(--adma-red);
+        --object-tools-hover-bg: var(--adma-red-dark);
+        --font-family-primary: 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    html[data-theme="dark"] { --link-fg: #ff6b6b; --link-hover-color: #ff9b9b; --breadcrumbs-link-fg: #ff6b6b; }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) { --link-fg: #ff6b6b; --link-hover-color: #ff9b9b; --breadcrumbs-link-fg: #ff6b6b; }
     }
 
-    /* The admin sets its dark palette in its own block, so restate ours there
-       too rather than let the blues come back when the OS asks for dark. */
-    html[data-theme="dark"] {
-        --primary: var(--adma-red);
-        --secondary: var(--adma-red-dark);
-        --header-bg: #7a0000;
-        --breadcrumbs-bg: #1b1b1b;
-        --breadcrumbs-link-fg: #ff6b6b;
-        --link-fg: #ff6b6b;
-        --link-hover-color: #ff9b9b;
-        --link-selected-fg: #ff9b9b;
-        --button-bg: var(--adma-red);
-        --button-hover-bg: var(--adma-red-dark);
-        --object-tools-bg: var(--adma-red-dark);
-    }
+    /* ---------- Page ---------- */
+    html, body { background: var(--adma-page); }
+    body { color: var(--adma-fg); font-size: 14px; }
+    #container { min-height: 100vh; }
+    .main { background: var(--adma-page); }
+    #content { padding: 8px 32px 40px; }
+    @media (max-width: 767px) { #content { padding: 8px 16px 32px; } }
+    #content > h1, #content-main > h1 { font-size: 22px; font-weight: 700; color: var(--adma-fg); margin: 6px 0 18px; }
+    #content > h2 { font-size: 15px; color: var(--adma-muted); font-weight: 600; margin: -10px 0 18px; }
+    a:link, a:visited { color: var(--link-fg); }
+    code, kbd { background: var(--adma-head); border-radius: 4px; padding: 1px 5px; }
 
-    #site-name a {
-        display: inline-flex;
-        align-items: center;
-        gap: .5rem;
-        font-weight: 600;
-        letter-spacing: .01em;
-    }
-
-    #branding h1 { margin-bottom: 0; }
-
-    /* The header gradient the rest of the site uses. */
-    #header {
+    /* ---------- Header ---------- */
+    #header.adma-topbar {
+        display: block; padding: 0; height: auto; color: #fff; overflow: visible;
         background: linear-gradient(135deg, var(--adma-red) 0%, var(--adma-red-dark) 100%);
+        box-shadow: 0 2px 10px rgba(208, 0, 0, .15);
+    }
+    .adma-topbar-inner { display: flex; align-items: center; gap: 8px 24px; padding: 0 32px; min-height: 60px; }
+    @media (max-width: 767px) { .adma-topbar-inner { padding: 0 16px; gap: 8px 12px; } }
+    .adma-brand, .adma-brand:link, .adma-brand:visited {
+        display: inline-flex; align-items: center; gap: 10px; color: #fff; text-decoration: none;
+        font-size: 21px; font-weight: 700; letter-spacing: .01em; white-space: nowrap;
+    }
+    .adma-brand:hover { color: #fff; text-decoration: none; }
+    .adma-brand-tag {
+        font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+        padding: 3px 8px; border-radius: 999px; background: rgba(255, 255, 255, .18);
+    }
+    .adma-nav { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+    .adma-nav a, .adma-nav a:link, .adma-nav a:visited {
+        display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 6px;
+        color: rgba(255, 255, 255, .9); font-weight: 500; font-size: 14px; text-decoration: none; white-space: nowrap;
+        transition: background .25s ease, color .25s ease;
+    }
+    .adma-nav a:hover, .adma-nav a.active { color: #fff; background: rgba(255, 255, 255, .14); text-decoration: none; }
+    .adma-nav a i { font-size: 13px; opacity: .95; }
+    @media (max-width: 900px) { .adma-nav a span { display: none; } .adma-nav a { padding: 8px 10px; } }
+    @media (max-width: 600px) { .adma-nav { display: none; } .adma-brand-tag { display: none; } }
+
+    .adma-user { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .adma-user .theme-toggle { margin: 0; padding: 6px; border-radius: 6px; }
+    .adma-user .theme-toggle:hover { background: rgba(255, 255, 255, .14); }
+    .adma-user .theme-toggle svg { fill: #fff; width: 18px; height: 18px; vertical-align: middle; }
+    .adma-menu { position: relative; }
+    .adma-menu summary {
+        list-style: none; display: inline-flex; align-items: center; gap: 9px; cursor: pointer; user-select: none;
+        padding: 5px 10px 5px 5px; border-radius: 999px; color: #fff; font-weight: 500; font-size: 14px;
+        transition: background .25s ease;
+    }
+    .adma-menu summary::-webkit-details-marker { display: none; }
+    .adma-menu summary:hover, .adma-menu[open] summary { background: rgba(255, 255, 255, .14); }
+    .adma-menu summary .fa-chevron-down { font-size: 10px; opacity: .8; transition: transform .2s; }
+    .adma-menu[open] summary .fa-chevron-down { transform: rotate(180deg); }
+    .adma-avatar {
+        width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+        background: #fff; color: var(--adma-red); font-weight: 700; font-size: 13px;
+    }
+    @media (max-width: 600px) { .adma-menu-name { display: none; } }
+    .adma-menu-panel {
+        position: absolute; right: 0; top: calc(100% + 8px); z-index: 1000; min-width: 220px;
+        background: var(--adma-card); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+        padding: 6px; border: 1px solid var(--adma-line);
+    }
+    .adma-menu-head { padding: 10px 12px 8px; border-bottom: 1px solid var(--adma-line); margin-bottom: 4px; }
+    .adma-menu-head strong { display: block; color: var(--adma-fg); font-size: 14px; }
+    .adma-menu-head span { color: var(--adma-muted); font-size: 12px; }
+    .adma-menu-panel a, .adma-menu-panel a:link, .adma-menu-panel a:visited, .adma-menu-panel button {
+        display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border-radius: 6px;
+        color: var(--adma-fg); font: 400 14px var(--font-family-primary); text-decoration: none;
+        background: none; border: 0; cursor: pointer; text-align: left; text-transform: none; letter-spacing: 0;
+    }
+    .adma-menu-panel a:hover, .adma-menu-panel button:hover { background: var(--adma-head); color: var(--adma-red); text-decoration: none; }
+    /* Django colours every #header link white; the menu panel is light. */
+    #header .adma-menu-panel a:link, #header .adma-menu-panel a:visited, #header .adma-menu-panel button { color: var(--adma-fg); }
+    #header .adma-menu-panel a:hover, #header .adma-menu-panel button:hover { color: var(--link-fg); }
+    .adma-menu-panel i { width: 16px; text-align: center; color: var(--adma-muted); }
+    .adma-menu-panel form { margin: 0; display: block; }
+    /* Django styles #logout-form button as small-caps header text; this is a menu item. */
+    #header .adma-menu-panel #logout-form button {
+        font-size: 14px; text-transform: none; letter-spacing: 0; border: 0; margin: 0; padding: 9px 12px; line-height: 1.4;
+    }
+    .adma-menu-panel hr { border: 0; border-top: 1px solid var(--adma-line); margin: 4px 0; }
+
+    /* ---------- Breadcrumbs ---------- */
+    div.breadcrumbs {
+        background: transparent; border: 0; padding: 18px 32px 6px; font-size: 13px;
+        color: var(--adma-muted); text-transform: none; letter-spacing: 0;
+    }
+    @media (max-width: 767px) { div.breadcrumbs { padding: 14px 16px 4px; } }
+    div.breadcrumbs a, div.breadcrumbs a:link, div.breadcrumbs a:visited { color: var(--breadcrumbs-link-fg); font-weight: 500; }
+    div.breadcrumbs a:first-child::before { content: "\f015"; font: 900 11px "Font Awesome 6 Free"; margin-right: 6px; }
+
+    /* ---------- Messages ---------- */
+    ul.messagelist { padding: 12px 32px 0; margin: 0; }
+    @media (max-width: 767px) { ul.messagelist { padding: 12px 16px 0; } }
+    ul.messagelist li {
+        border-radius: 10px; box-shadow: var(--adma-shadow); margin: 0 0 10px; padding: 12px 16px 12px 44px;
+        background-position: 16px 14px; font-size: 14px; color: var(--adma-fg); background-color: #e8f6ec;
+    }
+    ul.messagelist li.warning { background-color: #fff4dc; }
+    ul.messagelist li.error { background-color: #fde8e8; }
+    html[data-theme="dark"] ul.messagelist li { background-color: #173a22; }
+    html[data-theme="dark"] ul.messagelist li.warning { background-color: #4a3708; }
+    html[data-theme="dark"] ul.messagelist li.error { background-color: #4f1414; }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) ul.messagelist li { background-color: #173a22; }
+        :root:not([data-theme="light"]) ul.messagelist li.warning { background-color: #4a3708; }
+        :root:not([data-theme="light"]) ul.messagelist li.error { background-color: #4f1414; }
     }
 
-    div.breadcrumbs {
-        border-bottom: 1px solid #dee2e6;
+    /* ---------- Cards (modules, fieldsets, inlines) ---------- */
+    .module, fieldset.module, .inline-group, #changelist-filter, .submit-row, .delete-confirmation-summary,
+    #content-related .module {
+        background: var(--adma-card); border: 0; border-radius: 12px; box-shadow: var(--adma-shadow);
     }
+    .module { margin-bottom: 20px; overflow: hidden; }
+    .module h2, .module caption, .inline-group h2 {
+        background: var(--adma-head); color: var(--adma-fg); border-bottom: 1px solid var(--adma-line);
+        font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: 0; padding: 12px 18px; text-align: left;
+    }
+    .module h2 a, .module caption a, .module caption a:link, .module caption a:visited { color: var(--adma-fg); }
+    .module h2 a:hover, .module caption a:hover { color: var(--adma-red); }
+    .module h3 { color: var(--adma-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding: 12px 18px 0; margin: 0; }
+    fieldset.module { padding: 0; margin-bottom: 20px; overflow: hidden; }
+    fieldset .fieldset-heading, fieldset.module > h2 { margin: 0; }
+    fieldset.collapsed { box-shadow: var(--adma-shadow); }
+    .inline-group { overflow: hidden; padding: 0; }
+    .inline-group .tabular tr.has_original td { padding-top: 2.5em; }
+    .inline-related h3 { background: var(--adma-head); color: var(--adma-fg); border: 0; padding: 10px 18px; font-size: 13px; }
+
+    /* ---------- Tables ---------- */
+    table { border-color: var(--adma-line); }
+    thead th, tfoot td, .module table thead th {
+        background: var(--adma-head); color: var(--adma-muted); border-bottom: 1px solid var(--adma-line); border-top: 0;
+        font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 10px 12px;
+    }
+    thead th a:link, thead th a:visited { color: var(--adma-muted); }
+    thead th.sorted { background: var(--adma-head); }
+    td, th { border-bottom: 1px solid var(--adma-line); padding: 10px 12px; font-size: 13.5px; line-height: 1.5; }
+    tr:last-child td, tr:last-child th { border-bottom: 0; }
+    #result_list tbody tr:hover td, #result_list tbody tr:hover th { background: var(--adma-head); }
+    #result_list tbody tr.selected td, #result_list tbody tr.selected th { background: var(--adma-red-soft); }
+    #result_list th a, #result_list td a { font-weight: 600; }
+    img[src*="icon-yes"], img[src*="icon-no"], img[src*="icon-unknown"] { width: 15px; height: 15px; }
+
+    /* ---------- Buttons ---------- */
+    .button, input[type=submit], input[type=button], .submit-row input, a.button {
+        border-radius: 8px; padding: 9px 16px; font: 600 13.5px var(--font-family-primary); letter-spacing: 0;
+        border: 0; box-shadow: none; transition: background .2s ease, transform .2s ease;
+    }
+    .button:hover, input[type=submit]:hover, input[type=button]:hover { transform: translateY(-1px); }
+    .button.default, input[type=submit].default, .submit-row input.default { background: var(--adma-red); }
+    .submit-row {
+        padding: 14px 18px; margin: 20px 0 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+        border: 0; background: var(--adma-card);
+    }
+    .submit-row a.deletelink, .submit-row a.deletelink:link {
+        border-radius: 8px; padding: 9px 16px; height: auto; line-height: 1.4; font-weight: 600; margin-left: auto;
+    }
+    .submit-row a.closelink { border-radius: 8px; padding: 9px 16px; height: auto; line-height: 1.4; }
+    /* On the title row, at the right, rather than floating beside the filters. */
+    #content { position: relative; }
+    .object-tools { position: absolute; top: 4px; right: 32px; margin: 0; padding: 0; float: none; }
+    @media (max-width: 767px) { .object-tools { position: static; float: none; margin: 0 0 14px; } }
+    .object-tools li { margin-left: 8px; }
+    .object-tools a, .object-tools a:link, .object-tools a:visited {
+        border-radius: 999px; padding: 8px 16px; font: 600 12.5px var(--font-family-primary); text-transform: none;
+        letter-spacing: 0; background: var(--adma-red); box-shadow: 0 3px 10px rgba(208, 0, 0, .22);
+    }
+    .object-tools a:hover { background: var(--adma-red-dark); }
+    .object-tools a.addlink { background-image: none; padding-left: 16px; }
+    .object-tools a.addlink::before { content: "\f067"; font: 900 11px "Font Awesome 6 Free"; margin-right: 7px; }
+
+    /* ---------- Forms ---------- */
+    input[type=text], input[type=password], input[type=email], input[type=url], input[type=number], input[type=tel],
+    input[type=search], textarea, select, .vTextField {
+        border: 1px solid var(--adma-input-line); border-radius: 8px; padding: 7px 10px; background: var(--adma-input);
+        color: var(--adma-fg); font-size: 14px; transition: border-color .2s ease, box-shadow .2s ease;
+    }
+    select { padding: 6px 8px; height: auto; }
+    select[multiple] { padding: 4px; }
+    input:focus, textarea:focus, select:focus {
+        border-color: var(--adma-red); box-shadow: 0 0 0 3px rgba(208, 0, 0, .14); outline: none;
+    }
+    .form-row { padding: 14px 18px; border-bottom: 1px solid var(--adma-line); }
+    fieldset .form-row:last-child { border-bottom: 0; }
+    .aligned label { color: var(--adma-fg); font-weight: 500; }
+    .aligned label.required, label.required { font-weight: 600; }
+    .help, p.help, form p.help, div.help, form div.help { color: var(--adma-muted); font-size: 12.5px; }
+    .errornote { border-radius: 10px; border: 0; background: #fde8e8; color: #b00000; padding: 12px 16px; box-shadow: var(--adma-shadow); }
+    ul.errorlist li { border-radius: 6px; }
+    .selector-chosen h2, .selector-available h2, .selector-chosen-title, .selector-available-title {
+        border-radius: 8px 8px 0 0; background: var(--adma-head); color: var(--adma-fg); border: 1px solid var(--adma-line);
+    }
+    .selector-chosen h2, .selector-chosen-title { background: var(--adma-red); color: #fff; border-color: var(--adma-red); }
+    .selector .selector-filter { border-color: var(--adma-line); }
+    .selector select { border-radius: 0 0 8px 8px; }
+
+    /* ---------- Change list ---------- */
+    #changelist { background: transparent; box-shadow: none; overflow: visible; }
+    #changelist .changelist-form-container { gap: 20px; }
+    #changelist .changelist-form-container > div:first-child, #changelist > .changelist-form-container > form,
+    #changelist .results, #changelist-form {
+        min-width: 0;
+    }
+    #changelist-form {
+        background: var(--adma-card); border-radius: 12px; box-shadow: var(--adma-shadow); overflow: hidden;
+    }
+    #changelist #toolbar {
+        background: var(--adma-card); border: 0; border-radius: 12px; box-shadow: var(--adma-shadow);
+        padding: 12px 16px; margin-bottom: 14px; color: var(--adma-muted);
+    }
+    #changelist #toolbar form input[type=text] { border-radius: 8px; padding: 8px 12px 8px 12px; min-width: 260px; }
+    #changelist #toolbar form input[type=submit] { padding: 8px 14px; }
+    #changelist-search img { display: none; }
+    #changelist-search > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    @media (max-width: 767px) {
+        #changelist #toolbar form input[type=text] { min-width: 0; flex: 1 1 140px; width: auto; }
+    }
+    #changelist-search label::before { content: "\f002"; font: 900 13px "Font Awesome 6 Free"; color: var(--adma-muted); margin-right: 8px; }
+    #changelist .actions {
+        background: var(--adma-head); border-bottom: 1px solid var(--adma-line); padding: 10px 16px; color: var(--adma-muted);
+    }
+    #changelist .actions select { padding: 5px 8px; }
+    #changelist .actions .button { padding: 6px 12px; background: var(--adma-fg); color: var(--adma-card); }
+    #changelist .actions .button:hover { background: var(--adma-red); color: #fff; }
+    #changelist .results { border-radius: 0; }
+    #changelist table thead th:first-child { width: 1.5em; }
+    #changelist .paginator {
+        background: var(--adma-card); border-top: 1px solid var(--adma-line); padding: 12px 16px; color: var(--adma-muted); font-size: 13px;
+    }
+    .paginator a:link, .paginator a:visited { border-radius: 6px; background: var(--adma-red); padding: 3px 9px; }
+    .paginator .this-page { border-radius: 6px; padding: 3px 9px; background: var(--adma-head); color: var(--adma-fg); }
+    .paginator .showall { background: none; }
+
+    #changelist-filter {
+        flex: 0 0 240px; padding: 0; overflow: hidden; align-self: flex-start; margin: 0;
+    }
+    #changelist-filter h2 {
+        background: var(--adma-head); color: var(--adma-fg); border-bottom: 1px solid var(--adma-line);
+        padding: 12px 16px; font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: 0;
+    }
+    #changelist-filter h2::before { content: "\f0b0"; font: 900 12px "Font Awesome 6 Free"; color: var(--adma-red); margin-right: 8px; }
+    #changelist-filter h3 { padding: 0 16px; margin: 16px 0 6px; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--adma-muted); }
+    #changelist-filter details summary { list-style: none; cursor: pointer; }
+    #changelist-filter details summary::-webkit-details-marker { display: none; }
+    #changelist-filter details summary::marker { content: ""; }
+    #changelist-filter details summary::before, #changelist-filter details[open] summary::before { content: none; display: none; }
+    #changelist-filter details summary { padding: 0 16px; margin: 16px 0 6px; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--adma-muted); }
+    #changelist-filter ul { padding: 0 8px 8px; border-bottom: 1px solid var(--adma-line); margin: 0; }
+    #changelist-filter details:last-child ul, #changelist-filter ul:last-child { border-bottom: 0; }
+    #changelist-filter li { padding: 0; margin: 1px 0; list-style: none; }
+    #changelist-filter li a, #changelist-filter li a:link, #changelist-filter li a:visited {
+        display: block; padding: 6px 8px; border-radius: 6px; color: var(--adma-fg); font-size: 13px;
+    }
+    #changelist-filter li a:hover { background: var(--adma-head); color: var(--link-fg); text-decoration: none; }
+    #changelist-filter li.selected { border: 0; padding: 0; margin: 1px 0; }
+    #changelist-filter li.selected a, #changelist-filter li.selected a:link, #changelist-filter li.selected a:visited {
+        background: var(--adma-red-soft); color: var(--link-fg); font-weight: 600;
+    }
+    #changelist-filter-clear { padding: 10px 16px 0; margin: 0; }
+    #changelist-filter-clear a { font-size: 12.5px; }
+    @media (max-width: 1024px) { #changelist-filter { flex-basis: auto; width: 100%; } }
+
+    .date-hierarchy, #changelist .xfull ul.toplinks {
+        background: var(--adma-card); border-radius: 10px; box-shadow: var(--adma-shadow); padding: 10px 16px; margin-bottom: 14px;
+    }
+
+    /* ---------- Other pages ---------- */
+    /* Delete confirmations are bare text in Django; give them the card. */
+    body.delete-confirmation #content {
+        background: var(--adma-card); border-radius: 12px; box-shadow: var(--adma-shadow);
+        margin: 8px 32px 40px; padding: 22px 28px 26px; max-width: 900px;
+    }
+    @media (max-width: 767px) { body.delete-confirmation #content { margin: 8px 16px 32px; padding: 18px; } }
+    body.delete-confirmation #content h1 { margin-top: 0; }
+    body.delete-confirmation #content h1::before { content: "\f071"; font: 900 18px "Font Awesome 6 Free"; color: #dc3545; margin-right: 10px; }
+    body.delete-confirmation #content h2 {
+        font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--adma-muted); margin: 18px 0 6px;
+    }
+    body.delete-confirmation #content form { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+    body.delete-confirmation #content form div { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .delete-confirmation #content ul, .delete-confirmation #content p { line-height: 1.7; }
+    .delete-confirmation form .cancel-link {
+        border-radius: 8px; padding: 9px 16px; height: auto; line-height: 1.4; background: #6c757d; font-weight: 600;
+    }
+    .delete-confirmation form input[type="submit"] { background: #dc3545; }
+    .delete-confirmation form input[type="submit"]:hover { background: #b02a37; }
+    #content-related { background: transparent; }
+    #content-related .module h2 { background: var(--adma-head); }
+    #footer { padding: 0; }
+
+    /* ---------- Login ----------
+       body.login: admin/login.css loads after this block and would win a tie. */
+    body.login { display: grid; place-items: center; min-height: 100vh; background: var(--adma-page); }
+    body.login #container {
+        width: min(420px, calc(100vw - 32px)); min-width: 0; min-height: 0; margin: 24px auto; border: 0;
+        border-radius: 16px; overflow: hidden; background: var(--adma-card); box-shadow: 0 10px 40px rgba(0, 0, 0, .12);
+    }
+    body.login #header.adma-topbar { box-shadow: none; }
+    body.login .adma-topbar-inner { justify-content: center; padding: 26px 24px; flex-direction: column; gap: 6px; }
+    body.login .adma-brand { font-size: 26px; }
+    body.login .adma-login-sub { color: rgba(255, 255, 255, .85); font-size: 13px; margin: 0; }
+    body.login .main { background: var(--adma-card); }
+    body.login #content { padding: 24px 28px 28px; }
+    body.login .form-row { padding: 0 0 16px; border: 0; }
+    body.login .form-row label { display: block; font-weight: 600; margin-bottom: 6px; color: var(--adma-fg); }
+    body.login .form-row #id_username, body.login .form-row #id_password { width: 100%; padding: 10px 12px; box-sizing: border-box; }
+    body.login .submit-row { box-shadow: none; padding: 6px 0 0; margin: 0; background: transparent; }
+    body.login .submit-row input { width: 100%; padding: 11px 16px; font-size: 14.5px; }
+    body.login .password-reset-link { text-align: center; margin-top: 12px; }
+    body.login .errornote { margin-bottom: 16px; }
 </style>
 {% endblock %}
 
-{% block branding %}
-<h1 id="site-name">
-    <a href="{% url 'admin:index' %}">
-        <i class="fas fa-seedling"></i>ADMA administration
-    </a>
-</h1>
+{% block header %}
+<header id="header" class="adma-topbar">
+    <div class="adma-topbar-inner">
+        <a class="adma-brand" href="{% url 'admin:index' %}">
+            <i class="fas fa-seedling"></i><span>ADMA</span><span class="adma-brand-tag">Admin</span>
+        </a>
+        {% if has_permission %}
+        {% with url_name=request.resolver_match.url_name %}
+        <nav class="adma-nav" aria-label="Admin">
+            <a href="{% url 'admin:index' %}"{% if url_name == 'index' %} class="active" aria-current="page"{% endif %}>
+                <i class="fas fa-gauge-high"></i><span>Dashboard</span>
+            </a>
+            {% if user.is_superuser %}
+            <a href="{% url 'admin_server_resources' %}"{% if url_name == 'admin_server_resources' %} class="active" aria-current="page"{% endif %}>
+                <i class="fas fa-server"></i><span>Server resources</span>
+            </a>
+            {% endif %}
+            {% if site_url %}
+            <a href="{{ site_url }}"><i class="fas fa-arrow-up-right-from-square"></i><span>View site</span></a>
+            {% endif %}
+        </nav>
+        {% endwith %}
+        <div class="adma-user">
+            {% include "admin/color_theme_toggle.html" %}
+            <details class="adma-menu">
+                <summary>
+                    <span class="adma-avatar">{{ user.get_username|first|upper }}</span>
+                    <span class="adma-menu-name">{% firstof user.get_short_name user.get_username %}</span>
+                    <i class="fas fa-chevron-down"></i>
+                </summary>
+                <div class="adma-menu-panel">
+                    <div class="adma-menu-head">
+                        <strong>{% firstof user.get_full_name user.get_username %}</strong>
+                        <span>{% if user.is_superuser %}Superuser{% else %}Staff{% endif %}</span>
+                    </div>
+                    {% if site_url %}<a href="{{ site_url }}"><i class="fas fa-house"></i>Back to ADMA</a>{% endif %}
+                    {% if user.has_usable_password %}
+                    <a href="{% url 'admin:password_change' %}"><i class="fas fa-key"></i>{% translate 'Change password' %}</a>
+                    {% endif %}
+                    <hr>
+                    <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
+                        {% csrf_token %}
+                        <button type="submit"><i class="fas fa-right-from-bracket"></i>{% translate 'Log out' %}</button>
+                    </form>
+                </div>
+            </details>
+        </div>
+        {% elif request.resolver_match.url_name == 'login' %}
+        <p class="adma-login-sub">Sign in to the administration</p>
+        {% endif %}
+    </div>
+</header>
+<script>
+    // Close the user menu when clicking anywhere else or pressing Escape.
+    document.addEventListener('click', function (e) {
+        document.querySelectorAll('details.adma-menu[open]').forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute('open'); });
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') document.querySelectorAll('details.adma-menu[open]').forEach(function (d) { d.removeAttribute('open'); });
+    });
+</script>
 {% endblock %}
 
 {% block nav-global %}{% endblock %}
